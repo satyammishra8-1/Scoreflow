@@ -4,8 +4,8 @@ import './OrganizerDashboard.css';
 
 const navigation = [
   { label: 'Dashboard', icon: '▦', active: true },
-  { label: 'Events', icon: '▣' },
-  { label: 'Teams', icon: '♧' },
+  { label: 'Events', icon: '▣', href: '/organizer/events' },
+  { label: 'Teams', icon: '♧', href: '/organizer/events/default/teams' },
   { label: 'Judges', icon: '♙' },
   { label: 'Evaluation Criteria', icon: '☷' },
   { label: 'Results', icon: '▤' },
@@ -83,7 +83,7 @@ function Sidebar({ isOpen, closeMenu }) {
         <nav className="sidebar-navigation" aria-label="Organizer navigation">
           {navigation.map((item) => (
             <a
-              href={item.active ? '/organizer/dashboard' : '#'}
+              href={item.active ? '/organizer/dashboard' : item.href || '#'}
               className={`sidebar-link ${item.active ? 'sidebar-link-active' : ''}`}
               key={item.label}
               onClick={closeMenu}
@@ -156,8 +156,8 @@ function EventCard({ event }) {
         <small>{event.completed}</small>
       </div>
       <div className="event-actions">
-        <button className="dashboard-button dashboard-button-primary" type="button">{event.action}</button>
-        <button className="dashboard-button dashboard-button-text" type="button">View Details</button>
+        <Link className="dashboard-button dashboard-button-primary" to="/organizer/events">{event.action}</Link>
+        <Link className="dashboard-button dashboard-button-text" to="/organizer/events">View Details</Link>
       </div>
     </article>
   );
@@ -210,9 +210,9 @@ function OrganizerDashboard() {
               <h1>Welcome back, Organizer! <span aria-hidden="true">👋</span></h1>
               <p>Manage your events, teams, judges and evaluations all in one place.</p>
             </div>
-            <button className="dashboard-button dashboard-button-primary create-event-button" type="button">
+            <Link className="dashboard-button dashboard-button-primary create-event-button" to="/organizer/events">
               <span aria-hidden="true">+</span> Create Event
-            </button>
+            </Link>
           </section>
 
           <section className="overview-grid" aria-label="Dashboard overview">
@@ -337,14 +337,14 @@ function OrganizerDashboard() {
             </div>
             <div className="quick-actions-grid">
               {actions.map((action) => (
-                <button className="quick-action-card" type="button" key={action.title}>
+                <Link className="quick-action-card" to="/organizer/events" key={action.title}>
                   <span className="quick-action-icon" aria-hidden="true">{action.icon}</span>
                   <span className="quick-action-copy">
                     <strong>{action.title}</strong>
                     <small>{action.description}</small>
                   </span>
                   <span className="quick-action-arrow" aria-hidden="true">→</span>
-                </button>
+                </Link>
               ))}
             </div>
           </section>

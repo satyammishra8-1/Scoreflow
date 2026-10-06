@@ -601,6 +601,7 @@
   min-height: 30px;
   padding: 0 10px;
   font-size: 10px;
+  text-decoration: none;
 }
 
 .dashboard-button-text {
@@ -834,6 +835,7 @@
   color: inherit;
   background: #fff;
   text-align: left;
+  text-decoration: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
