@@ -6,7 +6,7 @@ const navigation = [
   { label: 'Dashboard', icon: '▦', active: true },
   { label: 'Events', icon: '▣', href: '/organizer/events' },
   { label: 'Teams', icon: '♧', href: '/organizer/events/default/teams' },
-  { label: 'Judges', icon: '♙' },
+  { label: 'Judges', icon: '♙', href: '/organizer/events/default/judges' },
   { label: 'Evaluation Criteria', icon: '☷' },
   { label: 'Results', icon: '▤' },
   { label: 'Feedback & Emails', icon: '✉' },
