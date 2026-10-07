@@ -65,10 +65,33 @@ export const initialTeams = [
   },
 ];
 
-export function readSavedTeams(storageKey) {
+function withEventContext(teams, eventId) {
+  return teams.map((team) => ({
+    ...team,
+    eventId: team.eventId || eventId,
+    createdAt: team.createdAt || '',
+    members: team.members.map((member, index) => ({
+      ...member,
+      id: member.id || `${team.id || team.number}-member-${index + 1}`,
+      name: member.name,
+      email: member.email,
+      usn: typeof member.usn === 'string' ? member.usn : '',
+      section: typeof member.section === 'string' ? member.section : '',
+      github: typeof member.github === 'string' ? member.github : '',
+      demo: typeof member.demo === 'string' ? member.demo : '',
+    })),
+  }));
+}
+
+export function readSavedTeams(storageKey, eventId = 'default') {
   try {
     const stored = window.localStorage.getItem(storageKey);
-    if (stored === null) return { teams: initialTeams, error: '' };
+    if (stored === null) {
+      return {
+        teams: eventId === 'default' ? withEventContext(initialTeams, eventId) : [],
+        error: '',
+      };
+    }
     const parsed = JSON.parse(stored);
     if (!Array.isArray(parsed) || !parsed.every((team) => (
       team && typeof team.number === 'string' &&
@@ -86,8 +109,12 @@ export function readSavedTeams(storageKey) {
     ))) {
       throw new Error('Saved team data is invalid.');
     }
-    return { teams: parsed, error: '' };
+    const eventTeams = parsed.filter((team) => !team.eventId || team.eventId === eventId);
+    return { teams: withEventContext(eventTeams, eventId), error: '' };
   } catch {
-    return { teams: initialTeams, error: 'Unable to load saved teams from this browser.' };
+    return {
+      teams: eventId === 'default' ? withEventContext(initialTeams, eventId) : [],
+      error: 'Unable to load saved teams from this browser.',
+    };
   }
 }

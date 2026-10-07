@@ -280,7 +280,7 @@ function OrganizerJudges() {
   const { eventId = 'default' } = useParams();
   const teamStorageKey = `scoreflow.organizer.event.${eventId}.teams`;
   const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
-  const [initialTeamData] = useState(() => readSavedTeams(teamStorageKey));
+  const [initialTeamData] = useState(() => readSavedTeams(teamStorageKey, eventId));
   const [teams] = useState(initialTeamData.teams);
   const [initialJudgeData] = useState(() => readSavedJudges(judgeStorageKey, initialTeamData.teams));
   const [judges, setJudges] = useState(initialJudgeData.judges);

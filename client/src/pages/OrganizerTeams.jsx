@@ -1,168 +1,16 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { readSavedTeams } from '../data/teamStorage';
+import { createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
+import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
+import {
+  DeleteTeamModal,
+  ImportPreviewModal,
+  TeamDetailsModal,
+  TeamFormModal,
+} from './TeamModals';
 import './OrganizerDashboard.css';
 import './OrganizerTeams.css';
-
-const importColumns = [
-  'Team No.',
-  'Team Name',
-  'Problem / Project',
-  'Member Name',
-  'Email',
-  'GitHub',
-  'Demo Link',
-  'Judge',
-];
-
-const columnIndex = (reference) => {
-  const letters = reference.match(/^[A-Z]+/)?.[0] || '';
-  return [...letters].reduce((index, character) => index * 26 + character.charCodeAt(0) - 64, 0) - 1;
-};
-
-function getZipEntry(bytes, filename) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const minimum = Math.max(0, bytes.length - 65_557);
-  let endOffset = -1;
-  for (let offset = bytes.length - 22; offset >= minimum; offset -= 1) {
-    if (view.getUint32(offset, true) === 0x06054b50) {
-      endOffset = offset;
-      break;
-    }
-  }
-  if (endOffset < 0) throw new Error('This Excel file has an invalid ZIP directory.');
-
-  const entryCount = view.getUint16(endOffset + 10, true);
-  let entryOffset = view.getUint32(endOffset + 16, true);
-  const decoder = new TextDecoder();
-  for (let index = 0; index < entryCount; index += 1) {
-    if (view.getUint32(entryOffset, true) !== 0x02014b50) {
-      throw new Error('This Excel file has an invalid ZIP entry.');
-    }
-    const method = view.getUint16(entryOffset + 10, true);
-    const compressedSize = view.getUint32(entryOffset + 20, true);
-    const nameLength = view.getUint16(entryOffset + 28, true);
-    const extraLength = view.getUint16(entryOffset + 30, true);
-    const commentLength = view.getUint16(entryOffset + 32, true);
-    const localOffset = view.getUint32(entryOffset + 42, true);
-    const nameStart = entryOffset + 46;
-    const name = decoder.decode(bytes.subarray(nameStart, nameStart + nameLength));
-
-    if (name === filename) {
-      const localNameLength = view.getUint16(localOffset + 26, true);
-      const localExtraLength = view.getUint16(localOffset + 28, true);
-      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
-      const compressed = bytes.slice(dataStart, dataStart + compressedSize);
-      if (method === 0) return compressed;
-      if (method !== 8 || typeof DecompressionStream === 'undefined') {
-        throw new Error('This browser cannot decompress this Excel file.');
-      }
-      return new Response(
-        new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw')),
-      ).arrayBuffer().then((buffer) => new Uint8Array(buffer));
-    }
-    entryOffset += 46 + nameLength + extraLength + commentLength;
-  }
-  return null;
-}
-
-function parseWorksheet(xml, sharedStrings) {
-  const documentXml = new DOMParser().parseFromString(xml, 'application/xml');
-  if (documentXml.querySelector('parsererror')) throw new Error('Excel worksheet XML could not be read.');
-  return [...documentXml.getElementsByTagName('row')].map((row) => {
-    const cells = [];
-    for (const cell of row.getElementsByTagName('c')) {
-      const index = columnIndex(cell.getAttribute('r') || '');
-      if (index < 0) continue;
-      const type = cell.getAttribute('t');
-      let value = '';
-      if (type === 'inlineStr') {
-        value = [...cell.getElementsByTagName('t')].map((text) => text.textContent || '').join('');
-      } else {
-        const raw = cell.getElementsByTagName('v')[0]?.textContent || '';
-        value = type === 's' ? sharedStrings[Number(raw)] || '' : raw;
-      }
-      cells[index] = value;
-    }
-    return cells.map((value) => value || '');
-  });
-}
-
-async function readExcelFile(file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const sharedXmlBytes = await getZipEntry(bytes, 'xl/sharedStrings.xml');
-  const sheetXmlBytes = await getZipEntry(bytes, 'xl/worksheets/sheet1.xml');
-  if (!sheetXmlBytes) throw new Error('No worksheet was found in this Excel file.');
-  const decoder = new TextDecoder();
-  const sharedStrings = sharedXmlBytes
-    ? [...new DOMParser().parseFromString(decoder.decode(sharedXmlBytes), 'application/xml').getElementsByTagName('si')]
-      .map((item) => [...item.getElementsByTagName('t')].map((text) => text.textContent || '').join(''))
-    : [];
-  return parseWorksheet(decoder.decode(sheetXmlBytes), sharedStrings);
-}
-
-function getCell(row, headers, heading) {
-  const index = headers.findIndex((header) => header.trim().toLowerCase() === heading.toLowerCase());
-  return index < 0 ? '' : String(row[index] || '').trim();
-}
-
-function isSafeExternalLink(value) {
-  try {
-    const protocol = new URL(value).protocol;
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function buildImportedTeams(rows) {
-  const [headerRow, ...dataRows] = rows;
-  const headers = headerRow.map((header) => String(header || '').trim());
-  const required = importColumns.map((column) => column.toLowerCase());
-  const missing = required.filter((heading) => !headers.some((header) => header.toLowerCase() === heading));
-  if (missing.length > 0) {
-    throw new Error(`Missing required Excel column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.`);
-  }
-
-  const groups = new Map();
-  dataRows.forEach((row, index) => {
-    const number = getCell(row, headers, 'Team No.');
-    const name = getCell(row, headers, 'Team Name');
-    const project = getCell(row, headers, 'Problem / Project');
-    const memberName = getCell(row, headers, 'Member Name');
-    if (!number && !name && !project && !memberName) return;
-    if (!number || !name || !project || !memberName) {
-      throw new Error(`Excel row ${index + 2} needs Team No., Team Name, Problem / Project, and Member Name.`);
-    }
-    const key = number.toLowerCase();
-    const team = groups.get(key) || {
-      id: `import-${key}`,
-      number,
-      name,
-      project,
-      members: [],
-      judges: [],
-      status: 'Pending',
-      github: '',
-      demo: '',
-    };
-    if (team.name !== name || team.project !== project) {
-      throw new Error(`Team ${number} has conflicting names or project details in the Excel rows.`);
-    }
-    const email = getCell(row, headers, 'Email');
-    if (!team.members.some((member) => member.name === memberName && member.email === email)) {
-      team.members.push({ name: memberName, email });
-    }
-    const judge = getCell(row, headers, 'Judge');
-    if (judge && !team.judges.includes(judge)) team.judges.push(judge);
-    const github = getCell(row, headers, 'GitHub');
-    const demo = getCell(row, headers, 'Demo Link');
-    if (github) team.github = github;
-    if (demo) team.demo = demo;
-    groups.set(key, team);
-  });
-  return [...groups.values()];
-}
 
 function TeamSidebar({ eventId, isOpen, closeMenu }) {
   return (
@@ -184,7 +32,7 @@ function TeamSidebar({ eventId, isOpen, closeMenu }) {
           <Link className="sidebar-link" to="/organizer/events" onClick={closeMenu}>
             <span className="sidebar-icon" aria-hidden="true">▣</span><span>Events</span>
           </Link>
-          <Link className="sidebar-link sidebar-link-active" to={`/organizer/events/${eventId}/teams`} onClick={closeMenu}>
+          <Link className="sidebar-link sidebar-link-active" to={`/organizer/events/${eventId}/teams`} onClick={closeMenu} aria-current="page">
             <span className="sidebar-icon" aria-hidden="true">♧</span><span>Teams</span>
             <span className="active-indicator" />
           </Link>
@@ -211,286 +59,333 @@ function TeamSidebar({ eventId, isOpen, closeMenu }) {
   );
 }
 
-function TeamModal({ team, onClose }) {
-  if (!team) return null;
-  return (
-    <div
-      className="teams-modal-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section className="teams-modal" role="dialog" aria-modal="true" aria-labelledby="team-details-title">
-        <div className="teams-modal-header">
-          <div>
-            <p className="teams-eyebrow">{team.number}</p>
-            <h2 id="team-details-title">{team.name}</h2>
-          </div>
-          <button className="teams-icon-button" type="button" onClick={onClose} aria-label="Close team details">×</button>
-        </div>
-        <dl className="team-detail-list">
-          <div><dt>Project / Problem Statement</dt><dd>{team.project}</dd></div>
-          <div>
-            <dt>Members</dt>
-            <dd>
-              <ul>
-                {team.members.map((member, index) => (
-                  <li key={`${member.name}-${member.email}-${index}`}>
-                    {member.name}{member.email ? ` · ${member.email}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </dd>
-          </div>
-          <div><dt>Assigned Judges</dt><dd>{team.judges.join(', ') || 'No judges assigned'}</dd></div>
-          <div><dt>Status</dt><dd><span className={`team-status-badge team-status-${team.status.toLowerCase()}`}>{team.status}</span></dd></div>
-          <div><dt>GitHub</dt><dd>{team.github ? (
-            isSafeExternalLink(team.github)
-              ? <a href={team.github} target="_blank" rel="noreferrer">{team.github}</a>
-              : team.github
-          ) : 'Not provided'}</dd></div>
-          <div><dt>Demo Link</dt><dd>{team.demo ? (
-            isSafeExternalLink(team.demo)
-              ? <a href={team.demo} target="_blank" rel="noreferrer">{team.demo}</a>
-              : team.demo
-          ) : 'Not provided'}</dd></div>
-        </dl>
-      </section>
-    </div>
-  );
-}
-
-function AddTeamModal({ existingTeams, onClose, onAdd }) {
-  const [form, setForm] = useState({
-    number: '', name: '', project: '', members: '', judges: '', github: '', demo: '',
-  });
-  const [error, setError] = useState('');
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
-
-  function submit(event) {
-    event.preventDefault();
-    const number = form.number.trim();
-    const name = form.name.trim();
-    const project = form.project.trim();
-    const members = form.members.split(',').map((member) => member.trim()).filter(Boolean);
-    if (!number || !name || !project || members.length === 0) {
-      setError('Enter the team number, team name, project, and at least one member.');
-      return;
-    }
-    if (existingTeams.some((team) => team.number.toLowerCase() === number.toLowerCase())) {
-      setError(`A team with number ${number} already exists.`);
-      return;
-    }
-    const saved = onAdd({
-      id: `team-${Date.now()}`,
-      number,
-      name,
-      project,
-      members: members.map((member) => ({ name: member, email: '' })),
-      judges: form.judges.split(',').map((judge) => judge.trim()).filter(Boolean),
-      status: 'Pending',
-      github: form.github.trim(),
-      demo: form.demo.trim(),
-    });
-    if (!saved) setError('Unable to save this team. Check the page for details.');
+function safeStoredEventName() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem('scoreflow.organizer.event') || 'null');
+    return parsed && typeof parsed.name === 'string' ? parsed.name.trim() : '';
+  } catch {
+    return '';
   }
-
-  return (
-    <div className="teams-modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <section className="teams-modal teams-form-modal" role="dialog" aria-modal="true" aria-labelledby="add-team-title">
-        <div className="teams-modal-header">
-          <div><p className="teams-eyebrow">TEAM SETUP</p><h2 id="add-team-title">Add Team</h2></div>
-          <button className="teams-icon-button" type="button" onClick={onClose} aria-label="Close add team form">×</button>
-        </div>
-        <form className="teams-add-form" onSubmit={submit}>
-          {[
-            ['number', 'Team Number', 'T05'],
-            ['name', 'Team Name', 'Team name'],
-            ['project', 'Problem / Project', 'Project name'],
-            ['members', 'Member Names', 'Separate names with commas'],
-            ['judges', 'Assigned Judges', 'Separate names with commas'],
-            ['github', 'GitHub Link', 'https://github.com/...'],
-            ['demo', 'Demo Link', 'https://...'],
-          ].map(([field, label, placeholder]) => (
-            <label className="teams-form-field" key={field}>
-              <span>{label}{['number', 'name', 'project', 'members'].includes(field) && <b> *</b>}</span>
-              <input
-                value={form[field]}
-                placeholder={placeholder}
-                onChange={(event) => update(field, event.target.value)}
-              />
-            </label>
-          ))}
-          {error && <p className="teams-form-error" role="alert">{error}</p>}
-          <div className="teams-form-actions">
-            <button className="teams-secondary-button" type="button" onClick={onClose}>Cancel</button>
-            <button className="teams-primary-button" type="submit">Save Team</button>
-          </div>
-        </form>
-      </section>
-    </div>
-  );
 }
 
-function ImportModal({ headers, previewRows, onCancel, onConfirm }) {
-  return (
-    <div className="teams-modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onCancel();
-    }}>
-      <section className="teams-modal teams-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-preview-title">
-        <div className="teams-modal-header">
-          <div>
-            <p className="teams-eyebrow">IMPORT TEAMS</p>
-            <h2 id="import-preview-title">Review import</h2>
-            <p className="teams-modal-subtitle">{previewRows.length} spreadsheet rows detected. Repeated team numbers will be grouped together.</p>
-          </div>
-          <button className="teams-icon-button" type="button" onClick={onCancel} aria-label="Close import preview">×</button>
-        </div>
-        <div className="teams-preview-wrap">
-          <table className="teams-preview-table">
-            <thead><tr>{importColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-            <tbody>
-              {previewRows.map((row, index) => (
-                <tr key={`preview-${index}`}>
-                  {importColumns.map((column) => {
-                    const columnIndexInFile = headers.findIndex(
-                      (header) => String(header || '').trim().toLowerCase() === column.toLowerCase(),
-                    );
-                    return <td key={column}>{row[columnIndexInFile] || '—'}</td>;
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="teams-form-actions">
-          <button className="teams-secondary-button" type="button" onClick={onCancel}>Cancel</button>
-          <button className="teams-primary-button" type="button" onClick={onConfirm}>Confirm Import</button>
-        </div>
-      </section>
-    </div>
-  );
+function TeamLink({ value, label }) {
+  const href = normalizeExternalUrl(value);
+  return href
+    ? <a href={href} target="_blank" rel="noreferrer" aria-label={`${label} link`}>{label}</a>
+    : <span className="teams-no-link">—</span>;
+}
+
+function formatFileSize(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function OrganizerTeams() {
   const { eventId = 'default' } = useParams();
+  return <OrganizerTeamsEvent key={eventId} eventId={eventId} />;
+}
+
+function OrganizerTeamsEvent({ eventId }) {
   const storageKey = `scoreflow.organizer.event.${eventId}.teams`;
-  const [initialData] = useState(() => readSavedTeams(storageKey));
+  const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
+  const [initialData] = useState(() => readSavedTeams(storageKey, eventId));
   const [teams, setTeams] = useState(initialData.teams);
+  const [eventName] = useState(safeStoredEventName);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedTeam, setSelectedTeam] = useState(null);
-  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(undefined);
+  const [editingPreviewTeam, setEditingPreviewTeam] = useState(undefined);
+  const [deletingTeam, setDeletingTeam] = useState(null);
   const [previewData, setPreviewData] = useState(null);
-  const [pageError, setPageError] = useState(initialData.error);
-  const [importError, setImportError] = useState('');
+  const [duplicateStrategy, setDuplicateStrategy] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [pageMessage, setPageMessage] = useState(initialData.error
+    ? { type: 'error', text: initialData.error }
+    : null);
+  const [isReading, setIsReading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInput = useRef(null);
+  const activeEventId = useRef(eventId);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
     return teams.filter((team) => {
-      const matchesSearch = !query || [team.number, team.name, team.project]
-        .some((value) => value.toLowerCase().includes(query));
+      const searchable = [
+        team.number,
+        team.name,
+        team.project,
+        ...team.members.flatMap((member) => [member.name, member.email, member.usn, member.section]),
+      ];
+      const matchesSearch = !query || searchable.some((value) => String(value || '').toLowerCase().includes(query));
       return matchesSearch && (statusFilter === 'All' || team.status === statusFilter);
     });
   }, [teams, search, statusFilter]);
+
+  const pendingCount = teams.filter((team) => team.status === 'Pending').length;
+  const completeCount = teams.filter((team) => team.status === 'Complete').length;
+  const collisionNumbers = useMemo(() => {
+    const existingNumbers = new Set(teams.map((team) => team.number.toLowerCase()));
+    return [...new Set((previewData?.teams || [])
+      .filter((team) => existingNumbers.has(team.number.toLowerCase()))
+      .map((team) => team.number))];
+  }, [previewData, teams]);
+  const previewSummary = useMemo(() => {
+    if (!previewData) return null;
+    const numbers = new Set();
+    const duplicateNumbers = new Set();
+    let duplicateMembers = 0;
+    previewData.teams.forEach((team) => {
+      const key = team.number.trim().toLocaleLowerCase();
+      if (numbers.has(key)) duplicateNumbers.add(team.number);
+      numbers.add(key);
+      duplicateMembers += findDuplicateMemberIndexes(team.members).length;
+    });
+    return {
+      ...previewData,
+      teamsDetected: previewData.teams.length,
+      membersDetected: previewData.teams.reduce((count, team) => count + team.members.length, 0),
+      duplicateNumbers: [...duplicateNumbers],
+      duplicateMembers,
+    };
+  }, [previewData]);
 
   function saveTeams(nextTeams) {
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
       setTeams(nextTeams);
-      setPageError('');
-      return true;
+      setPageMessage(null);
+      return { ok: true };
     } catch {
-      setPageError('Unable to save teams in this browser. Check available local storage.');
-      return false;
+      const error = 'Unable to save teams in this browser. Check available local storage and try again.';
+      setPageMessage({ type: 'error', text: error });
+      return { ok: false, error };
     }
   }
 
-  function addTeam(team) {
-    if (teams.some((existing) => existing.number.toLowerCase() === team.number.toLowerCase())) {
-      setPageError(`A team with number ${team.number} already exists.`);
-      return false;
+  function saveTeam(team) {
+    const duplicate = teams.some((existing) => (
+      existing.id !== team.id && existing.number.toLowerCase() === team.number.toLowerCase()
+    ));
+    if (duplicate) return { ok: false, error: `Team No. ${team.number} is already in use.` };
+
+    const withEvent = { ...team, eventId };
+    const exists = teams.some((existing) => existing.id === team.id);
+    const nextTeams = exists
+      ? teams.map((existing) => existing.id === team.id ? withEvent : existing)
+      : [...teams, withEvent];
+    const result = saveTeams(nextTeams);
+    if (result.ok) {
+      setEditingTeam(undefined);
+      setSelectedTeam(null);
+      setPageMessage({
+        type: 'success',
+        text: exists ? `Team ${team.number} updated successfully.` : `Team ${team.number} added successfully.`,
+      });
     }
-    if (!saveTeams([...teams, team])) return false;
-    setIsAddOpen(false);
-    return true;
+    return result;
   }
 
   function updateStatus(teamId, status) {
-    saveTeams(teams.map((team) => team.id === teamId ? { ...team, status } : team));
+    const team = teams.find((item) => item.id === teamId);
+    if (!team) {
+      setPageMessage({ type: 'error', text: 'Unable to find the team to update.' });
+      return;
+    }
+    const result = saveTeams(teams.map((item) => item.id === teamId ? { ...item, status } : item));
+    if (result.ok) setPageMessage({ type: 'success', text: `Team ${team.number} marked ${status.toLowerCase()}.` });
   }
 
-  async function handleFileChange(event) {
+  async function handleSelectedFile(file) {
+    if (!file) return;
+    setSelectedFile(file);
+    setPreviewData(null);
+    setDuplicateStrategy('');
+    setPageMessage(null);
+    setIsReading(true);
+    try {
+      const parsed = await parseTeamWorkbook(file);
+      if (activeEventId.current !== eventId) return;
+      setPreviewData(parsed);
+    } catch (error) {
+      if (activeEventId.current !== eventId) return;
+      setPageMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Unable to read this Excel file. Please check the format.',
+      });
+    } finally {
+      setIsReading(false);
+    }
+  }
+
+  function handleFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
-    setImportError('');
+    void handleSelectedFile(file);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    if (!isBusy) void handleSelectedFile(event.dataTransfer.files?.[0]);
+  }
+
+  function clearSelectedFile() {
+    setSelectedFile(null);
+    setPreviewData(null);
+    setDuplicateStrategy('');
+    if (fileInput.current) fileInput.current.value = '';
+    setPageMessage(null);
+  }
+
+  function cancelImport() {
+    setPreviewData(null);
+    setSelectedFile(null);
+    setDuplicateStrategy('');
+    if (fileInput.current) fileInput.current.value = '';
+  }
+
+  function updatePreviewTeam(updatedTeam) {
+    const numberConflict = previewData.teams.some((team) => (
+      team.id !== updatedTeam.id && team.number.trim().toLocaleLowerCase() === updatedTeam.number.trim().toLocaleLowerCase()
+    ));
+    if (numberConflict) return { ok: false, error: `Team No. ${updatedTeam.number} is already used in this import.` };
+    setPreviewData((current) => current && ({
+      ...current,
+      teams: current.teams.map((team) => team.id === updatedTeam.id ? updatedTeam : team),
+    }));
+    setEditingPreviewTeam(undefined);
+    return { ok: true };
+  }
+
+  async function handleDownloadSample() {
     try {
-      if (!file.name.toLowerCase().endsWith('.xlsx')) {
-        throw new Error('Choose an .xlsx Excel workbook.');
-      }
-      const rows = await readExcelFile(file);
-      const headerIndex = rows.findIndex((row) => row.some((cell) => String(cell || '').trim()));
-      const tableRows = rows.slice(headerIndex).filter((row) => row.some((cell) => String(cell || '').trim()));
-      if (tableRows.length < 2) throw new Error('The Excel file has no team rows to preview.');
-      buildImportedTeams(tableRows);
-      setPreviewData({ headers: tableRows[0], rows: tableRows.slice(1) });
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Unable to read this Excel file.');
+      await createSampleWorkbook();
+      setPageMessage({ type: 'success', text: 'Sample Excel workbook downloaded.' });
+    } catch {
+      setPageMessage({ type: 'error', text: 'Unable to create the sample workbook in this browser.' });
     }
   }
 
   function confirmImport() {
-    try {
-      const imported = buildImportedTeams([previewData.headers, ...previewData.rows]);
-      if (imported.length === 0) throw new Error('No valid teams were found in the preview.');
-      const merged = [...teams];
-      imported.forEach((team) => {
-        const existingIndex = merged.findIndex((item) => item.number.toLowerCase() === team.number.toLowerCase());
-        if (existingIndex < 0) {
-          merged.push(team);
-          return;
-        }
-        const existing = merged[existingIndex];
-        const members = [...existing.members];
-        team.members.forEach((member) => {
-          if (!members.some((current) => current.name === member.name && current.email === member.email)) {
-            members.push(member);
-          }
-        });
-        merged[existingIndex] = {
-          ...existing,
-          members,
-          judges: [...new Set([...existing.judges, ...team.judges])],
-          github: team.github || existing.github,
-          demo: team.demo || existing.demo,
-        };
-      });
-      if (saveTeams(merged)) {
-        setPreviewData(null);
-        setImportError('');
+    if (
+      !previewData ||
+      previewSummary?.duplicateNumbers.length > 0 ||
+      previewSummary?.duplicateMembers > 0 ||
+      previewData.teams.length === 0 ||
+      (collisionNumbers.length > 0 && !['skip', 'replace'].includes(duplicateStrategy))
+    ) return;
+    setIsImporting(true);
+    const existingByNumber = new Map(teams.map((team) => [team.number.toLowerCase(), team]));
+    const nextTeams = [...teams];
+    let addedCount = 0;
+    let replacedCount = 0;
+    let skippedCount = 0;
+    let importedMembers = 0;
+
+    previewData.teams.forEach((imported) => {
+      const existing = existingByNumber.get(imported.number.toLowerCase());
+      if (existing && duplicateStrategy === 'skip') {
+        skippedCount += 1;
+        return;
       }
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Unable to import these teams.');
+      importedMembers += imported.members.length;
+      if (existing) {
+        const replacement = {
+          ...imported,
+          id: existing.id,
+          eventId,
+          createdAt: existing.createdAt || imported.createdAt,
+          status: existing.status,
+          judges: existing.judges,
+        };
+        const index = nextTeams.findIndex((team) => team.id === existing.id);
+        nextTeams[index] = replacement;
+        replacedCount += 1;
+      } else {
+        nextTeams.push({ ...imported, eventId });
+        addedCount += 1;
+      }
+    });
+
+    const result = saveTeams(nextTeams);
+    setIsImporting(false);
+    if (result.ok) {
       setPreviewData(null);
+      setSelectedFile(null);
+      setDuplicateStrategy('');
+      const importedTeams = addedCount + replacedCount;
+      setPageMessage(importedTeams > 0
+        ? {
+          type: 'success',
+          text: `Teams imported successfully: ${importedTeams} ${importedTeams === 1 ? 'team' : 'teams'} • ${importedMembers} ${importedMembers === 1 ? 'member' : 'members'}${skippedCount > 0 ? ` • ${skippedCount} existing ${skippedCount === 1 ? 'team' : 'teams'} skipped` : ''}${previewData.invalidRows > 0 ? ` • ${previewData.invalidRows} invalid ${previewData.invalidRows === 1 ? 'row' : 'rows'} skipped` : ''}.`,
+        }
+        : {
+          type: 'success',
+          text: `No teams were added or replaced; ${skippedCount} existing ${skippedCount === 1 ? 'team was' : 'teams were'} skipped.`,
+        });
     }
   }
 
-  const pendingCount = teams.filter((team) => team.status === 'Pending').length;
-  const completeCount = teams.filter((team) => team.status === 'Complete').length;
+  function deleteTeam() {
+    if (!deletingTeam) return;
+    const team = deletingTeam;
+    const nextTeams = teams.filter((item) => item.id !== team.id);
+    setIsDeleting(true);
+
+    let previousTeams;
+    let previousJudges;
+    try {
+      previousTeams = window.localStorage.getItem(storageKey);
+      previousJudges = window.localStorage.getItem(judgeStorageKey);
+      window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
+      if (previousJudges !== null) {
+        const judges = JSON.parse(previousJudges);
+        if (Array.isArray(judges)) {
+          const teamId = String(team.id || team.number);
+          const updatedJudges = judges.map((judge) => ({
+            ...judge,
+            teamIds: Array.isArray(judge.teamIds) ? judge.teamIds.filter((id) => id !== teamId) : [],
+            completedTeamIds: Array.isArray(judge.completedTeamIds)
+              ? judge.completedTeamIds.filter((id) => id !== teamId)
+              : [],
+          }));
+          window.localStorage.setItem(judgeStorageKey, JSON.stringify(updatedJudges));
+        }
+      }
+      setTeams(nextTeams);
+      setSelectedTeam(null);
+      setDeletingTeam(null);
+      setPageMessage({ type: 'success', text: `Team ${team.number} deleted successfully.` });
+    } catch {
+      try {
+        if (previousTeams === null || previousTeams === undefined) window.localStorage.removeItem(storageKey);
+        else window.localStorage.setItem(storageKey, previousTeams);
+        if (previousJudges !== null && previousJudges !== undefined) {
+          window.localStorage.setItem(judgeStorageKey, previousJudges);
+        }
+      } catch {
+        setPageMessage({ type: 'error', text: 'Unable to restore browser data after the delete failed. Refresh and check the saved data.' });
+      }
+      setPageMessage({ type: 'error', text: 'Unable to delete the team. Check browser storage and try again.' });
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function openEdit(team) {
+    setSelectedTeam(null);
+    setEditingTeam(team);
+  }
+
+  const isBusy = isReading || isSaving || isImporting || isDeleting;
 
   return (
     <div className="sf-dashboard teams-dashboard">
-      <TeamSidebar
-        eventId={eventId}
-        isOpen={isMenuOpen}
-        closeMenu={() => setIsMenuOpen(false)}
-      />
+      <TeamSidebar eventId={eventId} isOpen={isMenuOpen} closeMenu={() => setIsMenuOpen(false)} />
       <div className="dashboard-main">
         <header className="dashboard-topbar">
           <button
@@ -518,29 +413,65 @@ function OrganizerTeams() {
         <main className="dashboard-content teams-content">
           <div className="teams-page-heading">
             <div>
+              {eventName && <p className="teams-event-name">{eventName} <span>·</span> Teams</p>}
               <h1>Teams</h1>
               <p>Manage participating teams and their assignments.</p>
             </div>
             <div className="teams-heading-actions">
-              <button className="teams-secondary-button" type="button" onClick={() => fileInput.current?.click()}>
+              <button className="teams-secondary-button" type="button" onClick={handleDownloadSample} disabled={isBusy}>
+                <span aria-hidden="true">↓</span> Download Sample Excel
+              </button>
+              <button className="teams-secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={isBusy}>
                 <span aria-hidden="true">⇧</span> Import Teams
               </button>
               <input
                 ref={fileInput}
                 className="teams-file-input"
                 type="file"
-                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 onChange={handleFileChange}
                 aria-label="Choose Excel workbook"
               />
-              <button className="teams-primary-button" type="button" onClick={() => setIsAddOpen(true)}>
+              <button className="teams-primary-button" type="button" onClick={() => setEditingTeam(null)} disabled={isBusy}>
                 <span aria-hidden="true">+</span> Add Team
               </button>
             </div>
           </div>
 
-          {pageError && <p className="teams-alert" role="alert">{pageError}</p>}
-          {importError && <p className="teams-alert" role="alert">{importError}</p>}
+          {pageMessage && (
+            <p className={`teams-message teams-message-${pageMessage.type}`} role={pageMessage.type === 'error' ? 'alert' : 'status'}>
+              <span aria-hidden="true">{pageMessage.type === 'success' ? '✓' : '!'}</span>{pageMessage.text}
+              <button type="button" onClick={() => setPageMessage(null)} aria-label="Dismiss notification">×</button>
+            </p>
+          )}
+
+          <section
+            className={`teams-upload-panel ${isReading ? 'teams-upload-reading' : ''}`}
+            aria-label="Import teams from Excel"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleDrop}
+          >
+            <div className="teams-upload-copy">
+              <span className="teams-upload-icon" aria-hidden="true">⇧</span>
+              <div>
+                <strong>Import Teams</strong>
+                <p>Drag &amp; drop Excel file here or choose a workbook. Repeated team rows are grouped automatically.</p>
+                {selectedFile && (
+                  <div className="teams-selected-file">
+                    <span aria-hidden="true">▤</span><strong>{selectedFile.name}</strong><small>{formatFileSize(selectedFile.size)}</small>
+                    <button type="button" onClick={clearSelectedFile} disabled={isBusy} aria-label="Clear selected file">Clear</button>
+                  </div>
+                )}
+                {isReading && <p className="teams-upload-progress" role="status">Reading workbook and validating rows…</p>}
+              </div>
+            </div>
+            <div className="teams-upload-actions">
+              <button className="teams-secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={isBusy}>
+                {isReading ? 'Reading…' : 'Choose Excel File'}
+              </button>
+              <span>Supported formats: .xlsx, .xls</span>
+            </div>
+          </section>
 
           <section className="teams-summary" aria-label="Team summary">
             <article className="teams-summary-card"><span>Total Teams</span><strong>{teams.length}</strong></article>
@@ -555,7 +486,7 @@ function OrganizerTeams() {
                 <input
                   type="search"
                   aria-label="Search teams"
-                  placeholder="Search by team number, team or project..."
+                  placeholder="Search team, member name or email..."
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
@@ -567,65 +498,116 @@ function OrganizerTeams() {
                 </select>
               </label>
             </div>
-            <div className="teams-table-scroll">
-              <table className="teams-table">
-                <thead>
-                  <tr>
-                    <th>Team</th><th>Problem / Project</th><th>Members</th>
-                    <th>Assigned Judges</th><th>Status</th><th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTeams.map((team) => (
-                    <tr key={team.id}>
-                      <td>
-                        <div className="team-name-cell">
-                          <strong>{team.number} · {team.name}</strong>
-                        </div>
-                      </td>
-                      <td>{team.project}</td>
-                      <td>{team.members.length} Members</td>
-                      <td>{team.judges.join(', ') || '—'}</td>
-                      <td>
-                        <select
-                          className={`team-status-select team-status-${team.status.toLowerCase()}`}
-                          value={team.status}
-                          aria-label={`${team.number} status`}
-                          onChange={(event) => updateStatus(team.id, event.target.value)}
-                        >
-                          <option>Pending</option><option>Complete</option>
-                        </select>
-                      </td>
-                      <td><button className="team-view-button" type="button" onClick={() => setSelectedTeam(team)}>View Details</button></td>
-                    </tr>
-                  ))}
-                  {filteredTeams.length === 0 && (
-                    <tr><td className="teams-empty-cell" colSpan="6">No teams match your search or selected status.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="teams-table-footer">Showing {filteredTeams.length} of {teams.length} teams</div>
+            {teams.length === 0 ? (
+              <div className="teams-empty-state">
+                <span aria-hidden="true">♧</span>
+                <h2>No teams added yet.</h2>
+                <p>Import your roster from Excel or create a team to get started.</p>
+                <div>
+                  <button className="teams-secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={isBusy}>Import from Excel</button>
+                  <button className="teams-primary-button" type="button" onClick={() => setEditingTeam(null)} disabled={isBusy}>Add Team</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="teams-table-scroll">
+                  <table className="teams-table">
+                    <thead>
+                      <tr>
+                        <th>Team No.</th><th>Team Name</th><th>Members</th><th>GitHub</th><th>Demo</th><th>Status</th><th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTeams.map((team) => (
+                        <tr key={team.id}>
+                          <td><strong className="team-number-cell">{team.number}</strong></td>
+                          <td>
+                            <div className="team-name-cell">
+                              <strong>{team.name}</strong>
+                              {team.project && <small>{team.project}</small>}
+                            </div>
+                          </td>
+                          <td>{team.members.length} {team.members.length === 1 ? 'Member' : 'Members'}</td>
+                          <td><TeamLink value={team.github || team.members.find((member) => member.github)?.github} label="GitHub" /></td>
+                          <td><TeamLink value={team.demo || team.members.find((member) => member.demo)?.demo} label="Demo" /></td>
+                          <td>
+                            <select
+                              className={`team-status-select team-status-${team.status.toLowerCase()}`}
+                              value={team.status}
+                              aria-label={`${team.number} status`}
+                              onChange={(event) => updateStatus(team.id, event.target.value)}
+                              disabled={isBusy}
+                            >
+                              <option>Pending</option><option>Complete</option>
+                            </select>
+                          </td>
+                          <td>
+                            <div className="teams-row-actions">
+                              <button className="team-view-button" type="button" onClick={() => setSelectedTeam(team)}>View</button>
+                              <button className="team-edit-button" type="button" onClick={() => openEdit(team)}>Edit</button>
+                              <button className="team-delete-button" type="button" onClick={() => setDeletingTeam(team)}>Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredTeams.length === 0 && (
+                        <tr><td className="teams-empty-cell" colSpan="7">No teams match your search or selected status.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="teams-table-footer">Showing {filteredTeams.length} of {teams.length} teams</div>
+              </>
+            )}
           </section>
         </main>
       </div>
 
-      <TeamModal team={selectedTeam} onClose={() => setSelectedTeam(null)} />
-      {isAddOpen && (
-        <AddTeamModal
-          existingTeams={teams}
-          onClose={() => setIsAddOpen(false)}
-          onAdd={addTeam}
+      <TeamDetailsModal
+        team={selectedTeam}
+        onClose={() => setSelectedTeam(null)}
+        onEdit={openEdit}
+      />
+      {editingTeam !== undefined && (
+        <TeamFormModal
+          team={editingTeam}
+          lockTeamNumber={false}
+          isSaving={isSaving}
+          onClose={() => setEditingTeam(undefined)}
+          onSave={(team) => {
+            setIsSaving(true);
+            const result = saveTeam(team);
+            setIsSaving(false);
+            return result;
+          }}
         />
       )}
-      {previewData && (
-        <ImportModal
-          headers={previewData.headers}
-          previewRows={previewData.rows}
-          onCancel={() => setPreviewData(null)}
-          onConfirm={confirmImport}
+      <ImportPreviewModal
+        preview={previewSummary}
+        file={selectedFile}
+        existingNumbers={collisionNumbers}
+        strategy={duplicateStrategy}
+        setStrategy={setDuplicateStrategy}
+        isImporting={isImporting}
+        onCancel={cancelImport}
+        onConfirm={confirmImport}
+        onEditTeam={setEditingPreviewTeam}
+      />
+      {editingPreviewTeam !== undefined && (
+        <TeamFormModal
+          team={editingPreviewTeam}
+          isSaving={false}
+          lockTeamNumber={false}
+          onClose={() => setEditingPreviewTeam(undefined)}
+          onSave={updatePreviewTeam}
         />
       )}
+      <DeleteTeamModal
+        team={deletingTeam}
+        isDeleting={isDeleting}
+        onCancel={() => setDeletingTeam(null)}
+        onConfirm={deleteTeam}
+      />
     </div>
   );
 }
