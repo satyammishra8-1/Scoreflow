@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { readSavedCriteria, readSavedEvaluationSessions } from '../data/evaluationStorage';
 import { readSavedTeams } from '../data/teamStorage';
+import './EventManagement.css';
+import './OrganizerJudges.css';
 import './JudgeDashboard.css';
 
 function getTeamId(team) {
@@ -12,6 +14,14 @@ function JudgeDashboard() {
   const { eventId = 'default', judgeId } = useParams();
   const teamStorageKey = `scoreflow.organizer.event.${eventId}.teams`;
   const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [teamData] = useState(() => readSavedTeams(teamStorageKey, eventId));
   const [criteria] = useState(() => readSavedCriteria(eventId).criteria);
   const [judges] = useState(() => {
@@ -24,6 +34,14 @@ function JudgeDashboard() {
       return [];
     }
   });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scoreflow.sidebar.collapsed', String(sidebarCollapsed));
+    } catch {
+      // storage unavailable; ignore silently
+    }
+  }, [sidebarCollapsed]);
   const judge = judges.find((item) => item.id === judgeId) || null;
   const assignedTeams = judge ? teamData.teams.filter((team) => (judge.teamIds || []).includes(getTeamId(team))) : [];
   const sessions = readSavedEvaluationSessions(eventId);
@@ -41,12 +59,23 @@ function JudgeDashboard() {
   }
 
   return (
-    <div className="judge-dashboard-page">
-      <aside className="event-sidebar">
-        <Link to="/organizer/dashboard" className="event-brand"><span className="event-brand-mark">S</span><span>ScoreFlow</span></Link>
+    <div className={`judge-dashboard-page ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className={`event-sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <Link to="/organizer/dashboard" className="event-brand" aria-label="ScoreFlow home">
+          <span className="event-brand-mark">S</span>
+          <span className="event-brand-text">ScoreFlow</span>
+        </Link>
+        <button
+          type="button"
+          className="event-sidebar-toggle"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setSidebarCollapsed((current) => !current)}
+        >
+          {sidebarCollapsed ? '⟩' : '⟨'}
+        </button>
         <nav className="event-navigation" aria-label="Judge navigation">
-          <Link to={`/judge/${eventId}/${judgeId}`} className="event-navigation-active" aria-current="page"><span aria-hidden="true">♙</span>Dashboard</Link>
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span>Organizer</Link>
+          <Link to={`/judge/${eventId}/${judgeId}`} className="event-navigation-active" aria-current="page"><span aria-hidden="true">♙</span><span className="event-nav-label">Dashboard</span></Link>
+          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Organizer</span></Link>
         </nav>
       </aside>
 

@@ -51,9 +51,25 @@ function getElapsedSecondsSince(startedAt) {
 function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   const [searchParams] = useSearchParams();
   const isAdminMode = searchParams.get('mode') === 'admin';
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const criteria = useMemo(() => readSavedCriteria(eventId).criteria, [eventId]);
   const [teams] = useState(() => readStoredTeams(eventId));
   const [judges] = useState(() => readStoredJudges(eventId));
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scoreflow.sidebar.collapsed', String(sidebarCollapsed));
+    } catch {
+      // storage unavailable; ignore silently
+    }
+  }, [sidebarCollapsed]);
   const [session, setSession] = useState(() => {
     const sessions = readSavedEvaluationSessions(eventId);
     const existing = sessions.find((item) => item.judgeId === judgeId && item.teamId === teamId);
@@ -202,13 +218,24 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   }
 
   return (
-    <div className="evaluation-session-page">
-      <aside className="event-sidebar">
-        <Link to="/organizer/dashboard" className="event-brand"><span className="event-brand-mark">S</span><span>ScoreFlow</span></Link>
+    <div className={`evaluation-session-page ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className={`event-sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <Link to="/organizer/dashboard" className="event-brand" aria-label="ScoreFlow home">
+          <span className="event-brand-mark">S</span>
+          <span className="event-brand-text">ScoreFlow</span>
+        </Link>
+        <button
+          type="button"
+          className="event-sidebar-toggle"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setSidebarCollapsed((current) => !current)}
+        >
+          {sidebarCollapsed ? '⟩' : '⟨'}
+        </button>
         <nav className="event-navigation" aria-label="Judge navigation">
-          <Link to={`/judge/${eventId}/${judgeId}`}><span aria-hidden="true">♙</span>Judge Dashboard</Link>
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span>Judges</Link>
-          <Link to={`/organizer/events/${eventId}/criteria`}><span aria-hidden="true">☷</span>Criteria</Link>
+          <Link to={`/judge/${eventId}/${judgeId}`}><span aria-hidden="true">♙</span><span className="event-nav-label">Judge Dashboard</span></Link>
+          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Judges</span></Link>
+          <Link to={`/organizer/events/${eventId}/criteria`}><span aria-hidden="true">☷</span><span className="event-nav-label">Criteria</span></Link>
         </nav>
       </aside>
 
