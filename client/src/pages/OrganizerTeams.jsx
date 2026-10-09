@@ -39,15 +39,15 @@ function TeamSidebar({ eventId, isOpen, closeMenu }) {
           <Link className="sidebar-link" to={`/organizer/events/${eventId}/judges`} onClick={closeMenu}>
             <span className="sidebar-icon" aria-hidden="true">♙</span><span>Judges</span>
           </Link>
-          {[
-            ['Evaluation Criteria', '☷'],
-            ['Results', '▤'],
-            ['Feedback & Emails', '✉'],
-          ].map(([label, icon]) => (
-            <a className="sidebar-link" href="#" key={label} onClick={closeMenu}>
-              <span className="sidebar-icon" aria-hidden="true">{icon}</span><span>{label}</span>
-            </a>
-          ))}
+          <Link className="sidebar-link" to={`/organizer/events/${eventId}/criteria`} onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">☷</span><span>Evaluation Criteria</span>
+          </Link>
+          <a className="sidebar-link" href="#" key="results" onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">▤</span><span>Results</span>
+          </a>
+          <a className="sidebar-link" href="#" key="feedback" onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">✉</span><span>Feedback &amp; Emails</span>
+          </a>
         </nav>
         <div className="sidebar-bottom">
           <a href="#" className="sidebar-link" onClick={closeMenu}>

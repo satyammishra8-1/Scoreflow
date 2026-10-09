@@ -109,7 +109,7 @@ function EventManagement() {
           </Link>
           <a href="/organizer/events/default/teams"><span aria-hidden="true">♧</span>Teams</a>
           <a href="/organizer/events/default/judges"><span aria-hidden="true">♙</span>Judges</a>
-          <a href="#criteria"><span aria-hidden="true">☷</span>Evaluation Criteria</a>
+          <Link to="/organizer/events/default/criteria"><span aria-hidden="true">☷</span>Evaluation Criteria</Link>
           <a href="#results"><span aria-hidden="true">▤</span>Results</a>
           <a href="#feedback"><span aria-hidden="true">✉</span>Feedback &amp; Emails</a>
         </nav>

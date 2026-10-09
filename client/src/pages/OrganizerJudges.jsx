@@ -87,15 +87,15 @@ function JudgeSidebar({ eventId, isOpen, closeMenu }) {
             <span className="sidebar-icon" aria-hidden="true">♙</span><span>Judges</span>
             <span className="active-indicator" />
           </Link>
-          {[
-            ['Evaluation Criteria', '☷'],
-            ['Results', '▤'],
-            ['Feedback & Emails', '✉'],
-          ].map(([label, icon]) => (
-            <a className="sidebar-link" href="#" key={label} onClick={closeMenu}>
-              <span className="sidebar-icon" aria-hidden="true">{icon}</span><span>{label}</span>
-            </a>
-          ))}
+          <Link className="sidebar-link" to={`/organizer/events/${eventId}/criteria`} onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">☷</span><span>Evaluation Criteria</span>
+          </Link>
+          <a className="sidebar-link" href="#" key="results" onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">▤</span><span>Results</span>
+          </a>
+          <a className="sidebar-link" href="#" key="feedback" onClick={closeMenu}>
+            <span className="sidebar-icon" aria-hidden="true">✉</span><span>Feedback &amp; Emails</span>
+          </a>
         </nav>
         <div className="sidebar-bottom">
           <a href="#" className="sidebar-link" onClick={closeMenu}>
@@ -107,9 +107,9 @@ function JudgeSidebar({ eventId, isOpen, closeMenu }) {
   );
 }
 
-function JudgeModal({ onClose, onSave }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+function JudgeModal({ onClose, onSave, existingJudge }) {
+  const [name, setName] = useState(existingJudge?.name || '');
+  const [email, setEmail] = useState(existingJudge?.email || '');
   const [error, setError] = useState('');
 
   function submit(event) {
@@ -124,7 +124,7 @@ function JudgeModal({ onClose, onSave }) {
       setError('Enter a valid email address.');
       return;
     }
-    const result = onSave({ name: cleanName, email: cleanEmail });
+    const result = onSave({ id: existingJudge?.id, name: cleanName, email: cleanEmail });
     if (!result.ok) setError(result.error);
   }
 
@@ -136,9 +136,9 @@ function JudgeModal({ onClose, onSave }) {
         <div className="judges-modal-header">
           <div>
             <p className="judges-eyebrow">JUDGE MANAGEMENT</p>
-            <h2 id="add-judge-title">Add Judge</h2>
+            <h2 id="add-judge-title">{existingJudge ? 'Edit Judge' : 'Add Judge'}</h2>
           </div>
-          <button className="judges-close-button" type="button" onClick={onClose} aria-label="Close add judge form">×</button>
+          <button className="judges-close-button" type="button" onClick={onClose} aria-label="Close judge form">×</button>
         </div>
         <form className="judges-form" onSubmit={submit}>
           <label className="judges-form-field">
@@ -152,7 +152,7 @@ function JudgeModal({ onClose, onSave }) {
           {error && <p className="judges-form-error" role="alert">{error}</p>}
           <div className="judges-form-actions">
             <button className="judges-secondary-button" type="button" onClick={onClose}>Cancel</button>
-            <button className="judges-primary-button" type="submit">Add Judge</button>
+            <button className="judges-primary-button" type="submit">{existingJudge ? 'Save Changes' : 'Add Judge'}</button>
           </div>
         </form>
       </section>
@@ -217,7 +217,7 @@ function AssignTeamsModal({ judge, teams, onClose, onSave }) {
   );
 }
 
-function JudgeDetailsModal({ judge, teams, onClose }) {
+function JudgeDetailsModal({ judge, teams, eventId, onClose }) {
   if (!judge) return null;
   const assignedTeams = judge.teamIds
     .map((id) => teams.find((team) => getTeamId(team) === id))
@@ -253,7 +253,19 @@ function JudgeDetailsModal({ judge, teams, onClose }) {
           <section className="judges-detail-group">
             <h3>Assigned Teams <span>{assignedTeams.length}</span></h3>
             {assignedTeams.length > 0 ? (
-              <ul>{assignedTeams.map((team) => <li key={getTeamId(team)}>{team.number} · {team.name}</li>)}</ul>
+              <ul>{assignedTeams.map((team) => {
+                const teamId = getTeamId(team);
+                const route = `/organizer/events/${eventId}/judges/${judge.id}/evaluation/${teamId}`;
+                return (
+                  <li key={teamId}>
+                    <div>
+                      <span>{team.number} · {team.name}</span>
+                      <small>{completedIds.has(teamId) ? 'Completed' : 'Pending'}</small>
+                    </div>
+                    <Link to={route} className="judges-assign-button" onClick={onClose}>Start Evaluation</Link>
+                  </li>
+                );
+              })}</ul>
             ) : <p className="judges-empty-message">No teams assigned yet.</p>}
           </section>
           <div className="judges-detail-columns">
@@ -284,11 +296,19 @@ function OrganizerJudges() {
   const [teams] = useState(initialTeamData.teams);
   const [initialJudgeData] = useState(() => readSavedJudges(judgeStorageKey, initialTeamData.teams));
   const [judges, setJudges] = useState(initialJudgeData.judges);
+  const [searchQuery, setSearchQuery] = useState('');
   const [pageError, setPageError] = useState(initialTeamData.error || initialJudgeData.error);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingJudge, setEditingJudge] = useState(null);
   const [assigningJudge, setAssigningJudge] = useState(null);
   const [selectedJudge, setSelectedJudge] = useState(null);
+
+  const filteredJudges = judges.filter((judge) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [judge.name, judge.email].some((value) => value.toLowerCase().includes(query));
+  });
 
   function saveJudges(nextJudges) {
     try {
@@ -317,6 +337,39 @@ function OrganizerJudges() {
       },
     ]);
     if (result.ok) setIsAddOpen(false);
+    return result;
+  }
+
+  function updateJudge(judgePayload) {
+    const judgeId = judgePayload.id;
+    const judge = judges.find((item) => item.id === judgeId);
+    if (!judge) return { ok: false, error: 'This judge could not be found.' };
+
+    if (judges.some((existing) => (
+      existing.id !== judgeId && existing.email.toLowerCase() === judgePayload.email.toLowerCase()
+    ))) {
+      return { ok: false, error: 'A judge with this email address already exists.' };
+    }
+
+    const result = saveJudges(judges.map((item) => item.id === judgeId
+      ? { ...item, name: judgePayload.name, email: judgePayload.email.toLowerCase() }
+      : item));
+    if (result.ok) setEditingJudge(null);
+    return result;
+  }
+
+  function deleteJudge(judgeId) {
+    const judge = judges.find((item) => item.id === judgeId);
+    if (!judge) return { ok: false, error: 'This judge could not be found.' };
+    const confirmed = window.confirm(`Delete ${judge.name}? This removes the judge and their assignment record.`);
+    if (!confirmed) return { ok: false, error: 'Judge deletion cancelled.' };
+    const nextJudges = judges.filter((item) => item.id !== judgeId);
+    const result = saveJudges(nextJudges);
+    if (result.ok) {
+      setSelectedJudge(null);
+      setAssigningJudge(null);
+      setEditingJudge(null);
+    }
     return result;
   }
 
@@ -384,7 +437,12 @@ function OrganizerJudges() {
           ><span /><span /><span /></button>
           <label className="dashboard-search">
             <span aria-hidden="true">⌕</span>
-            <input aria-label="Search" placeholder="Search events, teams, judges..." />
+            <input
+              aria-label="Search judges"
+              placeholder="Search judges..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
           </label>
           <div className="topbar-actions">
             <button className="notification-button" type="button" aria-label="Notifications"><span aria-hidden="true">♧</span><i /></button>
@@ -443,7 +501,7 @@ function OrganizerJudges() {
                   </tr>
                 </thead>
                 <tbody>
-                  {judges.map((judge) => {
+                  {filteredJudges.map((judge) => {
                     const assignedCount = judge.teamIds.length;
                     const completed = judge.completedTeamIds.filter((id) => judge.teamIds.includes(id)).length;
                     const progress = assignedCount === 0 ? 0 : Math.round((completed / assignedCount) * 100);
@@ -468,13 +526,15 @@ function OrganizerJudges() {
                           <div className="judges-row-actions">
                             <button className="judges-view-button" type="button" onClick={() => setSelectedJudge(judge)}>View Details</button>
                             <button className="judges-assign-button" type="button" onClick={() => setAssigningJudge(judge)}>Assign Teams</button>
+                            <button className="judges-view-button" type="button" onClick={() => setEditingJudge(judge)}>Edit</button>
+                            <button className="judges-assign-button" type="button" onClick={() => deleteJudge(judge.id)}>Delete</button>
                           </div>
                         </td>
                       </tr>
                     );
                   })}
-                  {judges.length === 0 && (
-                    <tr><td className="judges-empty-cell" colSpan="6">No judges added yet. Add a judge to get started.</td></tr>
+                  {filteredJudges.length === 0 && (
+                    <tr><td className="judges-empty-cell" colSpan="6">{judges.length === 0 ? 'No judges added yet. Add a judge to get started.' : 'No judges match the current search.'}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -484,6 +544,7 @@ function OrganizerJudges() {
       </div>
 
       {isAddOpen && <JudgeModal onClose={() => setIsAddOpen(false)} onSave={addJudge} />}
+      {editingJudge && <JudgeModal onClose={() => setEditingJudge(null)} onSave={updateJudge} existingJudge={editingJudge} />}
       {assigningJudge && (
         <AssignTeamsModal
           judge={assigningJudge}
@@ -492,7 +553,7 @@ function OrganizerJudges() {
           onSave={assignTeams}
         />
       )}
-      <JudgeDetailsModal judge={selectedJudge} teams={teams} onClose={() => setSelectedJudge(null)} />
+      <JudgeDetailsModal judge={selectedJudge} teams={teams} eventId={eventId} onClose={() => setSelectedJudge(null)} />
     </div>
   );
 }

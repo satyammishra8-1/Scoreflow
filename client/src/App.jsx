@@ -3,6 +3,8 @@ import OrganizerDashboard from './pages/OrganizerDashboard';
 import EventManagement from './pages/EventManagement';
 import OrganizerTeams from './pages/OrganizerTeams';
 import OrganizerJudges from './pages/OrganizerJudges';
+import EvaluationCriteria from './pages/EvaluationCriteria';
+import EvaluationSession from './pages/EvaluationSession';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './App.css';
 
@@ -15,6 +17,8 @@ function App() {
         <Route path="/organizer/events" element={<EventManagement />} />
         <Route path="/organizer/events/:eventId/teams" element={<OrganizerTeams />} />
         <Route path="/organizer/events/:eventId/judges" element={<OrganizerJudges />} />
+        <Route path="/organizer/events/:eventId/criteria" element={<EvaluationCriteria />} />
+        <Route path="/organizer/events/:eventId/judges/:judgeId/evaluation/:teamId" element={<EvaluationSession />} />
         <Route path="/organizer/judges" element={<OrganizerJudges />} />
         <Route path="/dashboard" element={<OrganizerDashboard />} />
         <Route path="*" element={<Home />} />
