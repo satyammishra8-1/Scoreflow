@@ -205,6 +205,32 @@
   margin-top: 18px;
 }
 
+.judges-alert-success {
+  color: #1f7b5c;
+  background: #ebf9f3;
+}
+
+.evaluation-locked-banner {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid #ecd7a7;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #8a5c0d;
+}
+
+.evaluation-locked-banner strong {
+  font-size: 14px;
+}
+
+.evaluation-locked-banner span,
+.evaluation-locked-banner small {
+  color: #8a5c0d;
+  font-size: 11px;
+}
+
 .evaluation-session-empty {
   display: grid;
   place-items: center;

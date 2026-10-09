@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import { readSavedTeams } from '../data/teamStorage';
 import './OrganizerDashboard.css';
 import './OrganizerJudges.css';
@@ -37,7 +38,22 @@ function createInitialJudges(teams) {
   });
 }
 
-function readSavedJudges(storageKey, teams) {
+function getJudgeCompletedTeamIds(judge, evaluationSessions = []) {
+  const judgeId = String(judge?.id || '');
+  if (!judgeId) return [];
+
+  const completed = new Set();
+  evaluationSessions.forEach((session) => {
+    if (!session || String(session.judgeId) !== judgeId) return;
+    if (session.status === 'COMPLETED') {
+      completed.add(String(session.teamId));
+    }
+  });
+
+  return [...completed];
+}
+
+function readSavedJudges(storageKey, teams, evaluationSessions = []) {
   try {
     const stored = window.localStorage.getItem(storageKey);
     if (stored === null) return { judges: createInitialJudges(teams), error: '' };
@@ -48,13 +64,20 @@ function readSavedJudges(storageKey, teams) {
       typeof judge.name === 'string' &&
       typeof judge.email === 'string' &&
       Array.isArray(judge.teamIds) &&
-      judge.teamIds.every((id) => typeof id === 'string') &&
-      Array.isArray(judge.completedTeamIds) &&
-      judge.completedTeamIds.every((id) => typeof id === 'string')
+      judge.teamIds.every((id) => typeof id === 'string')
     ))) {
       throw new Error('Saved judge data is invalid.');
     }
-    return { judges: parsed, error: '' };
+
+    return {
+      judges: parsed.map((judge) => ({
+        ...judge,
+        completedTeamIds: Array.isArray(judge.completedTeamIds)
+          ? [...new Set(judge.completedTeamIds.map((id) => String(id)).filter(Boolean))]
+          : getJudgeCompletedTeamIds(judge, evaluationSessions),
+      })),
+      error: '',
+    };
   } catch {
     return { judges: createInitialJudges(teams), error: 'Unable to load saved judges from this browser.' };
   }
@@ -217,12 +240,12 @@ function AssignTeamsModal({ judge, teams, onClose, onSave }) {
   );
 }
 
-function JudgeDetailsModal({ judge, teams, eventId, onClose }) {
+function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose }) {
   if (!judge) return null;
   const assignedTeams = judge.teamIds
     .map((id) => teams.find((team) => getTeamId(team) === id))
     .filter(Boolean);
-  const completedIds = new Set(judge.completedTeamIds);
+  const completedIds = new Set(getJudgeCompletedTeamIds(judge, evaluationSessions));
   const completedTeams = assignedTeams.filter((team) => completedIds.has(getTeamId(team)));
   const pendingTeams = assignedTeams.filter((team) => !completedIds.has(getTeamId(team)));
   const progress = assignedTeams.length === 0 ? 0 : Math.round((completedTeams.length / assignedTeams.length) * 100);
@@ -255,7 +278,7 @@ function JudgeDetailsModal({ judge, teams, eventId, onClose }) {
             {assignedTeams.length > 0 ? (
               <ul>{assignedTeams.map((team) => {
                 const teamId = getTeamId(team);
-                const route = `/organizer/events/${eventId}/judges/${judge.id}/evaluation/${teamId}`;
+                const route = `/organizer/events/${eventId}/judges/${judge.id}/evaluation/${teamId}?mode=admin`;
                 return (
                   <li key={teamId}>
                     <div>
@@ -294,7 +317,8 @@ function OrganizerJudges() {
   const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
   const [initialTeamData] = useState(() => readSavedTeams(teamStorageKey, eventId));
   const [teams] = useState(initialTeamData.teams);
-  const [initialJudgeData] = useState(() => readSavedJudges(judgeStorageKey, initialTeamData.teams));
+  const evaluationSessions = useMemo(() => readSavedEvaluationSessions(eventId), [eventId]);
+  const [initialJudgeData] = useState(() => readSavedJudges(judgeStorageKey, initialTeamData.teams, evaluationSessions));
   const [judges, setJudges] = useState(initialJudgeData.judges);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageError, setPageError] = useState(initialTeamData.error || initialJudgeData.error);
@@ -381,7 +405,7 @@ function OrganizerJudges() {
       ? {
         ...item,
         teamIds: selected,
-        completedTeamIds: item.completedTeamIds.filter((id) => selected.includes(id)),
+        completedTeamIds: getJudgeCompletedTeamIds(item, evaluationSessions).filter((id) => selected.includes(id)),
       }
       : item);
     const nextTeams = teams.map((team) => {
@@ -419,7 +443,7 @@ function OrganizerJudges() {
   const totalAssigned = judges.reduce((total, judge) => total + judge.teamIds.length, 0);
   const uniqueAssignedTeams = new Set(judges.flatMap((judge) => judge.teamIds)).size;
   const completedCount = judges.reduce((total, judge) => (
-    total + judge.completedTeamIds.filter((id) => judge.teamIds.includes(id)).length
+    total + getJudgeCompletedTeamIds(judge, evaluationSessions).filter((id) => judge.teamIds.includes(id)).length
   ), 0);
   const pendingCount = totalAssigned - completedCount;
 
@@ -503,7 +527,8 @@ function OrganizerJudges() {
                 <tbody>
                   {filteredJudges.map((judge) => {
                     const assignedCount = judge.teamIds.length;
-                    const completed = judge.completedTeamIds.filter((id) => judge.teamIds.includes(id)).length;
+                    const completedTeamIds = getJudgeCompletedTeamIds(judge, evaluationSessions);
+                    const completed = completedTeamIds.filter((id) => judge.teamIds.includes(id)).length;
                     const progress = assignedCount === 0 ? 0 : Math.round((completed / assignedCount) * 100);
                     return (
                       <tr key={judge.id}>
@@ -526,6 +551,7 @@ function OrganizerJudges() {
                           <div className="judges-row-actions">
                             <button className="judges-view-button" type="button" onClick={() => setSelectedJudge(judge)}>View Details</button>
                             <button className="judges-assign-button" type="button" onClick={() => setAssigningJudge(judge)}>Assign Teams</button>
+                            <Link className="judges-assign-button" to={`/judge/${eventId}/${judge.id}`}>Open Dashboard</Link>
                             <button className="judges-view-button" type="button" onClick={() => setEditingJudge(judge)}>Edit</button>
                             <button className="judges-assign-button" type="button" onClick={() => deleteJudge(judge.id)}>Delete</button>
                           </div>
@@ -553,7 +579,13 @@ function OrganizerJudges() {
           onSave={assignTeams}
         />
       )}
-      <JudgeDetailsModal judge={selectedJudge} teams={teams} eventId={eventId} onClose={() => setSelectedJudge(null)} />
+      <JudgeDetailsModal
+        judge={selectedJudge}
+        teams={teams}
+        eventId={eventId}
+        evaluationSessions={evaluationSessions}
+        onClose={() => setSelectedJudge(null)}
+      />
     </div>
   );
 }

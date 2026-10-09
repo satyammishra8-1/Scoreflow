@@ -1,0 +1,196 @@
+.judge-dashboard-page {
+  display: flex;
+  min-height: 100vh;
+  background: #f3f6fb;
+}
+
+.judge-dashboard-main {
+  flex: 1;
+  padding: 26px 28px 38px;
+}
+
+.judge-dashboard-header-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.judge-dashboard-header-copy h1 {
+  margin: 0;
+  color: #1b2538;
+  font-size: 30px;
+}
+
+.judge-summary-pill {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  padding: 12px 14px;
+  border: 1px solid #e5ebf5;
+  border-radius: 10px;
+  background: #fff;
+  text-align: center;
+}
+
+.judge-summary-pill span {
+  color: #7a8497;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.judge-summary-pill strong {
+  color: #2d3b54;
+  font-size: 24px;
+}
+
+.judge-overview-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  margin-top: 18px;
+  border: 1px solid #e7ebf2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.judge-overview-card h2 {
+  margin: 7px 0 4px;
+  color: #202b40;
+  font-size: 20px;
+}
+
+.judge-overview-card p {
+  margin: 0;
+  color: #68758b;
+  font-size: 12px;
+}
+
+.judge-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.judge-team-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e7ebf2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.judge-team-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.judge-team-number {
+  color: #7a8497;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.judge-team-header h3 {
+  margin: 7px 0 0;
+  color: #2c3a50;
+  font-size: 20px;
+}
+
+.judge-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 14px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.judge-status-not_started,
+.judge-status-pending {
+  color: #a06b1d;
+  background: #fff4e2;
+}
+
+.judge-status-in_progress {
+  color: #335ca9;
+  background: #edf3ff;
+}
+
+.judge-status-completed {
+  color: #1d7a57;
+  background: #eaf8f2;
+}
+
+.judge-project-name {
+  margin: 0;
+  color: #68758b;
+  font-size: 12px;
+}
+
+.judge-member-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #4d596e;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.judge-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.judge-card-footer > div {
+  display: grid;
+  gap: 5px;
+}
+
+.judge-card-footer strong {
+  color: #2d3b54;
+  font-size: 18px;
+}
+
+.judge-card-footer span {
+  color: #7a8497;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.judge-empty-state,
+.judge-dashboard-empty {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  padding: 30px;
+  border: 1px solid #e7ebf2;
+  border-radius: 12px;
+  background: #fff;
+  color: #68758b;
+  text-align: center;
+}
+
+.judge-dashboard-empty {
+  min-height: 100vh;
+}
+
+@media (max-width: 720px) {
+  .judge-dashboard-main {
+    padding: 18px 16px 30px;
+  }
+
+  .judge-overview-card,
+  .judge-team-header,
+  .judge-card-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

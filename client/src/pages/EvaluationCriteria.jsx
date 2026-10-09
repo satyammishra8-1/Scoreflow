@@ -48,6 +48,7 @@ function EvaluationCriteria() {
     const nextCriteria = [...criteria];
     const nextCriterion = {
       id: editingId || `criterion-${Date.now()}`,
+      eventId,
       name,
       description,
       maxMarks,
@@ -62,7 +63,7 @@ function EvaluationCriteria() {
     }
 
     const nextTotalWeight = nextCriteria.reduce((total, criterion) => total + Number(criterion.weight || 0), 0);
-    if (nextTotalWeight !== 100) {
+    if (Math.abs(nextTotalWeight - 100) > 0.0001) {
       setError('Total weight must equal 100%.');
       return;
     }
@@ -88,7 +89,7 @@ function EvaluationCriteria() {
   function deleteCriterion(criterionId) {
     const nextCriteria = criteria.filter((criterion) => criterion.id !== criterionId);
     const nextTotalWeight = nextCriteria.reduce((total, criterion) => total + Number(criterion.weight || 0), 0);
-    if (nextTotalWeight !== 100 && nextCriteria.length > 0) {
+    if (nextCriteria.length > 0 && Math.abs(nextTotalWeight - 100) > 0.0001) {
       setError('Total weight must equal 100%.');
       return;
     }
