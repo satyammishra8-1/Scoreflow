@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 const metrics = [
   { label: 'Competitions', value: '18+' },
   { label: 'Judges', value: '142' },
@@ -17,9 +19,10 @@ export default function Hero() {
           </p>
 
           <div className="hero-actions">
-            <a href="#cta" className="button button-primary">
+            <Link to="/organizer/dashboard" className="button button-primary">
               Get Started
-            </a>
+            </Link>
+
             <a href="#how-it-works" className="button button-secondary">
               How It Works
             </a>
@@ -100,14 +103,17 @@ export default function Hero() {
                 <span>Team</span>
                 <span>Score</span>
               </div>
+
               <div className="list-row">
                 <span>Team Alpha</span>
                 <strong>86</strong>
               </div>
+
               <div className="list-row">
                 <span>Team Nova</span>
                 <strong>91</strong>
               </div>
+
               <div className="list-row">
                 <span>Team Vision</span>
                 <strong>84</strong>

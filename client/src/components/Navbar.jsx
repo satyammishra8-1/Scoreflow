@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 const navItems = [
   { label: 'Home', href: '#home' },
@@ -31,7 +32,10 @@ export default function Navbar() {
           <span />
         </button>
 
-        <nav className={`main-nav ${isOpen ? 'open' : ''}`} aria-label="Main navigation">
+        <nav
+          className={`main-nav ${isOpen ? 'open' : ''}`}
+          aria-label="Main navigation"
+        >
           <ul>
             {navItems.map((item) => (
               <li key={item.label}>
@@ -47,9 +51,13 @@ export default function Navbar() {
           <a href="#contact" className="nav-link-login">
             Login
           </a>
-          <a href="#cta" className="button button-primary nav-button">
+
+          <Link
+            to="/organizer/dashboard"
+            className="button button-primary nav-button"
+          >
             Get Started
-          </a>
+          </Link>
         </div>
       </div>
     </header>
