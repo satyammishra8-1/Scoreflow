@@ -2,6 +2,7 @@ import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
 import Features from '../components/Features';
 import HowItWorks from '../components/HowItWorks';
+import CTA from '../components/CTA'; // 1. Import the CTA component
 
 export default function Home() {
   return (
@@ -19,6 +20,7 @@ export default function Home() {
         </section>
         <Features />
         <HowItWorks />
+        <CTA /> {/* 2. Render the CTA component here so the button has a target */}
       </main>
     </>
   );

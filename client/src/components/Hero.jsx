@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+
 const metrics = [
   { label: 'Competitions', value: '18+' },
   { label: 'Judges', value: '142' },
@@ -5,6 +7,8 @@ const metrics = [
 ];
 
 export default function Hero() {
+  const navigate = useNavigate();
+
   return (
     <section className="hero-section">
       <div className="container hero-grid">
@@ -17,9 +21,13 @@ export default function Hero() {
           </p>
 
           <div className="hero-actions">
-            <a href="#cta" className="button button-primary">
+            {/* Updated path to match App.jsx */}
+            <button 
+              onClick={() => navigate('/organizer/dashboard')} 
+              className="button button-primary"
+            >
               Get Started
-            </a>
+            </button>
             <a href="#how-it-works" className="button button-secondary">
               How It Works
             </a>
@@ -35,86 +43,7 @@ export default function Hero() {
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="ScoreFlow product preview">
-          <div className="visual-panel">
-            <div className="panel-top">
-              <span className="panel-dot dot-purple" />
-              <span className="panel-dot dot-silver" />
-              <span className="panel-dot dot-green" />
-            </div>
-
-            <div className="panel-header-row">
-              <div>
-                <p className="panel-label">Annual Innovation Hackathon 2026</p>
-                <h3>ScoreFlow Dashboard</h3>
-              </div>
-              <span className="status-pill">Live</span>
-            </div>
-
-            <div className="dashboard-grid">
-              <div className="stat-box accent-box">
-                <span>Average score</span>
-                <strong>89.4</strong>
-                <small>+12.6% vs last event</small>
-              </div>
-
-              <div className="stat-box">
-                <span>Teams</span>
-                <strong>24</strong>
-              </div>
-
-              <div className="stat-box">
-                <span>Judges</span>
-                <strong>8</strong>
-              </div>
-            </div>
-
-            <div className="criteria-box">
-              <div className="criteria-header">
-                <span>Evaluation Criteria</span>
-                <span>4 categories</span>
-              </div>
-
-              <ul>
-                <li>
-                  <span>Innovation</span>
-                  <em>8.9</em>
-                </li>
-                <li>
-                  <span>Technical Implementation</span>
-                  <em>9.2</em>
-                </li>
-                <li>
-                  <span>Presentation</span>
-                  <em>8.7</em>
-                </li>
-                <li>
-                  <span>Impact</span>
-                  <em>9.1</em>
-                </li>
-              </ul>
-            </div>
-
-            <div className="team-score-list">
-              <div className="list-row title-row">
-                <span>Team</span>
-                <span>Score</span>
-              </div>
-              <div className="list-row">
-                <span>Team Alpha</span>
-                <strong>86</strong>
-              </div>
-              <div className="list-row">
-                <span>Team Nova</span>
-                <strong>91</strong>
-              </div>
-              <div className="list-row">
-                <span>Team Vision</span>
-                <strong>84</strong>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* ... rest of your hero visual component ... */}
       </div>
     </section>
   );
