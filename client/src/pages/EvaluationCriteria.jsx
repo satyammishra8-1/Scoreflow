@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import OrganizerLayout from './OrganizerLayout';
 import { readSavedCriteria, saveCriteria } from '../data/evaluationStorage';
+import './OrganizerDashboard.css';
+import './OrganizerJudges.css';
 import './EvaluationCriteria.css';
 
 const emptyDraft = {
@@ -103,31 +106,16 @@ function EvaluationCriteria() {
   }
 
   return (
-    <div className="evaluation-criteria-page">
-      <aside className="event-sidebar">
-        <Link to="/organizer/dashboard" className="event-brand"><span className="event-brand-mark">S</span><span>ScoreFlow</span></Link>
-        <nav className="event-navigation" aria-label="Organizer navigation">
-          <Link to="/organizer/dashboard"><span aria-hidden="true">▦</span>Dashboard</Link>
-          <Link to="/organizer/events"><span aria-hidden="true">▣</span>Events</Link>
-          <Link to={`/organizer/events/${eventId}/teams`}><span aria-hidden="true">♧</span>Teams</Link>
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">♙</span>Judges</Link>
-          <Link to={`/organizer/events/${eventId}/criteria`} className="event-navigation-active" aria-current="page"><span aria-hidden="true">☷</span>Evaluation Criteria</Link>
-          <a href="#results"><span aria-hidden="true">▤</span>Results</a>
-          <a href="#feedback"><span aria-hidden="true">✉</span>Feedback &amp; Emails</a>
-        </nav>
-      </aside>
-
-      <main className="evaluation-criteria-main">
-        <header className="event-topbar">
-          <label className="event-search"><span aria-hidden="true">⌕</span><input aria-label="Search" placeholder="Search criteria" /></label>
-          <div className="event-admin">
-            <span className="event-admin-avatar">A</span>
-            <span><strong>Admin</strong><small>Organizer</small></span>
-            <span className="event-chevron" aria-hidden="true">⌄</span>
-          </div>
-        </header>
-
-        <div className="criteria-content">
+    <OrganizerLayout
+      activeKey="criteria"
+      eventId={eventId}
+      searchPlaceholder="Search criteria"
+      searchAriaLabel="Search criteria"
+      userName="Admin"
+      userRole="Organizer"
+      userInitial="A"
+    >
+      <div className="criteria-content">
           <div className="criteria-header-row">
             <div>
               <p className="judges-context">Event configuration</p>
@@ -215,9 +203,8 @@ function EvaluationCriteria() {
               </div>
             )}
           </section>
-        </div>
-      </main>
-    </div>
+      </div>
+    </OrganizerLayout>
   );
 }
 

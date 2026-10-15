@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import OrganizerLayout from './OrganizerLayout';
+import './OrganizerDashboard.css';
 import './EventManagement.css';
 
 const STORAGE_KEY = 'scoreflow.organizer.event';
@@ -96,41 +98,15 @@ function EventManagement() {
   }
 
   return (
-    <div className="event-management">
-      <aside className="event-sidebar">
-        <Link to="/organizer/dashboard" className="event-brand">
-          <span className="event-brand-mark">S</span>
-          <span>ScoreFlow</span>
-        </Link>
-        <nav className="event-navigation" aria-label="Organizer navigation">
-          <Link to="/organizer/dashboard"><span aria-hidden="true">▦</span>Dashboard</Link>
-          <Link to="/organizer/events" className="event-navigation-active" aria-current="page">
-            <span aria-hidden="true">▣</span>Events
-          </Link>
-          <a href="/organizer/events/default/teams"><span aria-hidden="true">♧</span>Teams</a>
-          <a href="/organizer/events/default/judges"><span aria-hidden="true">♙</span>Judges</a>
-          <Link to="/organizer/events/default/criteria"><span aria-hidden="true">☷</span>Evaluation Criteria</Link>
-          <a href="#results"><span aria-hidden="true">▤</span>Results</a>
-          <a href="#feedback"><span aria-hidden="true">✉</span>Feedback &amp; Emails</a>
-        </nav>
-        <a className="event-settings-link" href="#settings"><span aria-hidden="true">⚙</span>Settings</a>
-      </aside>
-
-      <div className="event-page-main">
-        <header className="event-topbar">
-          <label className="event-search">
-            <span aria-hidden="true">⌕</span>
-            <input aria-label="Search" placeholder="Search events, teams, judges..." />
-          </label>
-          <div className="event-admin">
-            <span className="event-admin-avatar">A</span>
-            <span><strong>Admin</strong><small>Organizer</small></span>
-            <span className="event-chevron" aria-hidden="true">⌄</span>
-          </div>
-        </header>
-
-        <main className="event-content">
-          <div className="event-page-heading">
+    <OrganizerLayout
+      activeKey="events"
+      wrapperClassName="event-management"
+      contentClassName="event-content"
+      userName="Admin"
+      userRole="Organizer"
+      userInitial="A"
+    >
+      <div className="event-page-heading">
             <div>
               <Link className="event-back-link" to="/organizer/dashboard">← Dashboard</Link>
               <h1>Event Management</h1>
@@ -240,9 +216,7 @@ function EventManagement() {
               </form>
             )}
           </section>
-        </main>
-      </div>
-    </div>
+    </OrganizerLayout>
   );
 }
 

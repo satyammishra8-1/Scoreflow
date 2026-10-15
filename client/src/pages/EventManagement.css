@@ -3,6 +3,9 @@
   --event-border: #e7ebf2;
   --event-text: #202b40;
   --event-muted: #7a8497;
+}
+
+.sf-dashboard.event-management {
   min-height: 100vh;
   color: var(--event-text);
   background: var(--event-bg);

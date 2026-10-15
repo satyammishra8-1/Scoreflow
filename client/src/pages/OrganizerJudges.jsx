@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import OrganizerLayout from './OrganizerLayout';
 import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import { readSavedTeams } from '../data/teamStorage';
 import './OrganizerDashboard.css';
@@ -81,53 +82,6 @@ function readSavedJudges(storageKey, teams, evaluationSessions = []) {
   } catch {
     return { judges: createInitialJudges(teams), error: 'Unable to load saved judges from this browser.' };
   }
-}
-
-function JudgeSidebar({ eventId, isOpen, closeMenu }) {
-  return (
-    <>
-      <button
-        className={`dashboard-scrim ${isOpen ? 'visible' : ''}`}
-        type="button"
-        aria-label="Close navigation"
-        onClick={closeMenu}
-      />
-      <aside className={`dashboard-sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        <Link to="/organizer/dashboard" className="dashboard-brand" onClick={closeMenu}>
-          <span className="dashboard-brand-mark">S</span><span>ScoreFlow</span>
-        </Link>
-        <nav className="sidebar-navigation" aria-label="Organizer navigation">
-          <Link className="sidebar-link" to="/organizer/dashboard" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▦</span><span>Dashboard</span>
-          </Link>
-          <Link className="sidebar-link" to="/organizer/events" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▣</span><span>Events</span>
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/teams`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">♧</span><span>Teams</span>
-          </Link>
-          <Link className="sidebar-link sidebar-link-active" to={`/organizer/events/${eventId}/judges`} onClick={closeMenu} aria-current="page">
-            <span className="sidebar-icon" aria-hidden="true">♙</span><span>Judges</span>
-            <span className="active-indicator" />
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/criteria`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">☷</span><span>Evaluation Criteria</span>
-          </Link>
-          <a className="sidebar-link" href="#" key="results" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▤</span><span>Results</span>
-          </a>
-          <a className="sidebar-link" href="#" key="feedback" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">✉</span><span>Feedback &amp; Emails</span>
-          </a>
-        </nav>
-        <div className="sidebar-bottom">
-          <a href="#" className="sidebar-link" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">⚙</span><span>Settings</span>
-          </a>
-        </div>
-      </aside>
-    </>
-  );
 }
 
 function JudgeModal({ onClose, onSave, existingJudge }) {
@@ -322,7 +276,6 @@ function OrganizerJudges() {
   const [judges, setJudges] = useState(initialJudgeData.judges);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageError, setPageError] = useState(initialTeamData.error || initialJudgeData.error);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingJudge, setEditingJudge] = useState(null);
   const [assigningJudge, setAssigningJudge] = useState(null);
@@ -448,39 +401,20 @@ function OrganizerJudges() {
   const pendingCount = totalAssigned - completedCount;
 
   return (
-    <div className="sf-dashboard judges-dashboard">
-      <JudgeSidebar eventId={eventId} isOpen={isMenuOpen} closeMenu={() => setIsMenuOpen(false)} />
-      <div className="dashboard-main">
-        <header className="dashboard-topbar">
-          <button
-            className="mobile-menu-button"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(true)}
-          ><span /><span /><span /></button>
-          <label className="dashboard-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              aria-label="Search judges"
-              placeholder="Search judges..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-          </label>
-          <div className="topbar-actions">
-            <button className="notification-button" type="button" aria-label="Notifications"><span aria-hidden="true">♧</span><i /></button>
-            <span className="topbar-divider" />
-            <div className="topbar-user">
-              <div className="profile-avatar">A</div>
-              <div className="topbar-user-name"><strong>Admin</strong><span>Organizer</span></div>
-              <span className="dropdown-chevron" aria-hidden="true">⌄</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="dashboard-content judges-content">
-          <div className="judges-page-heading">
+    <OrganizerLayout
+      activeKey="judges"
+      eventId={eventId}
+      wrapperClassName="judges-dashboard"
+      contentClassName="dashboard-content judges-content"
+      searchPlaceholder="Search judges..."
+      searchValue={searchQuery}
+      onSearchChange={(event) => setSearchQuery(event.target.value)}
+      searchAriaLabel="Search judges"
+      userName="Admin"
+      userRole="Organizer"
+      userInitial="A"
+    >
+      <div className="judges-page-heading">
             <div>
               <p className="judges-context">Annual Innovation Hackathon 2026 <span>·</span> Live event</p>
               <h1>Judge Management</h1>
@@ -566,8 +500,6 @@ function OrganizerJudges() {
               </table>
             </div>
           </section>
-        </main>
-      </div>
 
       {isAddOpen && <JudgeModal onClose={() => setIsAddOpen(false)} onSave={addJudge} />}
       {editingJudge && <JudgeModal onClose={() => setEditingJudge(null)} onSave={updateJudge} existingJudge={editingJudge} />}
@@ -586,7 +518,7 @@ function OrganizerJudges() {
         evaluationSessions={evaluationSessions}
         onClose={() => setSelectedJudge(null)}
       />
-    </div>
+    </OrganizerLayout>
   );
 }
 

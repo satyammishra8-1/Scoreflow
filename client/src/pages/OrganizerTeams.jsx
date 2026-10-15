@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import OrganizerLayout from './OrganizerLayout';
 import { readSavedTeams } from '../data/teamStorage';
 import { createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
 import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
@@ -11,53 +12,6 @@ import {
 } from './TeamModals';
 import './OrganizerDashboard.css';
 import './OrganizerTeams.css';
-
-function TeamSidebar({ eventId, isOpen, closeMenu }) {
-  return (
-    <>
-      <button
-        className={`dashboard-scrim ${isOpen ? 'visible' : ''}`}
-        type="button"
-        aria-label="Close navigation"
-        onClick={closeMenu}
-      />
-      <aside className={`dashboard-sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        <Link to="/organizer/dashboard" className="dashboard-brand" onClick={closeMenu}>
-          <span className="dashboard-brand-mark">S</span><span>ScoreFlow</span>
-        </Link>
-        <nav className="sidebar-navigation" aria-label="Organizer navigation">
-          <Link className="sidebar-link" to="/organizer/dashboard" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▦</span><span>Dashboard</span>
-          </Link>
-          <Link className="sidebar-link" to="/organizer/events" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▣</span><span>Events</span>
-          </Link>
-          <Link className="sidebar-link sidebar-link-active" to={`/organizer/events/${eventId}/teams`} onClick={closeMenu} aria-current="page">
-            <span className="sidebar-icon" aria-hidden="true">♧</span><span>Teams</span>
-            <span className="active-indicator" />
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/judges`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">♙</span><span>Judges</span>
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/criteria`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">☷</span><span>Evaluation Criteria</span>
-          </Link>
-          <a className="sidebar-link" href="#" key="results" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▤</span><span>Results</span>
-          </a>
-          <a className="sidebar-link" href="#" key="feedback" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">✉</span><span>Feedback &amp; Emails</span>
-          </a>
-        </nav>
-        <div className="sidebar-bottom">
-          <a href="#" className="sidebar-link" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">⚙</span><span>Settings</span>
-          </a>
-        </div>
-      </aside>
-    </>
-  );
-}
 
 function safeStoredEventName() {
   try {
@@ -110,7 +64,6 @@ function OrganizerTeamsEvent({ eventId }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const fileInput = useRef(null);
   const activeEventId = useRef(eventId);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -384,34 +337,19 @@ function OrganizerTeamsEvent({ eventId }) {
   const isBusy = isReading || isSaving || isImporting || isDeleting;
 
   return (
-    <div className="sf-dashboard teams-dashboard">
-      <TeamSidebar eventId={eventId} isOpen={isMenuOpen} closeMenu={() => setIsMenuOpen(false)} />
-      <div className="dashboard-main">
-        <header className="dashboard-topbar">
-          <button
-            className="mobile-menu-button"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(true)}
-          ><span /><span /><span /></button>
-          <label className="dashboard-search">
-            <span aria-hidden="true">⌕</span>
-            <input aria-label="Search" placeholder="Search events, teams, judges..." />
-          </label>
-          <div className="topbar-actions">
-            <button className="notification-button" type="button" aria-label="Notifications"><span aria-hidden="true">♧</span><i /></button>
-            <span className="topbar-divider" />
-            <div className="topbar-user">
-              <div className="profile-avatar">A</div>
-              <div className="topbar-user-name"><strong>Admin</strong><span>Organizer</span></div>
-              <span className="dropdown-chevron" aria-hidden="true">⌄</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="dashboard-content teams-content">
-          <div className="teams-page-heading">
+    <OrganizerLayout
+      activeKey="teams"
+      eventId={eventId}
+      wrapperClassName="teams-dashboard"
+      contentClassName="dashboard-content teams-content"
+      searchValue={search}
+      onSearchChange={(event) => setSearch(event.target.value)}
+      searchAriaLabel="Search teams"
+      userName="Admin"
+      userRole="Organizer"
+      userInitial="A"
+    >
+      <div className="teams-page-heading">
             <div>
               {eventName && <p className="teams-event-name">{eventName} <span>·</span> Teams</p>}
               <h1>Teams</h1>
@@ -560,8 +498,6 @@ function OrganizerTeamsEvent({ eventId }) {
               </>
             )}
           </section>
-        </main>
-      </div>
 
       <TeamDetailsModal
         team={selectedTeam}
@@ -608,7 +544,7 @@ function OrganizerTeamsEvent({ eventId }) {
         onCancel={() => setDeletingTeam(null)}
         onConfirm={deleteTeam}
       />
-    </div>
+    </OrganizerLayout>
   );
 }
 

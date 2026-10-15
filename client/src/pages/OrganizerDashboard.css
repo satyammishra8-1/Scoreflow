@@ -29,6 +29,42 @@
   padding: 26px 16px 18px;
   color: #d8deeb;
   background: var(--dashboard-navy);
+  transition: width 0.2s ease, padding 0.2s ease;
+}
+/* Desktop sidebar hamburger + collapse (fully hides sidebar) */
+.desktop-menu-button {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--dashboard-border);
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.desktop-menu-button span {
+  display: block;
+  width: 15px;
+  height: 2px;
+  border-radius: 2px;
+  background: #526078;
+}
+
+.desktop-menu-button:hover {
+  background: #f4f6fa;
+}
+
+.sf-dashboard.sidebar-collapsed .dashboard-sidebar {
+  display: none;
+}
+
+.sf-dashboard.sidebar-collapsed .dashboard-main {
+  margin-left: 0;
 }
 
 .dashboard-brand {
@@ -138,6 +174,7 @@
 .dashboard-main {
   min-height: 100vh;
   margin-left: 252px;
+  transition: margin-left 0.2s ease;
 }
 
 .dashboard-topbar {
@@ -254,10 +291,20 @@
   display: none;
 }
 
-.dashboard-content {
+.sf-dashboard .dashboard-content {
   width: min(100%, 1590px);
   padding: 30px 38px 40px;
   margin: 0 auto;
+}
+
+.sf-dashboard.event-management .event-content {
+  width: min(100%, 1200px);
+  padding: 30px 38px 48px;
+  margin: 0 auto;
+}
+
+.sf-dashboard .criteria-content {
+  padding: 28px 30px 38px;
 }
 
 .dashboard-welcome {
@@ -923,6 +970,14 @@
 }
 
 @media (max-width: 900px) {
+  .desktop-menu-button {
+    display: none;
+  }
+
+  .sf-dashboard.sidebar-collapsed .dashboard-sidebar {
+    display: flex;
+  }
+
   .dashboard-sidebar {
     z-index: 40;
     transform: translateX(-100%);

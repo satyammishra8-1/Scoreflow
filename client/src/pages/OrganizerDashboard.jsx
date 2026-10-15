@@ -1,17 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import OrganizerLayout from './OrganizerLayout';
 import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import './OrganizerDashboard.css';
-
-const navigation = [
-  { label: 'Dashboard', icon: '▦', active: true },
-  { label: 'Events', icon: '▣', href: '/organizer/events' },
-  { label: 'Teams', icon: '♧', href: '/organizer/events/default/teams' },
-  { label: 'Judges', icon: '♙', href: '/organizer/events/default/judges' },
-  { label: 'Evaluation Criteria', icon: '☷' },
-  { label: 'Results', icon: '▤' },
-  { label: 'Feedback & Emails', icon: '✉' },
-];
 
 const EVENT_KEY_PREFIX = 'scoreflow.organizer.event.';
 
@@ -367,85 +358,6 @@ function buildDashboardData() {
   };
 }
 
-function Sidebar({ isOpen, closeMenu }) {
-  return (
-    <>
-      <button
-        className={`dashboard-scrim ${
-          isOpen ? 'visible' : ''
-        }`}
-        type="button"
-        aria-label="Close navigation"
-        onClick={closeMenu}
-      />
-
-      <aside
-        className={`dashboard-sidebar ${
-          isOpen ? 'sidebar-open' : ''
-        }`}
-      >
-        <Link
-          to="/"
-          className="dashboard-brand"
-          onClick={closeMenu}
-        >
-          <span className="dashboard-brand-mark">
-            S
-          </span>
-          <span>ScoreFlow</span>
-        </Link>
-
-        <nav
-          className="sidebar-navigation"
-          aria-label="Organizer navigation"
-        >
-          {navigation.map((item) => (
-            <Link
-              to={item.href || '/organizer/dashboard'}
-              className={`sidebar-link ${
-                item.active
-                  ? 'sidebar-link-active'
-                  : ''
-              }`}
-              key={item.label}
-              onClick={closeMenu}
-            >
-              <span
-                className="sidebar-icon"
-                aria-hidden="true"
-              >
-                {item.icon}
-              </span>
-
-              <span>{item.label}</span>
-
-              {item.active && (
-                <span className="active-indicator" />
-              )}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <Link
-            to="/organizer/settings"
-            className="sidebar-link"
-            onClick={closeMenu}
-          >
-            <span
-              className="sidebar-icon"
-              aria-hidden="true"
-            >
-              ⚙
-            </span>
-            <span>Settings</span>
-          </Link>
-        </div>
-      </aside>
-    </>
-  );
-}
-
 function ProgressRing({ value, label }) {
   return (
     <div
@@ -551,8 +463,6 @@ function EventCard({ event }) {
 }
 
 function OrganizerDashboard() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
   const dashboard = useMemo(
     () => buildDashboardData(),
     [],
@@ -595,69 +505,8 @@ function OrganizerDashboard() {
       : 0;
 
   return (
-    <div className="sf-dashboard">
-      <Sidebar
-        isOpen={isMenuOpen}
-        closeMenu={() => setIsMenuOpen(false)}
-      />
-
-      <div className="dashboard-main">
-        <header className="dashboard-topbar">
-          <button
-            className="mobile-menu-button"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(true)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-
-          <label className="dashboard-search">
-            <span aria-hidden="true">⌕</span>
-
-            <input
-              aria-label="Search"
-              placeholder="Search events, teams, judges..."
-            />
-          </label>
-
-          <div className="topbar-actions">
-            <button
-              className="notification-button"
-              type="button"
-              aria-label="Notifications"
-            >
-              <span aria-hidden="true">♧</span>
-              <i />
-            </button>
-
-            <span className="topbar-divider" />
-
-            <div className="topbar-user">
-              <div className="profile-avatar">
-                O
-              </div>
-
-              <div className="topbar-user-name">
-                <strong>Organizer</strong>
-                <span>Administrator</span>
-              </div>
-
-              <span
-                className="dropdown-chevron"
-                aria-hidden="true"
-              >
-                ⌄
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <main className="dashboard-content">
-          <section className="dashboard-welcome">
+    <OrganizerLayout activeKey="dashboard">
+      <section className="dashboard-welcome">
             <div>
               <h1>
                 Welcome back, Organizer!{' '}
@@ -1073,9 +922,7 @@ function OrganizerDashboard() {
               </Link>
             </div>
           </section>
-        </main>
-      </div>
-    </div>
+    </OrganizerLayout>
   );
 }
 
