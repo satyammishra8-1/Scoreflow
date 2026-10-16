@@ -3,7 +3,7 @@ import OrganizerDashboard from './pages/OrganizerDashboard';
 import EventManagement from './pages/EventManagement';
 import OrganizerTeams from './pages/OrganizerTeams';
 import OrganizerJudges from './pages/OrganizerJudges';
-import EvaluationCriteria from './pages/EvaluationCriteria';
+import EvaluationConfiguration from './pages/EvaluationConfiguration';
 import EvaluationSession from './pages/EvaluationSession';
 import JudgeDashboard from './pages/JudgeDashboard';
 import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
@@ -21,9 +21,10 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/organizer/dashboard" element={<OrganizerDashboard />} />
         <Route path="/organizer/events" element={<EventManagement />} />
+        <Route path="/organizer/events/:eventId" element={<EventManagement />} />
         <Route path="/organizer/events/:eventId/teams" element={<OrganizerTeams />} />
         <Route path="/organizer/events/:eventId/judges" element={<OrganizerJudges />} />
-        <Route path="/organizer/events/:eventId/criteria" element={<EvaluationCriteria />} />
+        <Route path="/organizer/events/:eventId/evaluation" element={<EvaluationConfiguration />} />
         <Route path="/organizer/events/:eventId/judges/:judgeId/evaluation/:teamId" element={<EvaluationSessionRoute />} />
         <Route path="/judge/:eventId/:judgeId" element={<JudgeDashboard />} />
         <Route path="/organizer/judges" element={<OrganizerJudges />} />

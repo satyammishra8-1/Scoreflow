@@ -1524,3 +1524,28 @@
     width: 100%;
   }
 }
+
+.model-textarea {
+  width: 100%;
+  min-height: 90px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d4dae8;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #222b47;
+  background: #fff;
+  resize: vertical;
+}
+
+.model-textarea:focus {
+  outline: 2px solid #4169df;
+  outline-offset: 1px;
+}
+
+.model-textarea[readonly] {
+  background: #f4f6fb;
+  cursor: not-allowed;
+}

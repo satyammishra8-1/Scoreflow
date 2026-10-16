@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Link, useSearchParams } from 'react-router-dom';
 
+import axios from 'axios';
+
 import {
 
   calculateRawTotal,
 
   calculateWeightedScore,
+
+  normalizeCriterion,
 
   readSavedCriteria,
 
@@ -14,7 +18,25 @@ import {
 
 } from '../data/evaluationStorage';
 
+import {
+
+  buildModelRequirements,
+
+  getScoresCardTitle,
+
+  isFeedbackRequired,
+
+} from '../data/evaluationRequirements';
+
+import ModelEvaluationFields from '../components/ModelEvaluationFields';
+
 import './EvaluationSession.css';
+
+const API = axios.create({
+
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+
+});
 
 
 
@@ -136,7 +158,79 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   });
 
-  const criteria = useMemo(() => readSavedCriteria(eventId).criteria, [eventId]);
+  const [evalConfig, setEvalConfig] = useState(null);
+
+  const [configLoading, setConfigLoading] = useState(true);
+
+  const legacyCriteria = useMemo(() => readSavedCriteria(eventId).criteria, [eventId]);
+
+  useEffect(() => {
+
+    let cancelled = false;
+
+    async function loadEvaluationConfig() {
+
+      try {
+
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluation`);
+
+        if (!cancelled && response.data?.success) {
+
+          setEvalConfig(response.data.data || null);
+
+        }
+
+      } catch {
+
+        // Configuration unavailable; fall back to the legacy local criteria.
+
+      } finally {
+
+        if (!cancelled) setConfigLoading(false);
+
+      }
+
+    }
+
+    loadEvaluationConfig();
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, [eventId]);
+
+  const criteria = useMemo(() => {
+
+    if (!evalConfig) return legacyCriteria;
+
+    if (evalConfig.model === 'criteria-based') {
+
+      return (evalConfig.criteriaBased?.criteria || []).map(
+
+        (criterion, index) => normalizeCriterion(criterion, index, eventId),
+
+      );
+
+    }
+
+    if (evalConfig.model === 'live-demo') {
+
+      return (evalConfig.liveDemo?.criteria || []).map(
+
+        (criterion, index) => normalizeCriterion(criterion, index, eventId),
+
+      );
+
+    }
+
+    return [];
+
+  }, [evalConfig, legacyCriteria, eventId]);
+
+  const evalModel = evalConfig?.model || 'criteria-based';
 
   const [teams] = useState(() => readStoredTeams(eventId));
 
@@ -274,21 +368,59 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     setElapsedSeconds(currentElapsed);
   }
 
-  const completedCriteriaCount = criteria.filter((criterion) => {
+  const modelRequirements = useMemo(
 
-    const value = Number(session.scores?.[criterion.id] ?? -1);
+    () =>
 
-    return value >= 0 && value <= Number(criterion.maxMarks || 0);
+      buildModelRequirements({
 
-  }).length;
+        model: evalModel,
 
-  const totalCriteriaCount = criteria.length;
+        config: evalConfig,
+
+        criteria,
+
+        scores: session.scores || {},
+
+        textAnswers: session.textAnswers || {},
+
+        flags: session.flags || {},
+
+        feedback: session.feedback || '',
+
+      }),
+
+    [
+
+      evalModel,
+
+      evalConfig,
+
+      criteria,
+
+      session.scores,
+
+      session.textAnswers,
+
+      session.flags,
+
+      session.feedback,
+
+    ],
+
+  );
+
+  const completedCriteriaCount = modelRequirements.filter((requirement) => requirement.done).length;
+
+  const totalCriteriaCount = modelRequirements.length;
 
   const progressPercent = totalCriteriaCount === 0 ? 0 : Math.round((completedCriteriaCount / totalCriteriaCount) * 100);
 
   const rawTotal = calculateRawTotal(session.scores || {}, criteria);
 
   const weightedScore = calculateWeightedScore(session.scores || {}, criteria);
+
+  const showFeedbackCard = isFeedbackRequired(evalModel, evalConfig);
 
 
 
@@ -316,9 +448,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   const isEvaluationReady = totalCriteriaCount > 0
 
-    && completedCriteriaCount === totalCriteriaCount
-
-    && Boolean(session.feedback?.trim());
+    && completedCriteriaCount === totalCriteriaCount;
 
 
 
@@ -406,6 +536,78 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
+  function updateNumericField(key, rawValue, maxValue = 100) {
+
+    if (isReadOnly) return;
+
+    const nextScores = { ...session.scores };
+
+    if (String(rawValue).trim() === '') {
+
+      delete nextScores[key];
+
+    } else {
+
+      const numericValue = Number(rawValue);
+
+      nextScores[key] = Number.isFinite(numericValue)
+
+        ? Math.min(Math.max(numericValue, 0), Number(maxValue))
+
+        : 0;
+
+    }
+
+    persistSession({
+
+      ...session,
+
+      scores: nextScores,
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
+  function updateTextAnswer(key, value) {
+
+    if (isReadOnly) return;
+
+    persistSession({
+
+      ...session,
+
+      textAnswers: { ...(session.textAnswers || {}), [key]: value },
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
+  function updateFlag(key, value) {
+
+    if (isReadOnly) return;
+
+    persistSession({
+
+      ...session,
+
+      flags: { ...(session.flags || {}), [key]: Boolean(value) },
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
   function updateMemberAttendance(memberKey, nextAttendance) {
 
     if (isReadOnly) return;
@@ -434,19 +636,9 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   function submitEvaluation() {
 
-    const missingCriteria = criteria.filter((criterion) => {
+    if (modelRequirements.length === 0) {
 
-      const value = Number(session.scores?.[criterion.id] ?? -1);
-
-      return value < 0 || value > Number(criterion.maxMarks || 0);
-
-    });
-
-
-
-    if (criteria.length > 0 && missingCriteria.length > 0) {
-
-      setError('Each criterion must have a valid score between 0 and its maximum marks.');
+      setError('No evaluation fields are configured for this event yet.');
 
       return;
 
@@ -454,9 +646,11 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-    if (!session.feedback || !session.feedback.trim()) {
+    const missingRequirements = modelRequirements.filter((requirement) => !requirement.done);
 
-      setError('Overall feedback is required before completion.');
+    if (missingRequirements.length > 0) {
+
+      setError(`Complete these fields before submitting: ${missingRequirements.map((requirement) => requirement.label).join(', ')}.`);
 
       return;
 
@@ -576,7 +770,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Judges</span></Link>
 
-          <Link to={`/organizer/events/${eventId}/criteria`}><span aria-hidden="true">☷</span><span className="event-nav-label">Criteria</span></Link>
+          <Link to={`/organizer/events/${eventId}/evaluation`}><span aria-hidden="true">☷</span><span className="event-nav-label">Criteria</span></Link>
 
         </nav>
 
@@ -820,11 +1014,23 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
             <div className="evaluation-summary-grid">
 
-              <div className="summary-stat"><span>Criteria Completed</span><strong>{completedCriteriaCount} / {totalCriteriaCount}</strong></div>
+              <div className="summary-stat"><span>Fields Completed</span><strong>{completedCriteriaCount} / {totalCriteriaCount}</strong></div>
 
-              <div className="summary-stat"><span>Raw Score</span><strong>{rawTotal} / {criteria.reduce((sum, criterion) => sum + Number(criterion.maxMarks || 0), 0)}</strong></div>
+              {criteria.length > 0 ? (
 
-              <div className="summary-stat"><span>Weighted Score</span><strong>{weightedScore.toFixed(1)} / 100</strong></div>
+                <>
+
+                  <div className="summary-stat"><span>Raw Score</span><strong>{rawTotal} / {criteria.reduce((sum, criterion) => sum + Number(criterion.maxMarks || 0), 0)}</strong></div>
+
+                  <div className="summary-stat"><span>Weighted Score</span><strong>{weightedScore.toFixed(1)} / 100</strong></div>
+
+                </>
+
+              ) : (
+
+                <div className="summary-stat"><span>Model</span><strong>{getScoresCardTitle(evalModel)}</strong></div>
+
+              )}
 
               <div className="summary-stat"><span>Attendance</span><strong>{presentMemberCount} / {teamMembers.length} Present</strong></div>
 
@@ -838,7 +1044,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                 <span>Evaluation Progress</span>
 
-                <strong>{completedCriteriaCount} / {totalCriteriaCount} Criteria Completed</strong>
+                <strong>{completedCriteriaCount} / {totalCriteriaCount} Fields Completed</strong>
 
               </div>
 
@@ -890,87 +1096,45 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <div className="evaluation-section-header">
 
-            <h2>Score Criteria</h2>
+            <h2>{getScoresCardTitle(evalModel)}</h2>
 
             <span className="evaluation-status-badge evaluation-badge-muted">{completedCriteriaCount}/{totalCriteriaCount}</span>
 
           </div>
 
-          {criteria.length === 0 ? (
+          {configLoading ? (
 
-            <p className="judges-empty-message">No evaluation criteria are configured for this event.</p>
+            <p className="judges-empty-message">Loading evaluation configuration...</p>
 
           ) : (
 
-            <div className="score-grid">
+            <ModelEvaluationFields
 
-              {criteria.map((criterion) => {
+              model={evalModel}
 
-                const current = Number(session.scores?.[criterion.id] ?? 0);
+              config={evalConfig}
 
-                return (
+              criteria={criteria}
 
-                  <div className="score-row" key={criterion.id}>
+              scores={session.scores || {}}
 
-                    <div className="score-row-copy">
+              textAnswers={session.textAnswers || {}}
 
-                      <div className="score-row-header">
+              flags={session.flags || {}}
 
-                        <strong>{criterion.name}</strong>
+              team={team}
 
-                        <span>Weight: {criterion.weight || 0}%</span>
+              readOnly={isReadOnly}
 
-                      </div>
+              onScoreChange={updateNumericField}
 
-                      <small>{criterion.description || 'No description provided.'}</small>
+              onTextChange={updateTextAnswer}
 
-                      <div className="score-meta-row">
+              onFlagChange={updateFlag}
 
-                        <span>Maximum: {criterion.maxMarks} marks</span>
+              onCriterionScoreChange={updateScore}
 
-                        <span className="score-meta-chip">{current} scored</span>
-
-                      </div>
-
-                    </div>
-
-                    <div className="score-controls">
-
-                      <label>
-
-                        <span>Score</span>
-
-                        <input
-
-                          type="number"
-
-                          min="0"
-
-                          max={criterion.maxMarks}
-
-                          step="0.5"
-
-                          value={current}
-
-                          readOnly={isReadOnly}
-
-                          onChange={(event) => updateScore(criterion.id, event.target.value)}
-
-                        />
-
-                      </label>
-
-                      <span className="score-max-text">/ {criterion.maxMarks}</span>
-
-                    </div>
-
-                  </div>
-
-                );
-
-              })}
-
-            </div>
+            />
 
           )}
 
@@ -978,25 +1142,37 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-        <section className="evaluation-card feedback-card">
+        {showFeedbackCard && (
 
-          <h2>Overall Feedback</h2>
+          <section className="evaluation-card feedback-card">
 
-          <textarea
+            <h2>{evalModel === 'ranking-voting' ? 'Comment' : 'Overall Feedback'}</h2>
 
-            rows="5"
+            <textarea
 
-            value={session.feedback || ''}
+              rows="5"
 
-            readOnly={isReadOnly}
+              value={session.feedback || ''}
 
-            onChange={(event) => updateFeedback(event.target.value)}
+              readOnly={isReadOnly}
 
-            placeholder="Summarize the team's strengths, weaknesses and key observations..."
+              onChange={(event) => updateFeedback(event.target.value)}
 
-          />
+              placeholder={
 
-        </section>
+                evalModel === 'ranking-voting'
+
+                  ? 'Add a comment supporting this ranking...'
+
+                  : "Summarize the team's strengths, weaknesses and key observations..."
+
+              }
+
+            />
+
+          </section>
+
+        )}
 
 
 
@@ -1020,7 +1196,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                 <strong>✓ Evaluation Ready</strong>
 
-                <span>All required criteria have been completed.</span>
+                <span>All required fields have been completed.</span>
 
               </>
 
@@ -1034,7 +1210,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                   {totalCriteriaCount === 0 || completedCriteriaCount !== totalCriteriaCount
 
-                    ? 'Complete all required criteria before submitting.'
+                    ? 'Complete all required fields before submitting.'
 
                     : 'Add overall feedback before submitting.'}
 
