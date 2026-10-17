@@ -113,7 +113,7 @@ export function TeamFormModal({ team, onClose, onSave, isSaving, lockTeamNumber 
     }));
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
     const number = form.number.trim();
     const name = form.name.trim();
@@ -152,7 +152,7 @@ export function TeamFormModal({ team, onClose, onSave, isSaving, lockTeamNumber 
       setError('Enter valid http(s) team URLs, or leave them blank.');
       return;
     }
-    const result = onSave({
+    const result = await onSave({
       ...(team || {}),
       id: team?.id || createLocalId('team'),
       number,

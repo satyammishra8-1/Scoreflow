@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
-import { readSavedTeams } from '../data/teamStorage';
 import { createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
 import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
 import {
@@ -13,13 +13,71 @@ import {
 import './OrganizerDashboard.css';
 import './OrganizerTeams.css';
 
-function safeStoredEventName() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem('scoreflow.organizer.event') || 'null');
-    return parsed && typeof parsed.name === 'string' ? parsed.name.trim() : '';
-  } catch {
-    return '';
-  }
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+});
+
+function getTeamKey(team) {
+  const raw = team?.teamId ?? team?._id ?? team?.id;
+  return raw != null ? String(raw) : '';
+}
+
+function toUiTeam(apiTeam) {
+  if (!apiTeam || typeof apiTeam !== 'object') return null;
+  const key = getTeamKey(apiTeam);
+  const members = Array.isArray(apiTeam.members) ? apiTeam.members : [];
+  const judges = Array.isArray(apiTeam.judges) ? apiTeam.judges : [];
+  return {
+    ...apiTeam,
+    id: key,
+    teamId: key,
+    number: typeof apiTeam.teamNumber === 'string' ? apiTeam.teamNumber : '',
+    name: typeof apiTeam.teamName === 'string' ? apiTeam.teamName : '',
+    project: typeof apiTeam.project === 'string' ? apiTeam.project : '',
+    github: typeof apiTeam.githubUrl === 'string' ? apiTeam.githubUrl : '',
+    demo: typeof apiTeam.demoUrl === 'string' ? apiTeam.demoUrl : '',
+    status: apiTeam.status === 'Complete' ? 'Complete' : 'Pending',
+    members: members.map((member, index) => ({
+      id: typeof member?.id === 'string' && member.id
+        ? member.id
+        : `${key || apiTeam.teamNumber || 'team'}-member-${index + 1}`,
+      name: typeof member?.name === 'string' ? member.name : '',
+      email: typeof member?.email === 'string' ? member.email : '',
+      usn: typeof member?.usn === 'string' ? member.usn : '',
+      section: typeof member?.section === 'string' ? member.section : '',
+      github: typeof member?.github === 'string' ? member.github : '',
+      demo: typeof member?.demo === 'string' ? member.demo : '',
+    })),
+    judges,
+    eventId: apiTeam.eventId != null ? String(apiTeam.eventId) : '',
+  };
+}
+
+function toApiPayload(uiTeam, eventId) {
+  return {
+    eventId,
+    teamNumber: uiTeam.number,
+    teamName: uiTeam.name,
+    project: uiTeam.project || '',
+    members: (uiTeam.members || []).map((member) => ({
+      name: member.name,
+      email: member.email || '',
+      usn: member.usn || '',
+      section: member.section || '',
+      github: member.github || '',
+      demo: member.demo || '',
+    })),
+    githubUrl: uiTeam.github || '',
+    demoUrl: uiTeam.demo || '',
+    judges: Array.isArray(uiTeam.judges) ? uiTeam.judges : [],
+    status: uiTeam.status || 'Pending',
+  };
+}
+
+function getApiErrorMessage(error, fallback) {
+  const message = error?.response?.data?.error;
+  if (typeof message === 'string' && message.trim()) return message;
+  return fallback;
 }
 
 function TeamLink({ value, label }) {
@@ -41,11 +99,8 @@ function OrganizerTeams() {
 }
 
 function OrganizerTeamsEvent({ eventId }) {
-  const storageKey = `scoreflow.organizer.event.${eventId}.teams`;
-  const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
-  const [initialData] = useState(() => readSavedTeams(storageKey, eventId));
-  const [teams, setTeams] = useState(initialData.teams);
-  const [eventName] = useState(safeStoredEventName);
+  const [teams, setTeams] = useState([]);
+  const [eventName, setEventName] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -55,15 +110,45 @@ function OrganizerTeamsEvent({ eventId }) {
   const [previewData, setPreviewData] = useState(null);
   const [duplicateStrategy, setDuplicateStrategy] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
-  const [pageMessage, setPageMessage] = useState(initialData.error
-    ? { type: 'error', text: initialData.error }
-    : null);
+  const [pageMessage, setPageMessage] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isReading, setIsReading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const fileInput = useRef(null);
   const activeEventId = useRef(eventId);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeams() {
+      setIsLoading(true);
+      setPageMessage(null);
+      try {
+        const [teamsResponse, eventResponse] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+          API.get(`/events/${encodeURIComponent(eventId)}`).catch(() => null),
+        ]);
+        if (cancelled || activeEventId.current !== eventId) return;
+        const list = Array.isArray(teamsResponse.data?.data) ? teamsResponse.data.data : [];
+        setTeams(list.map(toUiTeam).filter(Boolean));
+        const eventNameValue = eventResponse?.data?.data?.name;
+        setEventName(typeof eventNameValue === 'string' ? eventNameValue.trim() : '');
+      } catch (error) {
+        if (cancelled || activeEventId.current !== eventId) return;
+        setTeams([]);
+        setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to load teams for this event.') });
+      } finally {
+        if (!cancelled && activeEventId.current === eventId) setIsLoading(false);
+      }
+    }
+
+    loadTeams();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
 
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -107,50 +192,64 @@ function OrganizerTeamsEvent({ eventId }) {
     };
   }, [previewData]);
 
-  function saveTeams(nextTeams) {
+  async function refreshTeams(successMessage) {
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
-      setTeams(nextTeams);
-      setPageMessage(null);
+      const response = await API.get(`/events/${encodeURIComponent(eventId)}/teams`);
+      if (activeEventId.current !== eventId) return { ok: false };
+      const list = Array.isArray(response.data?.data) ? response.data.data : [];
+      setTeams(list.map(toUiTeam).filter(Boolean));
+      if (successMessage) setPageMessage({ type: 'success', text: successMessage });
+      else setPageMessage(null);
       return { ok: true };
-    } catch {
-      const error = 'Unable to save teams in this browser. Check available local storage and try again.';
-      setPageMessage({ type: 'error', text: error });
-      return { ok: false, error };
+    } catch (error) {
+      if (activeEventId.current !== eventId) return { ok: false };
+      const message = getApiErrorMessage(error, 'Unable to load teams for this event.');
+      setPageMessage({ type: 'error', text: message });
+      return { ok: false, error: message };
     }
   }
 
-  function saveTeam(team) {
+  async function saveTeam(team) {
+    const teamKey = getTeamKey(team);
     const duplicate = teams.some((existing) => (
-      existing.id !== team.id && existing.number.toLowerCase() === team.number.toLowerCase()
+      getTeamKey(existing) !== teamKey && existing.number.toLowerCase() === team.number.toLowerCase()
     ));
     if (duplicate) return { ok: false, error: `Team No. ${team.number} is already in use.` };
 
-    const withEvent = { ...team, eventId };
-    const exists = teams.some((existing) => existing.id === team.id);
-    const nextTeams = exists
-      ? teams.map((existing) => existing.id === team.id ? withEvent : existing)
-      : [...teams, withEvent];
-    const result = saveTeams(nextTeams);
-    if (result.ok) {
-      setEditingTeam(undefined);
-      setSelectedTeam(null);
-      setPageMessage({
-        type: 'success',
-        text: exists ? `Team ${team.number} updated successfully.` : `Team ${team.number} added successfully.`,
-      });
+    const exists = teamKey && teams.some((existing) => getTeamKey(existing) === teamKey);
+    try {
+      if (exists) {
+        await API.put(`/teams/${encodeURIComponent(teamKey)}`, toApiPayload(team, eventId));
+      } else {
+        await API.post('/teams', toApiPayload(team, eventId));
+      }
+      const result = await refreshTeams(
+        exists ? `Team ${team.number} updated successfully.` : `Team ${team.number} added successfully.`,
+      );
+      if (result.ok) {
+        setEditingTeam(undefined);
+        setSelectedTeam(null);
+      }
+      return result;
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Unable to save the team. Try again.');
+      setPageMessage({ type: 'error', text: message });
+      return { ok: false, error: message };
     }
-    return result;
   }
 
-  function updateStatus(teamId, status) {
-    const team = teams.find((item) => item.id === teamId);
+  async function updateStatus(teamId, status) {
+    const team = teams.find((item) => getTeamKey(item) === String(teamId));
     if (!team) {
       setPageMessage({ type: 'error', text: 'Unable to find the team to update.' });
       return;
     }
-    const result = saveTeams(teams.map((item) => item.id === teamId ? { ...item, status } : item));
-    if (result.ok) setPageMessage({ type: 'success', text: `Team ${team.number} marked ${status.toLowerCase()}.` });
+    try {
+      await API.put(`/teams/${encodeURIComponent(String(teamId))}`, toApiPayload({ ...team, status }, eventId));
+      await refreshTeams(`Team ${team.number} marked ${status.toLowerCase()}.`);
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to update the team status.') });
+    }
   }
 
   async function handleSelectedFile(file) {
@@ -223,7 +322,7 @@ function OrganizerTeamsEvent({ eventId }) {
     }
   }
 
-  function confirmImport() {
+  async function confirmImport() {
     if (
       !previewData ||
       previewSummary?.duplicateNumbers.length > 0 ||
@@ -232,41 +331,34 @@ function OrganizerTeamsEvent({ eventId }) {
       (collisionNumbers.length > 0 && !['skip', 'replace'].includes(duplicateStrategy))
     ) return;
     setIsImporting(true);
+    setPageMessage(null);
     const existingByNumber = new Map(teams.map((team) => [team.number.toLowerCase(), team]));
-    const nextTeams = [...teams];
     let addedCount = 0;
     let replacedCount = 0;
     let skippedCount = 0;
     let importedMembers = 0;
 
-    previewData.teams.forEach((imported) => {
-      const existing = existingByNumber.get(imported.number.toLowerCase());
-      if (existing && duplicateStrategy === 'skip') {
-        skippedCount += 1;
-        return;
+    try {
+      for (const imported of previewData.teams) {
+        const existing = existingByNumber.get(imported.number.toLowerCase());
+        if (existing && duplicateStrategy === 'skip') {
+          skippedCount += 1;
+          continue;
+        }
+        importedMembers += imported.members.length;
+        if (existing) {
+          await API.put(
+            `/teams/${encodeURIComponent(getTeamKey(existing))}`,
+            toApiPayload({ ...imported, status: existing.status, judges: existing.judges }, eventId),
+          );
+          replacedCount += 1;
+        } else {
+          await API.post('/teams', toApiPayload(imported, eventId));
+          addedCount += 1;
+        }
       }
-      importedMembers += imported.members.length;
-      if (existing) {
-        const replacement = {
-          ...imported,
-          id: existing.id,
-          eventId,
-          createdAt: existing.createdAt || imported.createdAt,
-          status: existing.status,
-          judges: existing.judges,
-        };
-        const index = nextTeams.findIndex((team) => team.id === existing.id);
-        nextTeams[index] = replacement;
-        replacedCount += 1;
-      } else {
-        nextTeams.push({ ...imported, eventId });
-        addedCount += 1;
-      }
-    });
 
-    const result = saveTeams(nextTeams);
-    setIsImporting(false);
-    if (result.ok) {
+      await refreshTeams();
       setPreviewData(null);
       setSelectedFile(null);
       setDuplicateStrategy('');
@@ -280,50 +372,25 @@ function OrganizerTeamsEvent({ eventId }) {
           type: 'success',
           text: `No teams were added or replaced; ${skippedCount} existing ${skippedCount === 1 ? 'team was' : 'teams were'} skipped.`,
         });
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to import teams. Try again.') });
+    } finally {
+      setIsImporting(false);
     }
   }
 
-  function deleteTeam() {
+  async function deleteTeam() {
     if (!deletingTeam) return;
     const team = deletingTeam;
-    const nextTeams = teams.filter((item) => item.id !== team.id);
+    const teamKey = getTeamKey(team);
     setIsDeleting(true);
-
-    let previousTeams;
-    let previousJudges;
     try {
-      previousTeams = window.localStorage.getItem(storageKey);
-      previousJudges = window.localStorage.getItem(judgeStorageKey);
-      window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
-      if (previousJudges !== null) {
-        const judges = JSON.parse(previousJudges);
-        if (Array.isArray(judges)) {
-          const teamId = String(team.id || team.number);
-          const updatedJudges = judges.map((judge) => ({
-            ...judge,
-            teamIds: Array.isArray(judge.teamIds) ? judge.teamIds.filter((id) => id !== teamId) : [],
-            completedTeamIds: Array.isArray(judge.completedTeamIds)
-              ? judge.completedTeamIds.filter((id) => id !== teamId)
-              : [],
-          }));
-          window.localStorage.setItem(judgeStorageKey, JSON.stringify(updatedJudges));
-        }
-      }
-      setTeams(nextTeams);
+      await API.delete(`/teams/${encodeURIComponent(teamKey)}`);
+      await refreshTeams(`Team ${team.number} deleted successfully.`);
       setSelectedTeam(null);
       setDeletingTeam(null);
-      setPageMessage({ type: 'success', text: `Team ${team.number} deleted successfully.` });
-    } catch {
-      try {
-        if (previousTeams === null || previousTeams === undefined) window.localStorage.removeItem(storageKey);
-        else window.localStorage.setItem(storageKey, previousTeams);
-        if (previousJudges !== null && previousJudges !== undefined) {
-          window.localStorage.setItem(judgeStorageKey, previousJudges);
-        }
-      } catch {
-        setPageMessage({ type: 'error', text: 'Unable to restore browser data after the delete failed. Refresh and check the saved data.' });
-      }
-      setPageMessage({ type: 'error', text: 'Unable to delete the team. Check browser storage and try again.' });
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to delete the team. Try again.') });
     } finally {
       setIsDeleting(false);
     }
@@ -334,7 +401,7 @@ function OrganizerTeamsEvent({ eventId }) {
     setEditingTeam(team);
   }
 
-  const isBusy = isReading || isSaving || isImporting || isDeleting;
+  const isBusy = isLoading || isReading || isSaving || isImporting || isDeleting;
 
   return (
     <OrganizerLayout
@@ -436,7 +503,9 @@ function OrganizerTeamsEvent({ eventId }) {
                 </select>
               </label>
             </div>
-            {teams.length === 0 ? (
+            {isLoading ? (
+              <p className="teams-empty-message" role="status">Loading teams...</p>
+            ) : teams.length === 0 ? (
               <div className="teams-empty-state">
                 <span aria-hidden="true">♧</span>
                 <h2>No teams added yet.</h2>
@@ -457,7 +526,7 @@ function OrganizerTeamsEvent({ eventId }) {
                     </thead>
                     <tbody>
                       {filteredTeams.map((team) => (
-                        <tr key={team.id}>
+                        <tr key={getTeamKey(team) || team.number}>
                           <td><strong className="team-number-cell">{team.number}</strong></td>
                           <td>
                             <div className="team-name-cell">
@@ -473,7 +542,7 @@ function OrganizerTeamsEvent({ eventId }) {
                               className={`team-status-select team-status-${team.status.toLowerCase()}`}
                               value={team.status}
                               aria-label={`${team.number} status`}
-                              onChange={(event) => updateStatus(team.id, event.target.value)}
+                              onChange={(event) => updateStatus(getTeamKey(team), event.target.value)}
                               disabled={isBusy}
                             >
                               <option>Pending</option><option>Complete</option>
@@ -510,11 +579,14 @@ function OrganizerTeamsEvent({ eventId }) {
           lockTeamNumber={false}
           isSaving={isSaving}
           onClose={() => setEditingTeam(undefined)}
-          onSave={(team) => {
+          onSave={async (team) => {
             setIsSaving(true);
-            const result = saveTeam(team);
-            setIsSaving(false);
-            return result;
+            try {
+              const result = await saveTeam(team);
+              return result;
+            } finally {
+              setIsSaving(false);
+            }
           }}
         />
       )}

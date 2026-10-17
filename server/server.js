@@ -5,6 +5,7 @@ const connectDB = require('./config/db');
 
 const evaluationRoutes = require('./routes/evaluation');
 const eventRoutes = require('./routes/events');
+const teamRoutes = require('./routes/teams');
 
 dotenv.config();
 
@@ -15,6 +16,7 @@ connectDB();
 app.use(cors());
 app.use(express.json());
 app.use('/api', eventRoutes);
+app.use('/api', teamRoutes);
 app.use('/api', evaluationRoutes);
 
 app.get('/', (req, res) => {
