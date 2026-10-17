@@ -1,8 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
 import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import './OrganizerDashboard.css';
+
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+});
 
 const EVENT_KEY_PREFIX = 'scoreflow.organizer.event.';
 
@@ -22,50 +27,9 @@ function readJSON(key, fallback = []) {
   }
 }
 
-function getEventIdsFromStorage() {
-  const eventIds = new Set();
-
-  try {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-
-      if (!key || !key.startsWith(EVENT_KEY_PREFIX)) {
-        continue;
-      }
-
-      const remaining = key.slice(EVENT_KEY_PREFIX.length);
-      const eventId = remaining.split('.')[0];
-
-      if (eventId) {
-        eventIds.add(eventId);
-      }
-    }
-  } catch {
-    return [];
-  }
-
-  return [...eventIds];
-}
-
-function readEvent(eventId) {
-  const possibleKeys = [
-    `${EVENT_KEY_PREFIX}${eventId}`,
-    `${EVENT_KEY_PREFIX}${eventId}.event`,
-    `${EVENT_KEY_PREFIX}${eventId}.details`,
-  ];
-
-  for (const key of possibleKeys) {
-    const stored = readJSON(key, null);
-
-    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-      return stored;
-    }
-  }
-
-  return {
-    id: eventId,
-    name: eventId === 'default' ? 'Event' : eventId,
-  };
+function getEventId(event) {
+  const rawId = event?.eventId ?? event?._id ?? event?.id;
+  return rawId != null ? String(rawId) : '';
 }
 
 function readTeams(eventId) {
@@ -246,12 +210,12 @@ function getEvaluationStats(eventId, teams, judges) {
   };
 }
 
-function buildDashboardData() {
-  const eventIds = getEventIdsFromStorage();
+function buildDashboardData(apiEvents) {
+  const list = Array.isArray(apiEvents) ? apiEvents : [];
 
-  const events = eventIds
-    .map((eventId) => {
-      const rawEvent = readEvent(eventId);
+  const events = list
+    .map((rawEvent) => {
+      const eventId = getEventId(rawEvent);
       const teams = readTeams(eventId);
       const judges = readJudges(eventId);
       const evaluation = getEvaluationStats(
@@ -463,9 +427,41 @@ function EventCard({ event }) {
 }
 
 function OrganizerDashboard() {
+  const [apiEvents, setApiEvents] = useState([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [eventsError, setEventsError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEvents() {
+      setIsLoadingEvents(true);
+      setEventsError('');
+      try {
+        const response = await API.get('/events');
+        if (cancelled) return;
+        if (response.data && response.data.success) {
+          setApiEvents(Array.isArray(response.data.data) ? response.data.data : []);
+        } else {
+          setEventsError('Unable to load events. Try again.');
+        }
+      } catch {
+        if (cancelled) return;
+        setEventsError('Unable to load events. Check the API connection and try again.');
+      } finally {
+        if (!cancelled) setIsLoadingEvents(false);
+      }
+    }
+
+    loadEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const dashboard = useMemo(
-    () => buildDashboardData(),
-    [],
+    () => buildDashboardData(apiEvents),
+    [apiEvents],
   );
 
   const {
@@ -614,7 +610,21 @@ function OrganizerDashboard() {
               </div>
             </div>
 
-            {events.length > 0 ? (
+            {isLoadingEvents ? (
+              <div className="dashboard-empty-state">
+                <h3>Loading events...</h3>
+                <p>
+                  Fetching your competitions from the server.
+                </p>
+              </div>
+            ) : eventsError ? (
+              <div className="dashboard-empty-state">
+                <h3>Unable to load events</h3>
+                <p>
+                  {eventsError}
+                </p>
+              </div>
+            ) : events.length > 0 ? (
               <div className="events-grid">
                 {events.map((event) => (
                   <EventCard
