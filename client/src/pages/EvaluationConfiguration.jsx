@@ -597,7 +597,7 @@ function EvaluationConfiguration() {
     async function loadConfig() {
       try {
         const response = await API.get(
-          `/events/${encodeURIComponent(eventId)}/evaluation`,
+          `/events/${encodeURIComponent(eventId)}/evaluation-config`,
         );
         if (response.data.success) {
           setConfig(response.data.data);
@@ -658,7 +658,7 @@ function EvaluationConfiguration() {
 
     try {
       const response = await API.put(
-        `/events/${encodeURIComponent(eventId)}/evaluation`,
+        `/events/${encodeURIComponent(eventId)}/evaluation-config`,
         payload,
       );
       if (response.data.success) {
