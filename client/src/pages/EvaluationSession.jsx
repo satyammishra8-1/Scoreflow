@@ -40,6 +40,22 @@ const API = axios.create({
 
 
 
+function toUiJudge(apiJudge) {
+
+  if (!apiJudge || typeof apiJudge !== 'object') return null;
+
+  return {
+
+    ...apiJudge,
+
+    id: apiJudge.judgeId,
+
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds : [],
+
+  };
+
+}
+
 function formatDuration(valueInSeconds) {
 
   const totalSeconds = Math.max(0, Number(valueInSeconds) || 0);
@@ -63,28 +79,6 @@ function readStoredTeams(eventId) {
   try {
 
     const stored = window.localStorage.getItem(`scoreflow.organizer.event.${eventId}.teams`);
-
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    return Array.isArray(parsed) ? parsed : [];
-
-  } catch {
-
-    return [];
-
-  }
-
-}
-
-
-
-function readStoredJudges(eventId) {
-
-  try {
-
-    const stored = window.localStorage.getItem(`scoreflow.organizer.event.${eventId}.judges`);
 
     if (!stored) return [];
 
@@ -234,7 +228,40 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   const [teams] = useState(() => readStoredTeams(eventId));
 
-  const [judges] = useState(() => readStoredJudges(eventId));
+  const [judges, setJudges] = useState([]);
+  const [judgesLoading, setJudgesLoading] = useState(true);
+  const [judgesError, setJudgesError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadJudges() {
+      try {
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
+        if (!cancelled) {
+          const list = Array.isArray(response.data?.data) ? response.data.data : [];
+          setJudges(list.map(toUiJudge).filter(Boolean));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err?.response?.data?.error;
+          setJudgesError(
+            typeof message === 'string' && message.trim()
+              ? message
+              : 'Unable to load judges. Please try again.',
+          );
+        }
+      } finally {
+        if (!cancelled) setJudgesLoading(false);
+      }
+    }
+
+    loadJudges();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
 
 
 
@@ -705,6 +732,50 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     persistSession(nextSession);
 
     setSuccess('Evaluation reopened for edits.');
+
+  }
+
+
+
+  if (judgesLoading) {
+
+    return (
+
+      <div className="evaluation-session-page">
+
+        <div className="evaluation-session-empty">
+
+          <p role="status">Loading judge...</p>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
+
+
+
+  if (judgesError) {
+
+    return (
+
+      <div className="evaluation-session-page">
+
+        <div className="evaluation-session-empty">
+
+          <h1>Unable to load judge</h1>
+
+          <p>{judgesError}</p>
+
+          <Link to={`/organizer/events/${eventId}/judges`} className="judges-primary-button">Back to Judges</Link>
+
+        </div>
+
+      </div>
+
+    );
 
   }
 

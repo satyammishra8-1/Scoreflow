@@ -1,19 +1,32 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import axios from 'axios';
 import { readSavedCriteria, readSavedEvaluationSessions } from '../data/evaluationStorage';
 import { readSavedTeams } from '../data/teamStorage';
 import './EventManagement.css';
 import './OrganizerJudges.css';
 import './JudgeDashboard.css';
 
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+});
+
 function getTeamId(team) {
   return String(team.id || team.number);
+}
+
+function toUiJudge(apiJudge) {
+  if (!apiJudge || typeof apiJudge !== 'object') return null;
+  return {
+    ...apiJudge,
+    id: apiJudge.judgeId,
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds : [],
+  };
 }
 
 function JudgeDashboard() {
   const { eventId = 'default', judgeId } = useParams();
   const teamStorageKey = `scoreflow.organizer.event.${eventId}.teams`;
-  const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
@@ -24,16 +37,40 @@ function JudgeDashboard() {
   });
   const [teamData] = useState(() => readSavedTeams(teamStorageKey, eventId));
   const [criteria] = useState(() => readSavedCriteria(eventId).criteria);
-  const [judges] = useState(() => {
-    try {
-      const stored = window.localStorage.getItem(judgeStorageKey);
-      if (!stored) return [];
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+  const [judges, setJudges] = useState([]);
+  const [judgesLoading, setJudgesLoading] = useState(true);
+  const [judgesError, setJudgesError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadJudges() {
+      try {
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
+        if (!cancelled) {
+          const list = Array.isArray(response.data?.data) ? response.data.data : [];
+          setJudges(list.map(toUiJudge).filter(Boolean));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err?.response?.data?.error;
+          setJudgesError(
+            typeof message === 'string' && message.trim()
+              ? message
+              : 'Unable to load judges. Please try again.',
+          );
+        }
+      } finally {
+        if (!cancelled) setJudgesLoading(false);
+      }
     }
-  });
+
+    loadJudges();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
 
   useEffect(() => {
     try {
@@ -45,6 +82,28 @@ function JudgeDashboard() {
   const judge = judges.find((item) => item.id === judgeId) || null;
   const assignedTeams = judge ? teamData.teams.filter((team) => (judge.teamIds || []).includes(getTeamId(team))) : [];
   const sessions = readSavedEvaluationSessions(eventId);
+
+  if (judgesLoading) {
+    return (
+      <div className="judge-dashboard-page">
+        <div className="judge-dashboard-empty">
+          <p role="status">Loading judge profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (judgesError) {
+    return (
+      <div className="judge-dashboard-page">
+        <div className="judge-dashboard-empty">
+          <h1>Unable to load judge</h1>
+          <p>{judgesError}</p>
+          <Link to="/organizer/events" className="judges-primary-button">Back to Events</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!judge) {
     return (
