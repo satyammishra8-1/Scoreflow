@@ -3,7 +3,6 @@ import axios from 'axios';
 import { Link, useParams } from 'react-router-dom';
 import OrganizerLayout from './OrganizerLayout';
 import { readSavedEvaluationSessions } from '../data/evaluationStorage';
-import { readSavedTeams } from '../data/teamStorage';
 import './OrganizerDashboard.css';
 import './OrganizerJudges.css';
 
@@ -12,7 +11,7 @@ const API = axios.create({
 });
 
 function getTeamId(team) {
-  return String(team.id || team.number);
+  return String(team.teamId || team.id || team.number);
 }
 
 function getJudgeCompletedTeamIds(judge, evaluationSessions = []) {
@@ -237,16 +236,39 @@ function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose 
 
 function OrganizerJudges() {
   const { eventId = 'default' } = useParams();
-  const teamStorageKey = `scoreflow.organizer.event.${eventId}.teams`;
-  const [initialTeamData] = useState(() => readSavedTeams(teamStorageKey, eventId));
-  const [teams] = useState(initialTeamData.teams);
+  const [teams, setTeams] = useState([]);
   const evaluationSessions = useMemo(() => readSavedEvaluationSessions(eventId), [eventId]);
   const [judges, setJudges] = useState([]);
   useEffect(() => {
     fetchJudges(eventId).then((loaded) => setJudges(loaded));
   }, [eventId]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTeams() {
+      try {
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/teams`);
+        const list = Array.isArray(response.data?.data) ? response.data.data : [];
+        if (!cancelled) {
+          setTeams(
+            list.map((team) => ({
+              ...team,
+              id: team.teamId,
+              number: team.teamNumber,
+              name: team.teamName,
+            })),
+          );
+        }
+      } catch {
+        // Teams load failure is non-fatal; the assignment modal will show empty options.
+      }
+    }
+    loadTeams();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [pageError, setPageError] = useState(initialTeamData.error || '');
+  const [pageError, setPageError] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingJudge, setEditingJudge] = useState(null);
   const [assigningJudge, setAssigningJudge] = useState(null);
@@ -324,19 +346,7 @@ function OrganizerJudges() {
   const selected = [...new Set(teamIds)].filter((id) => teams.some((team) => getTeamId(team) === id));
   if (selected.length === 0) return { ok: false, error: 'Select at least one team.' };
 
-  const nextTeams = teams.map((team) => {
-    const teamId = getTeamId(team);
-    const withoutJudge = team.judges.filter((name) => name !== judge.name);
-    return {
-      ...team,
-      judges: selected.includes(teamId) ? [...withoutJudge, judge.name] : withoutJudge,
-    };
-  });
-
-  let previousTeams;
   try {
-    previousTeams = window.localStorage.getItem(teamStorageKey);
-    window.localStorage.setItem(teamStorageKey, JSON.stringify(nextTeams));
     const response = await API.put(`/judges/${encodeURIComponent(judgeId)}`, {
       assignedTeamIds: selected,
     });
@@ -345,15 +355,6 @@ function OrganizerJudges() {
     setPageError('');
     return { ok: true };
   } catch (error) {
-    try {
-      if (previousTeams === null || previousTeams === undefined) {
-        window.localStorage.removeItem(teamStorageKey);
-      } else {
-        window.localStorage.setItem(teamStorageKey, previousTeams);
-      }
-    } catch {
-      /* ignore storage rollback failure */
-    }
     const message = getApiErrorMessage(error, 'Failed to assign teams to this judge.');
     setPageError(message);
     return { ok: false, error: message };
