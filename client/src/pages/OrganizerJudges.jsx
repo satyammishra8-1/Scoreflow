@@ -59,7 +59,7 @@ function JudgeModal({ onClose, onSave, existingJudge }) {
   const [email, setEmail] = useState(existingJudge?.email || '');
   const [error, setError] = useState('');
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
@@ -71,7 +71,7 @@ function JudgeModal({ onClose, onSave, existingJudge }) {
       setError('Enter a valid email address.');
       return;
     }
-    const result = onSave({ id: existingJudge?.id, name: cleanName, email: cleanEmail });
+    const result = await onSave({ id: existingJudge?.id, name: cleanName, email: cleanEmail });
     if (!result.ok) setError(result.error);
   }
 
