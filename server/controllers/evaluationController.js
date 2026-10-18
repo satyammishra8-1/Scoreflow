@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const Event = require('../models/Event');
+const Evaluation = require('../models/Evaluation');
 const {
   MODEL_FIELDS,
   validateModelConfig,
@@ -433,5 +434,161 @@ exports.updateEvaluationConfig = async (req, res) => {
       success: false,
       error: 'Failed to update the evaluation configuration.',
     });
+  }
+};
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
+
+function toPlainObject(value) {
+  if (value instanceof Map) return Object.fromEntries(value);
+  return value || {};
+}
+
+function toEvaluationResponse(evaluation) {
+  if (!evaluation) return null;
+  const obj = typeof evaluation.toObject === 'function' ? evaluation.toObject() : evaluation;
+  const dateToTimestamp = (value) =>
+    value != null ? new Date(value).getTime() : null;
+  return {
+    ...obj,
+    id: obj._id != null ? String(obj._id) : undefined,
+    eventId: obj.eventId != null ? String(obj.eventId) : obj.eventId,
+    judgeId: obj.judgeId != null ? String(obj.judgeId) : obj.judgeId,
+    teamId: obj.teamId != null ? String(obj.teamId) : obj.teamId,
+    scores: toPlainObject(obj.scores),
+    totalScore: Number(obj.totalScore || 0),
+    weightedScore: Number(obj.weightedScore || 0),
+    feedback: typeof obj.feedback === 'string' ? obj.feedback : '',
+    status: obj.status || 'NOT_STARTED',
+    attendance: obj.attendance || 'Present',
+    startedAt: dateToTimestamp(obj.startedAt),
+    completedAt: dateToTimestamp(obj.completedAt),
+    duration: Number(obj.duration || 0),
+    memberAttendance: toPlainObject(obj.memberAttendance),
+    textAnswers: toPlainObject(obj.textAnswers),
+    flags: toPlainObject(obj.flags),
+    createdAt: obj.createdAt != null ? new Date(obj.createdAt).toISOString() : undefined,
+    updatedAt: obj.updatedAt != null ? new Date(obj.updatedAt).toISOString() : undefined,
+  };
+}
+
+function normalizeEvaluationScores(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const key of Object.keys(value)) {
+    const numberValue = Number(value[key]);
+    normalized[key] = Number.isFinite(numberValue) ? numberValue : 0;
+  }
+  return normalized;
+}
+
+function validateEvaluationPayload(payload = {}) {
+  const errors = {};
+  const eventId = typeof payload.eventId === 'string' ? payload.eventId.trim() : '';
+  const judgeId = typeof payload.judgeId === 'string' ? payload.judgeId.trim() : '';
+  const teamId = typeof payload.teamId === 'string' ? payload.teamId.trim() : '';
+  const scores = normalizeEvaluationScores(payload.scores);
+  const totalScore = Number(payload.totalScore);
+  const feedback = typeof payload.feedback === 'string' ? payload.feedback.trim() : '';
+  const status = typeof payload.status === 'string' ? payload.status.trim() : 'NOT_STARTED';
+  const attendance = typeof payload.attendance === 'string' ? payload.attendance.trim() : 'Present';
+  const duration = Number(payload.duration);
+  const memberAttendance =
+    typeof payload.memberAttendance === 'object' && payload.memberAttendance !== null
+      ? payload.memberAttendance
+      : {};
+  const textAnswers =
+    typeof payload.textAnswers === 'object' && payload.textAnswers !== null
+      ? payload.textAnswers
+      : {};
+  const flags =
+    typeof payload.flags === 'object' && payload.flags !== null ? payload.flags : {};
+
+  if (!eventId || !isValidObjectId(eventId)) errors.eventId = 'A valid eventId is required.';
+  if (!judgeId || !isValidObjectId(judgeId)) errors.judgeId = 'A valid judgeId is required.';
+  if (!teamId || !isValidObjectId(teamId)) errors.teamId = 'A valid teamId is required.';
+  if (!Number.isFinite(totalScore) || totalScore < 0) {
+    errors.totalScore = 'Enter a valid total score.';
+  }
+  if (!['NOT_STARTED', 'IN_PROGRESS', 'PAUSED', 'COMPLETED'].includes(status)) {
+    errors.status = 'Status must be NOT_STARTED, IN_PROGRESS, PAUSED or COMPLETED.';
+  }
+  if (!Number.isFinite(duration) || duration < 0) {
+    errors.duration = 'Enter a valid duration.';
+  }
+
+  return {
+    errors,
+    normalized: {
+      eventId,
+      judgeId,
+      teamId,
+      scores,
+      totalScore,
+      feedback,
+      status,
+      attendance,
+      duration,
+      memberAttendance,
+      textAnswers,
+      flags,
+      startedAt: payload.startedAt != null ? new Date(payload.startedAt) : null,
+      completedAt: payload.completedAt != null ? new Date(payload.completedAt) : null,
+    },
+  };
+}
+
+
+
+/**
+ * GET /api/events/:eventId/evaluations
+ */
+exports.listEvaluationsByEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    }
+    const evaluations = await Evaluation.find({ eventId })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+    return res.status(200).json({
+      success: true,
+      data: evaluations.map(toEvaluationResponse),
+    });
+  } catch (error) {
+    console.error('Failed to list evaluations:', error);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve evaluations.' });
+  }
+};
+
+/**
+ * GET /api/events/:eventId/judges/:judgeId/teams/:teamId/evaluation
+ */
+exports.getEvaluationByJudgeTeam = async (req, res) => {
+  try {
+    const { eventId, judgeId, teamId } = req.params;
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    }
+    if (!isValidObjectId(judgeId)) {
+      return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
+    }
+    if (!isValidObjectId(teamId)) {
+      return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
+    }
+    const evaluation = await Evaluation.findOne({ eventId, judgeId, teamId }).lean();
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        error: 'No evaluation found for this judge and team.',
+      });
+    }
+    return res.status(200).json({ success: true, data: toEvaluationResponse(evaluation) });
+  } catch (error) {
+    console.error('Failed to get the evaluation:', error);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve the evaluation.' });
   }
 };

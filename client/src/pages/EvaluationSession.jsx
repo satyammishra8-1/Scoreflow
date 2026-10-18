@@ -14,8 +14,6 @@ import {
 
   readSavedCriteria,
 
-  readSavedEvaluationSessions,
-
 } from '../data/evaluationStorage';
 
 import {
@@ -264,6 +262,93 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   }, [eventId]);
 
 
+  useEffect(() => {
+
+    let cancelled = false;
+
+    async function loadExistingEvaluation() {
+
+      try {
+
+        const response = await API.get(
+
+          `/events/${encodeURIComponent(eventId)}/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}/evaluation`,
+
+        );
+
+        if (!cancelled && response.data?.success && response.data.data) {
+
+          const api = response.data.data;
+
+          setSession({
+
+            id: api.id,
+
+            eventId: api.eventId,
+
+            teamId: api.teamId,
+
+            judgeId: api.judgeId,
+
+            startedAt: api.startedAt != null ? api.startedAt : null,
+
+            completedAt: api.completedAt != null ? api.completedAt : null,
+
+            duration: Number(api.duration || 0),
+
+            attendance: api.attendance || 'Present',
+
+            scores:
+
+              typeof api.scores === 'object' && api.scores !== null ? { ...api.scores } : {},
+
+            totalScore: Number(api.totalScore || 0),
+
+            weightedScore: Number(api.weightedScore || 0),
+
+            feedback: typeof api.feedback === 'string' ? api.feedback : '',
+
+            status: api.status || 'NOT_STARTED',
+
+            memberAttendance:
+
+              typeof api.memberAttendance === 'object'
+
+                ? { ...api.memberAttendance }
+
+                : {},
+
+            textAnswers:
+
+              typeof api.textAnswers === 'object' ? { ...api.textAnswers } : {},
+
+            flags: typeof api.flags === 'object' ? { ...api.flags } : {},
+
+          });
+
+        }
+
+      } catch {
+
+        // No existing evaluation yet (404) or the API is unavailable;
+
+        // fall back to a fresh session so evaluation can still begin.
+
+      }
+
+    }
+
+    loadExistingEvaluation();
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, [eventId, judgeId, teamId]);
+
+
 
   useEffect(() => {
 
@@ -279,61 +364,35 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   }, [sidebarCollapsed]);
 
-  const [session, setSession] = useState(() => {
+  const [session, setSession] = useState(() => ({
 
-    const sessions = readSavedEvaluationSessions(eventId);
+    id: `session-${getCurrentTimestamp()}`,
 
-    const existing = sessions.find((item) => item.judgeId === judgeId && item.teamId === teamId);
+    eventId,
 
-    if (existing) {
+    teamId,
 
-      return {
+    judgeId,
 
-        ...existing,
+    startedAt: null,
 
-        attendance: existing.attendance || 'Present',
+    completedAt: null,
 
-        scores: existing.scores || {},
+    duration: 0,
 
-        feedback: existing.feedback || '',
+    attendance: 'Present',
 
-        status: existing.status || 'NOT_STARTED',
+    scores: {},
 
-      };
+    totalScore: 0,
 
-    }
+    weightedScore: 0,
 
-    return {
+    feedback: '',
 
-      id: `session-${getCurrentTimestamp()}`,
+    status: 'NOT_STARTED',
 
-      eventId,
-
-      teamId,
-
-      judgeId,
-
-      startedAt: null,
-
-      completedAt: null,
-
-      duration: 0,
-
-      attendance: 'Present',
-
-      scores: {},
-
-      totalScore: 0,
-
-      weightedScore: 0,
-
-      feedback: '',
-
-      status: 'NOT_STARTED',
-
-    };
-
-  });
+  }));
 
   const [elapsedSeconds, setElapsedSeconds] = useState(() => Number(session.duration || 0));
 
@@ -479,7 +538,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  function persistSession(nextSession) {
+  async function persistSession(nextSession) {
 
     const normalized = {
 
@@ -495,19 +554,79 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    const stored = readSavedEvaluationSessions(eventId);
+    // Optimistic update keeps the UI responsive while the API persists.
 
-    const filtered = stored.filter((item) => item.id !== normalized.id);
-
-    const finalSessions = [...filtered, normalized];
-
-    window.localStorage.setItem(`scoreflow.organizer.event.${eventId}.evaluationSessions`, JSON.stringify(finalSessions));
-
-    setSession(normalized);
+    setSession({ ...normalized, id: session.id });
 
     setError('');
 
     setSuccess('');
+
+    try {
+
+      const response = await API.post('/evaluations', {
+
+        eventId,
+
+        judgeId,
+
+        teamId,
+
+        scores: normalized.scores,
+
+        totalScore: normalized.totalScore,
+
+        weightedScore: normalized.weightedScore,
+
+        feedback: normalized.feedback || '',
+
+        status: normalized.status,
+
+        duration: normalized.duration,
+
+        attendance: normalized.attendance || 'Present',
+
+        memberAttendance: normalized.memberAttendance || {},
+
+        textAnswers: normalized.textAnswers || {},
+
+        flags: normalized.flags || {},
+
+        startedAt: normalized.startedAt ? new Date(normalized.startedAt) : null,
+
+        completedAt: normalized.completedAt ? new Date(normalized.completedAt) : null,
+
+      });
+
+      if (!response.data?.success) {
+
+        throw new Error(response.data?.error || 'Failed to save evaluation.');
+
+      }
+
+      const saved = response.data.data;
+
+      setSession((current) => ({
+
+        ...current,
+
+        id: saved.id,
+
+        totalScore: saved.totalScore ?? current.totalScore,
+
+        weightedScore: saved.weightedScore ?? current.weightedScore,
+
+      }));
+
+      return true;
+
+    } catch (err) {
+
+      setError(err?.response?.data?.error || 'Failed to save evaluation. Please try again.');
+
+      return false;
+
+    }
 
   }
 
@@ -661,7 +780,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  function submitEvaluation() {
+  async function submitEvaluation() {
 
     if (modelRequirements.length === 0) {
 
@@ -705,15 +824,17 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    persistSession(nextSession);
+    if (await persistSession(nextSession)) {
 
-    setSuccess('Evaluation submitted successfully.');
+      setSuccess('Evaluation submitted successfully.');
+
+    }
 
   }
 
 
 
-  function reopenEvaluation() {
+  async function reopenEvaluation() {
 
     const nextSession = {
 
@@ -729,9 +850,11 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    persistSession(nextSession);
+    if (await persistSession(nextSession)) {
 
-    setSuccess('Evaluation reopened for edits.');
+      setSuccess('Evaluation reopened for edits.');
+
+    }
 
   }
 
