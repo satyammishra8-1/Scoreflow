@@ -2,7 +2,6 @@ import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
-import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import './OrganizerDashboard.css';
 
 const API = axios.create({
@@ -217,7 +216,7 @@ function buildDashboardData(apiEvents) {
       const teams = readTeams(eventId);
       const judges = readJudges(eventId);
       const evaluation = getEvaluationStats(
-        readSavedEvaluationSessions(eventId),
+        eventEvaluationsMap[eventId] || [],
         judges,
       );
 
@@ -267,9 +266,7 @@ function buildDashboardData(apiEvents) {
 
   if (activeEvent) {
     judges = readJudges(activeEvent.id).map((judge) => {
-      const sessions = readSavedEvaluationSessions(
-        activeEvent.id,
-      );
+      const sessions = eventEvaluationsMap[activeEvent.id] || [];
 
       const judgeId = getJudgeId(judge);
 
@@ -502,6 +499,7 @@ function OrganizerDashboard() {
   const [activeJudges, setActiveJudges] = useState([]);
   const [isLoadingActiveData, setIsLoadingActiveData] = useState(false);
   const [activeDataError, setActiveDataError] = useState('');
+  const [eventEvaluationsMap, setEventEvaluationsMap] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -513,7 +511,21 @@ function OrganizerDashboard() {
         const response = await API.get('/events');
         if (cancelled) return;
         if (response.data && response.data.success) {
-          setApiEvents(Array.isArray(response.data.data) ? response.data.data : []);
+          const events = Array.isArray(response.data.data) ? response.data.data : [];
+        setApiEvents(events);
+
+        // Fetch evaluations for each event from the API (replaces localStorage)
+        const evaluationsMap = {};
+        await Promise.all(events.map(async (event) => {
+          const eventId = getEventId(event);
+          try {
+            const evalRes = await API.get(`/events/${encodeURIComponent(eventId)}/evaluations`);
+            evaluationsMap[eventId] = Array.isArray(evalRes.data?.data) ? evalRes.data.data : [];
+          } catch {
+            evaluationsMap[eventId] = [];
+          }
+        }));
+        if (!cancelled) setEventEvaluationsMap(evaluationsMap);
         } else {
           setEventsError('Unable to load events. Try again.');
         }
