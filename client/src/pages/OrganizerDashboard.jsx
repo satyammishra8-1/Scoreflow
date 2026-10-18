@@ -166,9 +166,7 @@ function getJudgeName(judge) {
   );
 }
 
-function getEvaluationStats(eventId, teams, judges) {
-  const sessions = readSavedEvaluationSessions(eventId);
-
+function getEvaluationStats(sessions, judges) {
   const completedSessions = sessions.filter(
     (session) => session.status === 'COMPLETED',
   );
@@ -219,8 +217,7 @@ function buildDashboardData(apiEvents) {
       const teams = readTeams(eventId);
       const judges = readJudges(eventId);
       const evaluation = getEvaluationStats(
-        eventId,
-        teams,
+        readSavedEvaluationSessions(eventId),
         judges,
       );
 
@@ -320,6 +317,74 @@ function buildDashboardData(apiEvents) {
     totalTeams,
     totalJudges,
   };
+}
+
+/**
+ * Calculates team results from submitted (COMPLETED) evaluations.
+ * Only evaluations with status COMPLETED affect results.
+ */
+function calculateTeamResults(evaluations, teams, judges) {
+  const completed = evaluations.filter(
+    (evaluation) => evaluation.status === 'COMPLETED',
+  );
+
+  const teamMap = {};
+  teams.forEach((team) => {
+    const id = String(team.teamId || team._id);
+    teamMap[id] = team;
+  });
+
+  const judgeMap = {};
+  judges.forEach((judge) => {
+    const id = String(judge.judgeId || judge._id);
+    judgeMap[id] = judge;
+  });
+
+  const byTeam = {};
+  completed.forEach((evaluation) => {
+    const teamId = String(evaluation.teamId);
+    if (!byTeam[teamId]) {
+      byTeam[teamId] = [];
+    }
+    byTeam[teamId].push(evaluation);
+  });
+
+  const results = Object.entries(byTeam).map(([teamId, evals]) => {
+    const team = teamMap[teamId] || {};
+    const judgeScores = {};
+    let totalScore = 0;
+
+    evals.forEach((evaluation) => {
+      const judgeId = String(evaluation.judgeId);
+      judgeScores[judgeId] = {
+        judgeName:
+          (judgeMap[judgeId] && judgeMap[judgeId].name) || 'Unknown Judge',
+        score: Number(evaluation.totalScore || 0),
+      };
+      totalScore += Number(evaluation.totalScore || 0);
+    });
+
+    return {
+      teamId,
+      teamName: team.teamName || team.name || 'Unknown Team',
+      teamNumber: team.teamNumber || team.number || '',
+      completedEvaluations: evals.length,
+      totalScore,
+      averageScore:
+        evals.length > 0
+          ? Math.round((totalScore / evals.length) * 100) / 100
+          : 0,
+      judgeScores,
+    };
+  });
+
+  // Rank by total score descending; ties share the same rank position order
+  results.sort((a, b) => b.totalScore - a.totalScore || a.teamName.localeCompare(b.teamName));
+  results.forEach((result, index) => {
+    result.rank = index + 1;
+  });
+
+  return results;
 }
 
 function ProgressRing({ value, label }) {
@@ -431,6 +496,13 @@ function OrganizerDashboard() {
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
   const [eventsError, setEventsError] = useState('');
 
+  // MongoDB-backed results data for the active event
+  const [activeEvaluations, setActiveEvaluations] = useState([]);
+  const [activeTeams, setActiveTeams] = useState([]);
+  const [activeJudges, setActiveJudges] = useState([]);
+  const [isLoadingActiveData, setIsLoadingActiveData] = useState(false);
+  const [activeDataError, setActiveDataError] = useState('');
+
   useEffect(() => {
     let cancelled = false;
 
@@ -459,6 +531,57 @@ function OrganizerDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadActiveEventData() {
+      if (!activeEvent) {
+        setActiveEvaluations([]);
+        setActiveTeams([]);
+        setActiveJudges([]);
+        setIsLoadingActiveData(false);
+        setActiveDataError('');
+        return;
+      }
+
+      const eventId = String(activeEvent.id);
+      setIsLoadingActiveData(true);
+      setActiveDataError('');
+
+      try {
+        const [evalRes, teamRes, judgeRes] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}/evaluations`),
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+        ]);
+
+        if (cancelled) return;
+
+        setActiveEvaluations(
+          Array.isArray(evalRes.data?.data) ? evalRes.data.data : [],
+        );
+        setActiveTeams(
+          Array.isArray(teamRes.data?.data) ? teamRes.data.data : [],
+        );
+        setActiveJudges(
+          Array.isArray(judgeRes.data?.data) ? judgeRes.data.data : [],
+        );
+      } catch {
+        if (cancelled) return;
+        setActiveDataError(
+          'Unable to load results data. Check the API connection and try again.',
+        );
+      } finally {
+        if (!cancelled) setIsLoadingActiveData(false);
+      }
+    }
+
+    loadActiveEventData();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent]);
+
   const dashboard = useMemo(
     () => buildDashboardData(apiEvents),
     [apiEvents],
@@ -475,11 +598,7 @@ function OrganizerDashboard() {
   } = dashboard;
 
   const activeEvaluation = activeEvent
-    ? getEvaluationStats(
-        activeEvent.id,
-        readTeams(activeEvent.id),
-        readJudges(activeEvent.id),
-      )
+    ? getEvaluationStats(activeEvaluations, activeJudges)
     : {
         progress: 0,
         completed: 0,
@@ -492,6 +611,11 @@ function OrganizerDashboard() {
 
   const judgeCompleted =
     activeEvaluation.completed;
+
+  const teamResults = useMemo(
+    () => calculateTeamResults(activeEvaluations, activeTeams, activeJudges),
+    [activeEvaluations, activeTeams, activeJudges],
+  );
 
   const judgeProgress =
     judgeTotal > 0
@@ -805,6 +929,92 @@ function OrganizerDashboard() {
                   )}
                 </article>
               </div>
+            </section>
+          )}
+
+          {activeEvent && (
+            <section className="dashboard-section results-section">
+              <div className="section-title-row">
+                <div>
+                  <h2>Team Results</h2>
+                  <p>
+                    Rankings calculated from submitted evaluations for{' '}
+                    <strong>{activeEvent.name}</strong>.
+                  </p>
+                </div>
+              </div>
+
+              {isLoadingActiveData ? (
+                <div className="dashboard-empty-state">
+                  <h3>Loading results...</h3>
+                  <p>
+                    Fetching evaluations, teams, and judges from the server.
+                  </p>
+                </div>
+              ) : activeDataError ? (
+                <div className="dashboard-empty-state">
+                  <h3>Unable to load results</h3>
+                  <p>{activeDataError}</p>
+                </div>
+              ) : teamResults.length > 0 ? (
+                <div className="results-table-wrap">
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Completed Evaluations</th>
+                        <th>Total Score</th>
+                        <th>Average Score</th>
+                        <th>Judge-wise Scores</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamResults.map((result) => (
+                        <tr key={result.teamId}>
+                          <td>
+                            <strong>#{result.rank}</strong>
+                          </td>
+                          <td>
+                            <strong>{result.teamName}</strong>{' '}
+                            {result.teamNumber && (
+                              <>
+                                <br />
+                                <small>Team #{result.teamNumber}</small>
+                              </>
+                            )}
+                          </td>
+                          <td>{result.completedEvaluations}</td>
+                          <td>{result.totalScore}</td>
+                          <td>{result.averageScore}</td>
+                          <td>
+                            {Object.values(result.judgeScores).length > 0 ? (
+                              Object.values(result.judgeScores).map(
+                                (js) => (
+                                  <div key={js.judgeName}>
+                                    {js.judgeName}: {js.score}
+                                  </div>
+                                ),
+                              )
+                            ) : (
+                              <em>No scores</em>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="dashboard-empty-state">
+                  <h3>No results yet</h3>
+                  <p>
+                    No completed evaluations have been submitted for this
+                    event. Results will appear here once judges complete their
+                    evaluations.
+                  </p>
+                </div>
+              )}
             </section>
           )}
 
