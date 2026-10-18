@@ -207,7 +207,8 @@ function getEvaluationStats(sessions, judges) {
   };
 }
 
-function buildDashboardData(apiEvents) {
+function buildDashboardData(apiEvents , eventEvaluationsMap ) {
+  const evaluationsMap = eventEvaluationsMap || {};
   const list = Array.isArray(apiEvents) ? apiEvents : [];
 
   const events = list
@@ -216,7 +217,7 @@ function buildDashboardData(apiEvents) {
       const teams = readTeams(eventId);
       const judges = readJudges(eventId);
       const evaluation = getEvaluationStats(
-        eventEvaluationsMap[eventId] || [],
+        evaluationsMap[eventId] || [],
         judges,
       );
 
@@ -543,6 +544,21 @@ function OrganizerDashboard() {
     };
   }, []);
 
+    const dashboard = useMemo(
+    () => buildDashboardData(apiEvents),
+    [apiEvents],
+  );
+
+  const {
+    events,
+    activeEvent,
+    judges,
+    totalEvents,
+    activeEvents,
+    totalTeams,
+    totalJudges,
+  } = dashboard;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -594,20 +610,7 @@ function OrganizerDashboard() {
     };
   }, [activeEvent]);
 
-  const dashboard = useMemo(
-    () => buildDashboardData(apiEvents),
-    [apiEvents],
-  );
 
-  const {
-    events,
-    activeEvent,
-    judges,
-    totalEvents,
-    activeEvents,
-    totalTeams,
-    totalJudges,
-  } = dashboard;
 
   const activeEvaluation = activeEvent
     ? getEvaluationStats(activeEvaluations, activeJudges)

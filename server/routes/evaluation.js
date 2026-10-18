@@ -1,31 +1,44 @@
 const express = require('express');
+
 const {
   getEvaluationConfiguration,
   createOrUpdateEvaluationConfiguration,
   getEvaluationConfigByEvent,
   createEvaluationConfig,
-  updateEvaluationConfig,
-  createEvaluation,
   getEvaluation,
+  createEvaluation,
   listEvaluationsByEvent,
   getEvaluationByJudgeTeam,
 } = require('../controllers/evaluationController');
 
 const router = express.Router();
 
-router.route('/events/:eventId/evaluation').get(getEvaluationConfiguration);
+// Evaluation configuration
+router
+  .route('/events/:eventId/evaluation')
+  .get(getEvaluationConfiguration)
+  .put(createOrUpdateEvaluationConfiguration);
 
-router.route('/events/:eventId/evaluation').put(createOrUpdateEvaluationConfiguration);
+router
+  .route('/events/:eventId/evaluation-config')
+  .get(getEvaluationConfigByEvent)
+  .put(createEvaluationConfig);
 
-// Event-scoped evaluation configuration API (persisted to MongoDB)
-router.route('/events/:eventId/evaluation-config').get(getEvaluationConfigByEvent);
+// Judge evaluations
+router
+  .route('/evaluations')
+  .post(createEvaluation);
 
-router.route('/events/:eventId/evaluation-config').put(createEvaluationConfig);
+router
+  .route('/evaluations/:evaluationId')
+  .get(getEvaluation);
 
-// Judge evaluation submissions (persisted to MongoDB)
-router.route('/evaluations').post(createEvaluation);
-router.route('/evaluations/:evaluationId').get(getEvaluation);
-router.route('/events/:eventId/evaluations').get(listEvaluationsByEvent);
-router.route('/events/:eventId/judges/:judgeId/teams/:teamId/evaluation').get(getEvaluationByJudgeTeam);
+router
+  .route('/events/:eventId/evaluations')
+  .get(listEvaluationsByEvent);
+
+router
+  .route('/events/:eventId/judges/:judgeId/teams/:teamId/evaluation')
+  .get(getEvaluationByJudgeTeam);
 
 module.exports = router;

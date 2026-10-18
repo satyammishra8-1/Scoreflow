@@ -592,3 +592,85 @@ exports.getEvaluationByJudgeTeam = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to retrieve the evaluation.' });
   }
 };
+
+
+/**
+ * POST /api/evaluations
+ * Create or update a judge evaluation.
+ */
+exports.createEvaluation = async (req, res) => {
+  try {
+    const { errors, normalized } = validateEvaluationPayload(req.body);
+
+    if (Object.keys(errors).length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'The evaluation payload is invalid.',
+        details: errors,
+      });
+    }
+
+    const evaluation = await Evaluation.findOneAndUpdate(
+      {
+        eventId: normalized.eventId,
+        judgeId: normalized.judgeId,
+        teamId: normalized.teamId,
+      },
+      normalized,
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: toEvaluationResponse(evaluation),
+    });
+  } catch (error) {
+    console.error('Failed to save evaluation:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to save the evaluation.',
+    });
+  }
+};
+
+/**
+ * GET /api/evaluations/:evaluationId
+ */
+exports.getEvaluation = async (req, res) => {
+  try {
+    const { evaluationId } = req.params;
+
+    if (!isValidObjectId(evaluationId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid evaluationId is required.',
+      });
+    }
+
+    const evaluation = await Evaluation.findById(evaluationId).lean();
+
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        error: 'Evaluation not found.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: toEvaluationResponse(evaluation),
+    });
+  } catch (error) {
+    console.error('Failed to get evaluation:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve the evaluation.',
+    });
+  }
+};
