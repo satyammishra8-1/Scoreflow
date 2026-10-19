@@ -103,8 +103,10 @@ export function buildModelRequirements({
       break;
     }
     case 'ranking-voting': {
-      const rank = Number(scores.rank);
-      requirements.push({ id: 'rank', label: 'Team Rank', done: Number.isInteger(rank) && rank >= 1 });
+      if (config?.rankingVoting?.ranking !== false) {
+        const rank = Number(scores.rank);
+        requirements.push({ id: 'rank', label: 'Team Rank', done: Number.isInteger(rank) && rank >= 1 });
+      }
       if (isFeedbackRequired(model, config)) {
         requirements.push({ id: 'feedback', label: 'Comment', done: feedbackDone });
       }

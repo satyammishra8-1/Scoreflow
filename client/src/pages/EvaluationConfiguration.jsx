@@ -1,831 +1,504 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
 import './EvaluationConfiguration.css';
-import axios from 'axios';
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-const MODEL_META = [
-  {
-    id: 'criteria-based',
-    label: 'Criteria-Based Scoring',
-    description: 'Score teams against predefined weighted criteria.',
-  },
-  {
-    id: 'open-holistic',
-    label: 'Open / Holistic Judging',
-    description: 'Overall judgement with a score range and review prompts.',
-  },
-  {
-    id: 'remote-async',
-    label: 'Remote / Asynchronous Review',
-    description: 'Judge reviews submitted materials and gives feedback.',
-  },
-  {
-    id: 'live-demo',
-    label: 'Live Demo & Presentation',
-    description: 'Evaluate a live demo, presentation, judge questions, and overall score.',
-  },
-  {
-    id: 'ranking-voting',
-    label: 'Ranking / Voting',
-    description: 'Judges rank teams instead of marking them.',
-  },
-  {
-    id: 'custom',
-    label: 'Custom Evaluation',
-    description: 'Compose your own evaluation structure with reusable fields.',
-  },
+const EVALUATION_TYPES = [
+  { id: 'criteria-based', label: 'Criteria Based' },
+  { id: 'open-holistic', label: 'Overall / Holistic' },
+  { id: 'live-demo', label: 'Live Demo' },
+  { id: 'ranking-voting', label: 'Ranking' },
+  { id: 'remote-async', label: 'Remote / Async' },
+  { id: 'custom', label: 'Custom' },
 ];
 
-const MODELS = MODEL_META.map((m) => m.id);
-
-const EMPTY_CRITERION = { name: '', description: '', maxMarks: '25', weight: '25' };
-const EMPTY_MATERIAL = { label: '', url: '' };
-const EMPTY_CUSTOM_FIELD = { type: 'criteria', label: '', required: false };
-function totalWeight(criteria = []) {
-  return criteria.reduce((sum, criterion) => sum + Number(criterion?.weight || 0), 0);
-}
-
-function CriteriaForm({
-  criteria = [],
-  onAddCriterion,
-  onUpdateCriterion,
-  onDeleteCriterion,
-  totalWeight: currentTotal,
-}) {
-  const [draft, setDraft] = useState(EMPTY_CRITERION);
-  const [editingId, setEditingId] = useState(null);
-
-  function applyDraft(nextDraft) {
-    setDraft(nextDraft);
-  }
-
-  function saveCriterion(event) {
-    event.preventDefault();
-    const name = draft.name.trim();
-    const description = draft.description.trim();
-    const maxMarks = Number(draft.maxMarks);
-    const weight = Number(draft.weight);
-
-    if (!name) {
-      alert('Criterion name is required.');
-      return;
-    }
-    if (!Number.isFinite(maxMarks) || maxMarks <= 0) {
-      alert('Maximum marks must be greater than zero.');
-      return;
-    }
-    if (!Number.isFinite(weight) || weight <= 0) {
-      alert('Weight must be greater than zero.');
-      return;
-    }
-
-    const nextCriteria = [...criteria];
-    const nextCriterion = {
-      id: editingId || `criterion-${Date.now()}`,
-      eventId: 'default',
-      name,
-      description,
-      maxMarks,
-      weight,
-    };
-
-    if (editingId) {
-      const index = nextCriteria.findIndex((c) => c.id === editingId);
-      if (index >= 0) nextCriteria[index] = nextCriterion;
-    } else {
-      nextCriteria.push(nextCriterion);
-    }
-
-    const nextTotal = nextCriteria.reduce((sum, c) => sum + Number(c.weight || 0), 0);
-    if (Math.abs(nextTotal - 100) > 0.01) {
-      alert(`Total weight must equal 100%. Current total: ${nextTotal}.`);
-      return;
-    }
-
-    if (onAddCriterion) onAddCriterion(nextCriteria);
-    else onUpdateCriterion(nextCriterion);
-    setDraft(EMPTY_CRITERION);
-    setEditingId(null);
-  }
-
-  function startEdit(criterion) {
-    setEditingId(criterion.id);
-    setDraft({
-      name: criterion.name,
-      description: criterion.description,
-      maxMarks: String(criterion.maxMarks),
-      weight: String(criterion.weight),
-    });
-  }
-
-  function deleteCriterionById(criterionId) {
-    const nextCriteria = criteria.filter((c) => c.id !== criterionId);
-    const nextTotal = nextCriteria.reduce((sum, c) => sum + Number(c.weight || 0), 0);
-    if (nextCriteria.length > 0 && Math.abs(nextTotal - 100) > 0.01) {
-      alert(`Total weight must equal 100%. Current total: ${nextTotal}.`);
-      return;
-    }
-    if (onDeleteCriterion) onDeleteCriterion(criterionId);
-    else onUpdateCriterion(nextCriteria);
-  }
-
-  return (
-    <div className="evaluation-criteria-form">
-      <div className="evaluation-criteria-form-grid">
-        <div className="evaluation-criteria-form-row">
-          <label className="event-field">
-            <span>Criterion Name <b aria-hidden="true">*</b></span>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(e) => applyDraft({ ...draft, name: e.target.value })}
-              placeholder="e.g. Innovation"
-            />
-          </label>
-          <label className="event-field">
-            <span>Description</span>
-            <input
-              type="text"
-              value={draft.description}
-              onChange={(e) => applyDraft({ ...draft, description: e.target.value })}
-              placeholder="Brief description"
-            />
-          </label>
-        </div>
-        <div className="evaluation-criteria-form-row">
-          <label className="event-field">
-            <span>Maximum Marks <b aria-hidden="true">*</b></span>
-            <input
-              type="number"
-              min="1"
-              value={draft.maxMarks}
-              onChange={(e) => applyDraft({ ...draft, maxMarks: e.target.value })}
-            />
-          </label>
-          <label className="event-field">
-            <span>Weight (%) <b aria-hidden="true">*</b></span>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={draft.weight}
-              onChange={(e) => applyDraft({ ...draft, weight: e.target.value })}
-            />
-          </label>
-        </div>
-        <div className="evaluation-criteria-form-actions">
-          <button type="button" className="judges-secondary-button" onClick={() => {
-            setEditingId(null);
-            setDraft(EMPTY_CRITERION);
-          }}>
-            Clear
-          </button>
-          <button type="button" className="judges-primary-button" onClick={saveCriterion}>
-            {editingId ? 'Save Changes' : 'Add Criterion'}
-          </button>
-        </div>
-      </div>
-      <div className="evaluation-criteria-summary">
-        <div className="evaluation-criteria-total">
-          <span>Total Weight</span>
-          <strong>{currentTotal}%</strong>
-        </div>
-        <div className={`evaluation-criteria-weight-state ${currentTotal === 100 ? 'valid' : 'invalid'}`}>
-          {currentTotal === 100 ? 'Weight configuration is valid.' : 'Total weight must equal 100%.'}
-        </div>
-      </div>
-
-      <div className="evaluation-criteria-list">
-        {criteria.length === 0 ? (
-          <p className="judges-empty-message">No criteria configured yet.</p>
-        ) : (
-          criteria.map((criterion) => (
-            <article key={criterion.id} className="evaluation-criterion-item">
-              <div className="evaluation-criterion-main">
-                <strong>{criterion.name}</strong>
-                {criterion.description && <p>{criterion.description}</p>}
-                <div className="evaluation-criterion-meta">
-                  <span>{criterion.maxMarks} marks</span>
-                  <span>{criterion.weight}%</span>
-                </div>
-              </div>
-              <div className="evaluation-criterion-actions">
-                <button
-                  type="button"
-                  className="judges-view-button"
-                  onClick={() => startEdit(criterion)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="judges-assign-button"
-                  onClick={() => deleteCriterionById(criterion.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function OpenHolisticForm({ data = {}, onChange }) {
-  return (
-    <div className="evaluation-form-grid">
-      <label className="event-field">
-        <span>Minimum Score</span>
-        <input
-          type="number"
-          min="0"
-          value={data.scoreMin ?? ''}
-          onChange={(e) => onChange('openHolistic.scoreMin', e.target.value)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Maximum Score</span>
-        <input
-          type="number"
-          min="1"
-          value={data.scoreMax ?? ''}
-          onChange={(e) => onChange('openHolistic.scoreMax', e.target.value)}
-        />
-      </label>
-      <label className="event-field">
-        <span>GitHub / Project Review</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.githubReview)}
-          onChange={(e) => onChange('openHolistic.githubReview', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Overall Feedback</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.overallFeedback)}
-          onChange={(e) => onChange('openHolistic.overallFeedback', e.target.checked)}
-        />
-      </label>
-    </div>
-  );
-}
-
-function RemoteAsyncForm({ materials = [], onChange, onAddMaterial, onDeleteMaterial }) {
-  const [draft, setDraft] = useState(EMPTY_MATERIAL);
-
-  function applyDraft(nextDraft) {
-    setDraft(nextDraft);
-  }
-
-  function submitMaterial(event) {
-    event.preventDefault();
-    if (!draft.label.trim() || !draft.url.trim()) {
-      alert('Please enter a label and URL.');
-      return;
-    }
-    if (onAddMaterial) onAddMaterial([...materials, { label: draft.label.trim(), url: draft.url.trim() }]);
-    else onChange('remoteAsync.materials', materials.concat({ label: draft.label.trim(), url: draft.url.trim() }));
-    setDraft(EMPTY_MATERIAL);
-  }
-
-  return (
-    <div className="evaluation-criteria-form">
-      <div className="evaluation-criteria-form-row">
-        <label className="event-field">
-          <span>Material Label</span>
-          <input
-            type="text"
-            value={draft.label}
-            onChange={(e) => applyDraft({ ...draft, label: e.target.value })}
-            placeholder="e.g. GitHub"
-          />
-        </label>
-        <label className="event-field">
-          <span>URL / Link</span>
-          <input
-            type="text"
-            value={draft.url}
-            onChange={(e) => applyDraft({ ...draft, url: e.target.value })}
-            placeholder="https://..."
-          />
-        </label>
-        <button type="button" className="judges-primary-button" onClick={submitMaterial}>
-          Add Material
-        </button>
-      </div>
-      <div className="evaluation-criteria-list">
-        {materials.length === 0 ? (
-          <p className="judges-empty-message">No materials configured. Add a GitHub link, demo video, documentation, or project description.</p>
-        ) : (
-          materials.map((material, index) => (
-            <div key={index} className="evaluation-criterion-item">
-              <div className="evaluation-criterion-main">
-                <strong>{material.label || `Material ${index + 1}`}</strong>
-                <a href={material.url} target="_blank" rel="noreferrer">{material.url}</a>
-              </div>
-              <div className="evaluation-criterion-actions">
-                <button
-                  type="button"
-                  className="judges-assign-button"
-                  onClick={() =>
-                    onDeleteMaterial
-                      ? onDeleteMaterial(index)
-                      : onChange('remoteAsync.materials', materials.filter((_, i) => i !== index))
-                  }
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LiveDemoForm({ data = {}, onChange, onAddCriterion, onUpdateCriterion, onDeleteCriterion, totalWeight: currentTotal }) {
-  return (
-    <div className="evaluation-form-grid">
-      <label className="event-field">
-        <span>Live Demo</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.demoEvaluation)}
-          onChange={(e) => onChange('liveDemo.demoEvaluation', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Presentation</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.presentationEvaluation)}
-          onChange={(e) => onChange('liveDemo.presentationEvaluation', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Judge Questions</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.judgeQuestions)}
-          onChange={(e) => onChange('liveDemo.judgeQuestions', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Overall Score / Feedback</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.overallScoreFeedback)}
-          onChange={(e) => onChange('liveDemo.overallScoreFeedback', e.target.checked)}
-        />
-      </label>
-      <div className="evaluation-criteria-form" style={{ marginTop: '24px' }}>
-        <CriteriaForm
-          criteria={data.criteria || []}
-          onAddCriterion={onAddCriterion}
-          onUpdateCriterion={onUpdateCriterion}
-          onDeleteCriterion={onDeleteCriterion}
-          totalWeight={currentTotal}
-        />
-      </div>
-    </div>
-  );
-}
-
-function RankingForm({ data = {}, onChange }) {
-  return (
-    <div className="evaluation-form-grid">
-      <label className="event-field">
-        <span>Enable Ranking</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.ranking)}
-          onChange={(e) => onChange('rankingVoting.ranking', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Allow Judge Comments</span>
-        <input
-          type="checkbox"
-          checked={Boolean(data.comments)}
-          onChange={(e) => onChange('rankingVoting.comments', e.target.checked)}
-        />
-      </label>
-      <label className="event-field">
-        <span>Rank Calculation</span>
-        <select
-          value={data.rankCalculation || 'total'}
-          onChange={(e) => onChange('rankingVoting.rankCalculation', e.target.value)}
-        >
-          <option value="total">Total</option>
-          <option value="average">Average</option>
-          <option value="points">Points</option>
-          <option value="composite">Composite</option>
-        </select>
-      </label>
-    </div>
-  );
-}
-
-function CustomForm({ fields = [], onChange, onAddField, onDeleteField }) {
-  const [draft, setDraft] = useState(EMPTY_CUSTOM_FIELD);
-
-  function applyDraft(nextDraft) {
-    setDraft(nextDraft);
-  }
-
-  function submitField(event) {
-    event.preventDefault();
-    if (!draft.label.trim()) {
-      alert('Please enter a label for the custom field.');
-      return;
-    }
-    if (onAddField) onAddField([...fields, { type: draft.type, label: draft.label.trim(), required: draft.required }]);
-    else onChange('custom.fields', fields.concat({ type: draft.type, label: draft.label.trim(), required: draft.required }));
-    setDraft(EMPTY_CUSTOM_FIELD);
-  }
-
-  return (
-    <div className="evaluation-criteria-form">
-      <div className="evaluation-criteria-form-row">
-        <label className="event-field">
-          <span>Field Type</span>
-          <select
-            value={draft.type}
-            onChange={(e) => applyDraft({ ...draft, type: e.target.value })}
-          >
-            <option value="criteria">Criteria</option>
-            <option value="marks">Marks</option>
-            <option value="weight">Weight</option>
-            <option value="question">Question</option>
-            <option value="material">Material Link</option>
-            <option value="feedback">Feedback</option>
-          </select>
-        </label>
-        <label className="event-field">
-          <span>Label</span>
-          <input
-            type="text"
-            value={draft.label}
-            onChange={(e) => applyDraft({ ...draft, label: e.target.value })}
-            placeholder="e.g. Technical Depth"
-          />
-        </label>
-        <label className="event-field">
-          <span>Required</span>
-          <input
-            type="checkbox"
-            checked={draft.required}
-            onChange={(e) => applyDraft({ ...draft, required: e.target.checked })}
-          />
-        </label>
-        <button type="button" className="judges-primary-button" onClick={submitField}>
-          Add Field
-        </button>
-      </div>
-      <div className="evaluation-criteria-list">
-        {fields.length === 0 ? (
-          <p className="judges-empty-message">No custom fields configured yet.</p>
-        ) : (
-          fields.map((field, index) => (
-            <div key={index} className="evaluation-criterion-item">
-              <div className="evaluation-criterion-main">
-                <strong>{field.label || `Field ${index + 1}`}</strong>
-                <span className="evaluation-criterion-meta">{field.type}</span>
-              </div>
-              <div className="evaluation-criterion-actions">
-                <button
-                  type="button"
-                  className="judges-assign-button"
-                  onClick={() =>
-                    onDeleteField
-                      ? onDeleteField(index)
-                      : onChange('custom.fields', fields.filter((_, i) => i !== index))
-                  }
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function addCriterion(criteria) {
-  setModelConfig((current) => ({ ...current, criteriaBased: { criteria } }));
-}
-
-function updateCriterion(criterion) {
-  setModelConfig((current) => ({
-    ...current,
-    criteriaBased: {
-      criteria: current.criteriaBased?.criteria
-        ? current.criteriaBased.criteria.map((c) => (c.id === criterion.id ? criterion : c))
-        : [criterion],
+const MATERIAL_TYPES = ['GitHub', 'Demo Video', 'Documentation', 'Project Link', 'Other Link'];
+const EMPTY_CONFIG = {
+  'criteria-based': { criteriaBased: { criteria: [] } },
+  'open-holistic': {
+    openHolistic: {
+      scoreMin: 0,
+      scoreMax: 100,
+      githubReview: false,
+      projectReview: false,
+      overallFeedback: true,
     },
-  }));
-}
-
-function deleteCriterion(criterionId) {
-  setModelConfig((current) => ({
-    ...current,
-    criteriaBased: {
-      criteria: current.criteriaBased?.criteria
-        ? current.criteriaBased.criteria.filter((c) => c.id !== criterionId)
-        : [],
-    },
-  }));
-}
-
-function addMaterial(materials) {
-  setModelConfig((current) => ({ ...current, remoteAsync: { materials } }));
-}
-
-function deleteMaterial(index) {
-  setModelConfig((current) => ({
-    ...current,
-    remoteAsync: {
-      materials: current.remoteAsync?.materials
-        ? current.remoteAsync.materials.filter((_, i) => i !== index)
-        : [],
-    },
-  }));
-}
-
-function addCustomField(fields) {
-  setModelConfig((current) => ({ ...current, custom: { fields } }));
-}
-
-function deleteCustomField(index) {
-  setModelConfig((current) => ({
-    ...current,
-    custom: {
-      fields: current.custom?.fields
-        ? current.custom.fields.filter((_, i) => i !== index)
-        : [],
-    },
-  }));
-}
-
-function mergeModelConfig(model, data) {
-  if (!data) return {};
-  const merged = {};
-  if (model === 'criteria-based') {
-    merged.criteriaBased = data.criteriaBased || { criteria: [] };
-  } else if (model === 'open-holistic') {
-    merged.openHolistic = data.openHolistic || {};
-  } else if (model === 'remote-async') {
-    merged.remoteAsync = data.remoteAsync || { materials: [] };
-  } else if (model === 'live-demo') {
-    merged.liveDemo = data.liveDemo || {
+  },
+  'live-demo': {
+    liveDemo: {
       demoEvaluation: true,
       presentationEvaluation: true,
       judgeQuestions: true,
       overallScoreFeedback: true,
       criteria: [],
+    },
+  },
+  'ranking-voting': { rankingVoting: { ranking: true, comments: true, rankCalculation: 'total' } },
+  'remote-async': { remoteAsync: { materials: [] } },
+  custom: { custom: { fields: [] } },
+};
+
+function toEditorCriteria(criteria, prefix) {
+  if (!Array.isArray(criteria)) return [];
+  return criteria.map((criterion, index) => ({
+    name: typeof criterion?.name === 'string' ? criterion.name : '',
+    description: typeof criterion?.description === 'string' ? criterion.description : '',
+    maxMarks: String(criterion?.maxMarks ?? ''),
+    weight: String(criterion?.weight ?? ''),
+    editorId: String(criterion?._id || criterion?.id || `${prefix}-${index}`),
+  }));
+}
+
+function normalizeConfiguration(data) {
+  const defaults = structuredClone(EMPTY_CONFIG);
+  if (!data || !defaults[data.model]) return defaults;
+  const config = { ...defaults, [data.model]: { ...defaults[data.model] } };
+  if (data.model === 'criteria-based') {
+    config[data.model].criteriaBased = {
+      criteria: toEditorCriteria(data.criteriaBased?.criteria, data.model),
     };
-  } else if (model === 'ranking-voting') {
-    merged.rankingVoting = data.rankingVoting || { ranking: true, comments: true, rankCalculation: 'total' };
-  } else if (model === 'custom') {
-    merged.custom = data.custom || { fields: [] };
+  } else if (data.model === 'live-demo') {
+    config[data.model].liveDemo = {
+      ...defaults[data.model].liveDemo,
+      ...(data.liveDemo || {}),
+      criteria: toEditorCriteria(data.liveDemo?.criteria, data.model),
+    };
+  } else if (data.model === 'open-holistic') {
+    config[data.model].openHolistic = { ...defaults[data.model].openHolistic, ...(data.openHolistic || {}) };
+  } else if (data.model === 'ranking-voting') {
+    config[data.model].rankingVoting = { ...defaults[data.model].rankingVoting, ...(data.rankingVoting || {}) };
+  } else if (data.model === 'remote-async') {
+    config[data.model].remoteAsync = { materials: Array.isArray(data.remoteAsync?.materials) ? data.remoteAsync.materials : [] };
+  } else if (data.model === 'custom') {
+    config[data.model].custom = {
+      fields: Array.isArray(data.custom?.fields)
+        ? data.custom.fields.map((field) => ({
+          ...field,
+          type: ['criteria', 'question', 'material', 'feedback'].includes(field.type) ? field.type : 'criteria',
+        }))
+        : [],
+    };
   }
-  return merged;
+  return config;
+}
+
+function criteriaForApi(criteria) {
+  return criteria.map(({ name, description, maxMarks, weight }) => ({
+    name: name.trim(),
+    description: description.trim(),
+    maxMarks: Number(maxMarks),
+    weight: Number(weight),
+  }));
+}
+
+function validateCriteria(criteria, required = true) {
+  if (required && criteria.length === 0) return 'Add at least one criterion.';
+  const names = new Set();
+  for (const criterion of criteria) {
+    const name = criterion.name.trim();
+    const maxMarks = Number(criterion.maxMarks);
+    const weight = Number(criterion.weight);
+    if (!name) return 'Every criterion needs a name.';
+    if (names.has(name.toLocaleLowerCase())) return 'Criterion names must be unique.';
+    names.add(name.toLocaleLowerCase());
+    if (!Number.isFinite(maxMarks) || maxMarks <= 0) return `Enter maximum marks greater than zero for “${name}”.`;
+    if (criterion.weight === '' || !Number.isFinite(weight) || weight < 0) return `Enter a weight of 0% or more for “${name}”.`;
+  }
+  if (criteria.length > 0) {
+    const weight = criteria.reduce((sum, criterion) => sum + Number(criterion.weight), 0);
+    if (Math.abs(weight - 100) > 0.01) return `Criterion weights must total 100%. Current total: ${weight}%.`;
+  }
+  return '';
+}
+
+function getConfigurationError(model, config, liveCriteriaEnabled) {
+  if (model === 'criteria-based') {
+    return validateCriteria(config['criteria-based'].criteriaBased.criteria);
+  }
+  if (model === 'open-holistic') {
+    const { scoreMin, scoreMax } = config['open-holistic'].openHolistic;
+    if (!Number.isFinite(Number(scoreMin)) || Number(scoreMin) < 0) return 'Minimum score must be zero or higher.';
+    if (!Number.isFinite(Number(scoreMax)) || Number(scoreMax) <= Number(scoreMin)) return 'Maximum score must be greater than the minimum score.';
+  }
+  if (model === 'live-demo') {
+    const live = config['live-demo'].liveDemo;
+    const hasSection = live.demoEvaluation || live.presentationEvaluation || live.judgeQuestions || live.overallScoreFeedback || liveCriteriaEnabled;
+    if (!hasSection) return 'Enable at least one live demo section.';
+    if (liveCriteriaEnabled) return validateCriteria(live.criteria);
+  }
+  if (model === 'remote-async') {
+    const materials = config['remote-async'].remoteAsync.materials;
+    if (materials.length === 0) return 'Add at least one material for judges to review.';
+    if (materials.some((material) => !material.label?.trim() || !material.url?.trim())) return 'Each material needs a label and link.';
+  }
+  if (model === 'ranking-voting') {
+    const ranking = config['ranking-voting'].rankingVoting;
+    if (!ranking.ranking && !ranking.comments) return 'Enable ranking, comments, or both.';
+  }
+  if (model === 'custom') {
+    const fields = config.custom.custom.fields;
+    if (fields.length === 0) return 'Add at least one evaluation field.';
+    if (fields.some((field) => !field.label?.trim())) return 'Every custom field needs a label.';
+  }
+  return '';
+}
+
+function CriterionEditor({ criteria, onChange }) {
+  const [draft, setDraft] = useState({ name: '', description: '', maxMarks: '', weight: '' });
+  const [editingId, setEditingId] = useState('');
+  const [error, setError] = useState('');
+  const weightTotal = criteria.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+
+  function submit(event) {
+    event.preventDefault();
+    const name = draft.name.trim();
+    const maxMarks = Number(draft.maxMarks);
+    const weight = Number(draft.weight);
+    if (!name) return setError('Enter a criterion name.');
+    if (!Number.isFinite(maxMarks) || maxMarks <= 0) return setError('Maximum marks must be greater than zero.');
+    if (draft.weight === '' || !Number.isFinite(weight) || weight < 0) return setError('Weight must be zero or greater.');
+    const duplicate = criteria.some((item) => item.editorId !== editingId && item.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (duplicate) return setError('Criterion names must be unique.');
+
+    const next = { ...draft, name, maxMarks: String(maxMarks), weight: String(weight), editorId: editingId || `criterion-${Date.now()}-${Math.random()}` };
+    onChange(editingId
+      ? criteria.map((item) => item.editorId === editingId ? next : item)
+      : [...criteria, next]);
+    setDraft({ name: '', description: '', maxMarks: '', weight: '' });
+    setEditingId('');
+    setError('');
+  }
+
+  function edit(criterion) {
+    setEditingId(criterion.editorId);
+    setDraft({ name: criterion.name, description: criterion.description, maxMarks: criterion.maxMarks, weight: criterion.weight });
+    setError('');
+  }
+
+  function remove(editorId) {
+    onChange(criteria.filter((criterion) => criterion.editorId !== editorId));
+    if (editingId === editorId) {
+      setEditingId('');
+      setDraft({ name: '', description: '', maxMarks: '', weight: '' });
+    }
+  }
+
+  return (
+    <div className="evaluation-simple-section">
+      <div className="evaluation-simple-section-heading">
+        <div><h3>Evaluation Criteria</h3><p>Add the scores judges will use for each team.</p></div>
+      </div>
+      <form className="evaluation-criterion-editor" onSubmit={submit}>
+        <label className="evaluation-simple-field">
+          <span>Name <b>*</b></span>
+          <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="e.g. Technical Implementation" required />
+        </label>
+        <label className="evaluation-simple-field">
+          <span>Description <small>(optional)</small></span>
+          <input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="What should judges look for?" />
+        </label>
+        <label className="evaluation-simple-field">
+          <span>Maximum Marks <b>*</b></span>
+          <input type="number" min="0.01" step="any" value={draft.maxMarks} onChange={(event) => setDraft({ ...draft, maxMarks: event.target.value })} required />
+        </label>
+        <label className="evaluation-simple-field">
+          <span>Weight (%) <b>*</b></span>
+          <input type="number" min="0" step="any" value={draft.weight} onChange={(event) => setDraft({ ...draft, weight: event.target.value })} required />
+        </label>
+        <div className="evaluation-criterion-editor-actions">
+          {editingId && <button className="evaluation-secondary-button" type="button" onClick={() => { setEditingId(''); setDraft({ name: '', description: '', maxMarks: '', weight: '' }); setError(''); }}>Cancel edit</button>}
+          <button className="evaluation-secondary-button" type="submit">{editingId ? 'Save Criterion' : '+ Add Criterion'}</button>
+        </div>
+      </form>
+      {error && <p className="evaluation-inline-error" role="alert">{error}</p>}
+      {criteria.map((criterion) => (
+        <article className="evaluation-simple-list-item" key={criterion.editorId}>
+          <div><strong>{criterion.name}</strong>{criterion.description && <p>{criterion.description}</p>}<small>Maximum {criterion.maxMarks} marks · Weight {criterion.weight}%</small></div>
+          <div className="evaluation-simple-item-actions">
+            <button type="button" onClick={() => edit(criterion)}>Edit</button>
+            <button type="button" onClick={() => remove(criterion.editorId)}>Remove</button>
+          </div>
+        </article>
+      ))}
+      <div className={`evaluation-weight-total${Math.abs(weightTotal - 100) < 0.01 ? ' valid' : ''}`}>
+        {Math.abs(weightTotal - 100) < 0.01
+          ? <>Total Weight: {weightTotal}% ✓</>
+          : weightTotal < 100
+            ? <>Total Weight: {weightTotal}% — Add {Number((100 - weightTotal).toFixed(2))}%</>
+            : <>Total Weight: {weightTotal}% — Reduce by {Number((weightTotal - 100).toFixed(2))}%</>}
+      </div>
+      {criteria.length === 0 && <p className="evaluation-simple-hint">Add one or more criteria. Weights must total 100% before saving.</p>}
+    </div>
+  );
+}
+
+function Toggle({ label, checked, onChange }) {
+  return (
+    <label className="evaluation-toggle-row">
+      <input type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
 }
 
 function EvaluationConfiguration() {
-  const { eventId = 'default' } = useParams();
-  return <EvaluationConfigurationPage key={eventId} eventId={eventId} />;
-}
-
-function EvaluationConfigurationPage({ eventId }) {
-  const [configError, setConfigError] = useState('');
+  const { eventId } = useParams();
+  const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
-
+  const [pageError, setPageError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-
-  const [modelConfig, setModelConfig] = useState({});
+  const [selectedModel, setSelectedModel] = useState('criteria-based');
+  const [configuration, setConfiguration] = useState(() => structuredClone(EMPTY_CONFIG));
+  const [liveCriteriaEnabled, setLiveCriteriaEnabled] = useState(false);
+  const [materialType, setMaterialType] = useState(MATERIAL_TYPES[0]);
+  const [materialUrl, setMaterialUrl] = useState('');
+  const [otherMaterialLabel, setOtherMaterialLabel] = useState('');
+  const [customDraft, setCustomDraft] = useState({ label: '', type: 'criteria', required: true });
+  const [customError, setCustomError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    async function loadConfig() {
+    async function load() {
+      if (!eventId) {
+        setPageError('An event is required to configure evaluation.');
+        setLoading(false);
+        return;
+      }
       try {
-        const response = await API.get(
-          `/events/${encodeURIComponent(eventId)}/evaluation-config`,
-        );
+        const [eventResponse, configResponse] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}`),
+          API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`),
+        ]);
         if (cancelled) return;
-        if (response.data.success) {
-          const savedConfig = response.data.data;
-          if (savedConfig?.model) {
-            setSelectedModel(savedConfig.model);
-            setModelConfig(mergeModelConfig(savedConfig.model, savedConfig));
-          } else {
-            setSelectedModel(MODELS[0]);
-            setModelConfig({});
-          }
-        } else {
-          setConfigError(response.data.error || 'Failed to load evaluation configuration.');
+        setEvent(eventResponse.data?.data || null);
+        const savedConfig = configResponse.data?.data;
+        if (savedConfig?.model && EMPTY_CONFIG[savedConfig.model]) {
+          setSelectedModel(savedConfig.model);
+          setConfiguration(normalizeConfiguration(savedConfig));
+          setLiveCriteriaEnabled(savedConfig.model === 'live-demo' && (savedConfig.liveDemo?.criteria?.length || 0) > 0);
+          setSaved(true);
         }
-      } catch {
-        if (!cancelled) setConfigError('Unable to reach the evaluation API. Check the server and try again.');
+      } catch (error) {
+        if (!cancelled) {
+          setPageError(error?.response?.data?.error || 'Unable to load this event and its evaluation configuration.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-
-    loadConfig();
+    load();
     return () => { cancelled = true; };
   }, [eventId]);
 
-  function updateModelField(field, value) {
-    setModelConfig((current) => ({ ...current, [field]: value }));
+  const criteriaBased = configuration['criteria-based'].criteriaBased.criteria;
+  const liveDemo = configuration['live-demo'].liveDemo;
+  const liveCriteria = liveDemo.criteria;
+  const selectedLabel = useMemo(() => EVALUATION_TYPES.find((type) => type.id === selectedModel)?.label || 'Evaluation', [selectedModel]);
+
+  function updateSection(model, section, field, value) {
+    setConfiguration((current) => ({
+      ...current,
+      [model]: { ...current[model], [section]: { ...current[model][section], [field]: value } },
+    }));
+    setSaved(false);
+    setSaveError('');
   }
 
-  async function handleSave() {
-    const payload = {
-      model: selectedModel,
-      ...modelConfig,
-    };
+  function updateCriteria(model, criteria) {
+    const section = model === 'criteria-based' ? 'criteriaBased' : 'liveDemo';
+    updateSection(model, section, 'criteria', criteria);
+  }
 
+  function addMaterial(event) {
+    event.preventDefault();
+    const label = materialType === 'Other Link' ? otherMaterialLabel.trim() : materialType;
+    if (!label || !materialUrl.trim()) return setSaveError('Enter a material name and link.');
+    const materials = [...configuration['remote-async'].remoteAsync.materials, { label, url: materialUrl.trim() }];
+    updateSection('remote-async', 'remoteAsync', 'materials', materials);
+    setMaterialUrl('');
+    setOtherMaterialLabel('');
+    setMaterialType(MATERIAL_TYPES[0]);
+  }
+
+  function addCustomField(event) {
+    event.preventDefault();
+    if (!customDraft.label.trim()) return setCustomError('Enter a field label.');
+    const fields = [...configuration.custom.custom.fields, { ...customDraft, label: customDraft.label.trim() }];
+    updateSection('custom', 'custom', 'fields', fields);
+    setCustomDraft({ label: '', type: 'criteria', required: true });
+    setCustomError('');
+  }
+
+  function validateSelectedConfiguration() {
+    const validationConfig = structuredClone(configuration);
+    validationConfig['criteria-based'].criteriaBased.criteria = criteriaForApi(criteriaBased);
+    validationConfig['live-demo'].liveDemo.criteria = liveCriteriaEnabled ? criteriaForApi(liveCriteria) : [];
+    return getConfigurationError(selectedModel, validationConfig, liveCriteriaEnabled);
+  }
+
+  async function saveConfiguration() {
+    const error = validateSelectedConfiguration();
+    if (error) {
+      setSaveError(error);
+      setSaved(false);
+      return;
+    }
+
+    const modelConfig = structuredClone(configuration[selectedModel]);
+    if (selectedModel === 'criteria-based') modelConfig.criteriaBased.criteria = criteriaForApi(criteriaBased);
+    if (selectedModel === 'live-demo') modelConfig.liveDemo.criteria = liveCriteriaEnabled ? criteriaForApi(liveCriteria) : [];
+    if (selectedModel === 'ranking-voting') modelConfig.rankingVoting.rankCalculation ||= 'total';
+
+    setSaving(true);
+    setSaveError('');
     try {
-      const response = await API.put(
-        `/events/${encodeURIComponent(eventId)}/evaluation-config`,
-        payload,
-      );
-      if (response.data.success) {
-        setSaved(true);
-      } else {
-        alert(response.data.error || 'Failed to save the evaluation configuration.');
-      }
-    } catch {
-      alert('Unable to save the evaluation configuration. Check the server and try again.');
+      const response = await API.put(`/events/${encodeURIComponent(eventId)}/evaluation-config`, {
+        model: selectedModel,
+        ...modelConfig,
+      });
+      if (!response.data?.success) throw new Error(response.data?.error || 'Unable to save evaluation configuration.');
+      setSaved(true);
+    } catch (error) {
+      setSaved(false);
+      setSaveError(error?.response?.data?.error || error.message || 'Unable to save evaluation configuration. Check the server and try again.');
+    } finally {
+      setSaving(false);
     }
   }
 
-  function handleCancel() {
+  function selectModel(model) {
+    setSelectedModel(model);
     setSaved(false);
-    setConfigError('');
+    setSaveError('');
   }
 
   if (loading) {
-    return (
-      <OrganizerLayout
-        activeKey="criteria"
-        eventId={eventId}
-        wrapperClassName="evaluation-criteria"
-        contentClassName="evaluation-criteria"
-        userName="Admin"
-        userRole="Organizer"
-        userInitial="A"
-      >
-        <div className="evaluation-criteria-main">
-          <div className="evaluation-center-spinner">Analyzing configuration...</div>
-        </div>
-      </OrganizerLayout>
-    );
+    return <OrganizerLayout activeKey="criteria" eventId={eventId}><div className="evaluation-wizard"><p role="status">Loading event evaluation…</p></div></OrganizerLayout>;
   }
 
   return (
-    <OrganizerLayout
-      activeKey="criteria"
-      eventId={eventId}
-      wrapperClassName="evaluation-criteria"
-      contentClassName="evaluation-criteria"
-      userName="Admin"
-      userRole="Organizer"
-      userInitial="A"
-    >
-      <div className="evaluation-criteria-main">
-        <div className="evaluation-criteria-header">
-          <Link className="event-back-link" to={`/organizer/events/${eventId}`}>
-            &larr; Back to Event
-          </Link>
-          <div>
-            <h1>Configure Evaluation</h1>
-            <p>Select a model and configure the evaluation for this event.</p>
-          </div>
-        </div>
+    <OrganizerLayout activeKey="criteria" eventId={eventId}>
+      <main className="evaluation-wizard">
+        <Link className="evaluation-wizard-back" to={`/organizer/events/${eventId}`}>&larr; Back to Event</Link>
+        <header className="evaluation-wizard-header">
+          <p>{event?.name || 'Event'}</p>
+          <h1>Evaluation</h1>
+          <span>Choose how judges will evaluate teams.</span>
+        </header>
 
-        <section className="evaluation-criteria-card evaluation-model-picker">
-          <div className="evaluation-model-grid">
-            {MODEL_META.map((model) => (
-              <button
-                key={model.id}
-                type="button"
-                className={`evaluation-model-card ${selectedModel === model.id ? 'evaluation-model-card-active' : ''}`}
-                onClick={() => setSelectedModel(model.id)}
-              >
-                <span className="evaluation-model-card-icon" aria-hidden="true">
-                  {model.id === 'criteria-based' && '&#9881;'}
-                  {model.id === 'open-holistic' && '&#9780;'}
-                  {model.id === 'remote-async' && '&#x1F50D;'}
-                  {model.id === 'live-demo' && '&#x1F3A8;'}
-                  {model.id === 'ranking-voting' && '&#x1F465;'}
-                  {model.id === 'custom' && '&#x1F4DD;'}
-                </span>
-                <span className="evaluation-model-card-label">{model.label}</span>
-                <span className="evaluation-model-card-desc">{model.description}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        {pageError ? (
+          <p className="evaluation-wizard-error" role="alert">{pageError}</p>
+        ) : (
+          <>
+            <label className="evaluation-type-select">
+              <span>Evaluation Type</span>
+              <select value={selectedModel} onChange={(event) => selectModel(event.target.value)}>
+                {EVALUATION_TYPES.map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+              </select>
+            </label>
 
-        {configError && (
-          <p className="evaluation-feedback evaluation-feedback-error" role="alert">{configError}</p>
-        )}
-
-
-        {selectedModel && (
-          <section className="evaluation-criteria-card">
-            <h2 className="evaluation-section-title">{MODEL_META.find((m) => m.id === selectedModel)?.label}</h2>
-            <div className="evaluation-section-body">
+            <section className="evaluation-wizard-card" aria-label={`${selectedLabel} configuration`}>
               {selectedModel === 'criteria-based' && (
-                <CriteriaForm
-                  criteria={modelConfig.criteriaBased?.criteria || []}
-                  onAddCriterion={addCriterion}
-                  onUpdateCriterion={updateCriterion}
-                  onDeleteCriterion={deleteCriterion}
-                  totalWeight={totalWeight}
-                />
+                <CriterionEditor criteria={criteriaBased} onChange={(criteria) => updateCriteria('criteria-based', criteria)} />
               )}
-              {selectedModel === 'open-holistic' && (
-                <OpenHolisticForm
-                  data={modelConfig.openHolistic}
-                  onChange={updateModelField}
-                />
-              )}
-              {selectedModel === 'remote-async' && (
-                <RemoteAsyncForm
-                  materials={modelConfig.remoteAsync?.materials || []}
-                  onChange={updateModelField}
-                  onAddMaterial={addMaterial}
-                  onDeleteMaterial={deleteMaterial}
-                />
-              )}
-              {selectedModel === 'live-demo' && (
-                <LiveDemoForm
-                  data={modelConfig.liveDemo}
-                  onChange={updateModelField}
-                  onAddCriterion={addCriterion}
-                  onUpdateCriterion={updateCriterion}
-                  onDeleteCriterion={deleteCriterion}
-                  totalWeight={totalWeight}
-                />
-              )}
-              {selectedModel === 'ranking-voting' && (
-                <RankingForm
-                  data={modelConfig.rankingVoting}
-                  onChange={updateModelField}
-                />
-              )}
-              {selectedModel === 'custom' && (
-                <CustomForm
-                  fields={modelConfig.custom?.fields || []}
-                  onChange={updateModelField}
-                  onAddField={addCustomField}
-                  onDeleteField={deleteCustomField}
-                />
-              )}
-            </div>
-          </section>
-        )}
 
-        <div className="evaluation-criteria-actions">
-          <button
-            type="button"
-            className="judges-secondary-button"
-            onClick={handleCancel}
-            disabled={saved}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="judges-primary-button"
-            onClick={handleSave}
-            disabled={saved}
-          >
-            {saved ? 'Saved & Returning to Event' : 'Save Evaluation'}
-          </button>
-        </div>
-      </div>
+              {selectedModel === 'open-holistic' && (
+                <div className="evaluation-type-fields">
+                  <h2>Overall Score</h2>
+                  <div className="evaluation-number-fields">
+                    <label className="evaluation-simple-field"><span>Minimum Score</span><input type="number" min="0" value={configuration['open-holistic'].openHolistic.scoreMin} onChange={(event) => updateSection('open-holistic', 'openHolistic', 'scoreMin', event.target.value)} /></label>
+                    <label className="evaluation-simple-field"><span>Maximum Score</span><input type="number" min="1" value={configuration['open-holistic'].openHolistic.scoreMax} onChange={(event) => updateSection('open-holistic', 'openHolistic', 'scoreMax', event.target.value)} /></label>
+                  </div>
+                  <div className="evaluation-toggle-list">
+                    <Toggle label="Review GitHub" checked={configuration['open-holistic'].openHolistic.githubReview} onChange={(value) => updateSection('open-holistic', 'openHolistic', 'githubReview', value)} />
+                    <Toggle label="Review Project" checked={configuration['open-holistic'].openHolistic.projectReview} onChange={(value) => updateSection('open-holistic', 'openHolistic', 'projectReview', value)} />
+                    <Toggle label="Overall Feedback" checked={configuration['open-holistic'].openHolistic.overallFeedback} onChange={(value) => updateSection('open-holistic', 'openHolistic', 'overallFeedback', value)} />
+                  </div>
+                </div>
+              )}
+
+              {selectedModel === 'live-demo' && (
+                <div className="evaluation-type-fields">
+                  <div className="evaluation-toggle-list">
+                    <Toggle label="Demo" checked={liveDemo.demoEvaluation} onChange={(value) => updateSection('live-demo', 'liveDemo', 'demoEvaluation', value)} />
+                    <Toggle label="Presentation" checked={liveDemo.presentationEvaluation} onChange={(value) => updateSection('live-demo', 'liveDemo', 'presentationEvaluation', value)} />
+                    <Toggle label="Judge Questions" checked={liveDemo.judgeQuestions} onChange={(value) => updateSection('live-demo', 'liveDemo', 'judgeQuestions', value)} />
+                    <Toggle label="Overall Feedback" checked={liveDemo.overallScoreFeedback} onChange={(value) => updateSection('live-demo', 'liveDemo', 'overallScoreFeedback', value)} />
+                    <Toggle label="Include scoring criteria" checked={liveCriteriaEnabled} onChange={(value) => { setLiveCriteriaEnabled(value); setSaved(false); setSaveError(''); }} />
+                  </div>
+                  {liveCriteriaEnabled && <CriterionEditor criteria={liveCriteria} onChange={(criteria) => updateCriteria('live-demo', criteria)} />}
+                </div>
+              )}
+
+              {selectedModel === 'ranking-voting' && (
+                <div className="evaluation-type-fields">
+                  <div className="evaluation-toggle-list">
+                    <Toggle label="Ranking" checked={configuration['ranking-voting'].rankingVoting.ranking} onChange={(value) => updateSection('ranking-voting', 'rankingVoting', 'ranking', value)} />
+                    <Toggle label="Comments" checked={configuration['ranking-voting'].rankingVoting.comments} onChange={(value) => updateSection('ranking-voting', 'rankingVoting', 'comments', value)} />
+                  </div>
+                </div>
+              )}
+
+              {selectedModel === 'remote-async' && (
+                <div className="evaluation-type-fields">
+                  <h2>Materials for Judges</h2>
+                  <p className="evaluation-wizard-hint">Add the links judges should review for each team.</p>
+                  <form className="evaluation-material-editor" onSubmit={addMaterial}>
+                    <label className="evaluation-simple-field"><span>Material</span><select value={materialType} onChange={(event) => setMaterialType(event.target.value)}>{MATERIAL_TYPES.map((type) => <option key={type}>{type}</option>)}</select></label>
+                    {materialType === 'Other Link' && <label className="evaluation-simple-field"><span>Link Name</span><input value={otherMaterialLabel} onChange={(event) => setOtherMaterialLabel(event.target.value)} /></label>}
+                    <label className="evaluation-simple-field"><span>Link</span><input type="url" value={materialUrl} onChange={(event) => setMaterialUrl(event.target.value)} placeholder="https://…" /></label>
+                    <button className="evaluation-secondary-button" type="submit">+ Add Material</button>
+                  </form>
+                  {configuration['remote-async'].remoteAsync.materials.map((material, index) => (
+                    <article className="evaluation-simple-list-item" key={`${material.label}-${index}`}>
+                      <div><strong>{material.label}</strong><p>{material.url}</p></div>
+                      <button type="button" onClick={() => updateSection('remote-async', 'remoteAsync', 'materials', configuration['remote-async'].remoteAsync.materials.filter((_, i) => i !== index))}>Remove</button>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {selectedModel === 'custom' && (
+                <div className="evaluation-type-fields">
+                  <h2>Evaluation Fields</h2>
+                  <p className="evaluation-wizard-hint">Add the questions or scores judges should complete.</p>
+                  <form className="evaluation-custom-editor" onSubmit={addCustomField}>
+                    <label className="evaluation-simple-field"><span>Label</span><input value={customDraft.label} onChange={(event) => setCustomDraft({ ...customDraft, label: event.target.value })} placeholder="e.g. Technical Depth" /></label>
+                    <label className="evaluation-simple-field"><span>Field Type</span><select value={customDraft.type} onChange={(event) => setCustomDraft({ ...customDraft, type: event.target.value })}><option value="criteria">Score</option><option value="question">Question</option><option value="material">Review Link</option><option value="feedback">Feedback</option></select></label>
+                    <Toggle label="Required" checked={customDraft.required} onChange={(required) => setCustomDraft({ ...customDraft, required })} />
+                    <button className="evaluation-secondary-button" type="submit">+ Add Field</button>
+                  </form>
+                  {customError && <p className="evaluation-inline-error" role="alert">{customError}</p>}
+                  {configuration.custom.custom.fields.map((field, index) => (
+                    <article className="evaluation-simple-list-item" key={`${field.label}-${index}`}>
+                      <div><strong>{field.label}</strong><small>{field.type === 'criteria' ? 'Score' : field.type === 'material' ? 'Review Link' : field.type} · {field.required ? 'Required' : 'Optional'}</small></div>
+                      <button type="button" onClick={() => updateSection('custom', 'custom', 'fields', configuration.custom.custom.fields.filter((_, i) => i !== index))}>Remove</button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {saveError && <p className="evaluation-wizard-error" role="alert">{saveError}</p>}
+            {saved && <p className="evaluation-wizard-success" role="status">Evaluation settings saved for this event.</p>}
+            <footer className="evaluation-wizard-actions">
+              <Link className="evaluation-secondary-button" to={`/organizer/events/${eventId}`}>Cancel</Link>
+              <button className="evaluation-save-button" type="button" onClick={saveConfiguration} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Evaluation'}
+              </button>
+            </footer>
+          </>
+        )}
+      </main>
     </OrganizerLayout>
   );
 }
 
 export default EvaluationConfiguration;
-
-

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const criterionSchema = new mongoose.Schema({
   name: { type: String, trim: true },
   description: { type: String, trim: true },
-  maxMarks: { type: Number, min: 1 },
+  maxMarks: { type: Number, min: 0.000001 },
   weight: { type: Number, min: 0 },
 });
 

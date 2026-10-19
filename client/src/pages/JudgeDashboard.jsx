@@ -9,24 +9,17 @@ const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-function getTeamId(team) {
-  return String(team._id || team.teamId || team.id || team.number || team.teamNumber);
-}
+const MODEL_LABELS = {
+  'criteria-based': 'Criteria Based',
+  'open-holistic': 'Overall / Holistic',
+  'live-demo': 'Live Demo',
+  'ranking-voting': 'Ranking',
+  'remote-async': 'Remote / Async',
+  custom: 'Custom',
+};
 
-function toUiJudge(apiJudge) {
-  if (!apiJudge || typeof apiJudge !== 'object') return null;
-  return {
-    ...apiJudge,
-    id: String(apiJudge._id || apiJudge.judgeId || apiJudge.id || ''),
-    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds.map(String) : [],
-  };
-}
-
-function extractCriteria(config) {
-  if (!config) return [];
-  if (Array.isArray(config.criteriaBased?.criteria)) return config.criteriaBased.criteria;
-  if (Array.isArray(config.liveDemo?.criteria)) return config.liveDemo.criteria;
-  return [];
+function getId(value) {
+  return String(value?._id || value?.id || value?.teamId || value?.judgeId || '');
 }
 
 function safeExternalUrl(value) {
@@ -40,298 +33,135 @@ function safeExternalUrl(value) {
 }
 
 function JudgeDashboard() {
-  const { eventId = 'default', judgeId } = useParams();
-  return <JudgeDashboardEvent key={`${eventId}-${judgeId}`} eventId={eventId} judgeId={judgeId} />;
-}
-
-function JudgeDashboardEvent({ eventId, judgeId }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
-      return stored === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [judges, setJudges] = useState([]);
+  const { eventId, judgeId } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [event, setEvent] = useState(null);
-  const [judgesLoading, setJudgesLoading] = useState(true);
-  const [judgesError, setJudgesError] = useState('');
+  const [judge, setJudge] = useState(null);
+  const [evaluationType, setEvaluationType] = useState('');
   const [teams, setTeams] = useState([]);
-  const [teamsLoading, setTeamsLoading] = useState(true);
-  const [teamsError, setTeamsError] = useState('');
-  const [evaluationConfig, setEvaluationConfig] = useState(null);
-  const [configLoading, setConfigLoading] = useState(true);
-  const [configError, setConfigError] = useState('');
   const [evaluations, setEvaluations] = useState([]);
-  const [evaluationsLoading, setEvaluationsLoading] = useState(true);
-  const [evaluationsError, setEvaluationsError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadJudges() {
+    async function loadDashboard() {
       try {
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
-        if (!cancelled) {
-          const list = Array.isArray(response.data?.data) ? response.data.data : [];
-          setJudges(list.map(toUiJudge).filter(Boolean));
+        const [eventResponse, judgesResponse, teamsResponse, configResponse, evaluationsResponse] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}`),
+          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+          API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`),
+          API.get(`/events/${encodeURIComponent(eventId)}/evaluations`),
+        ]);
+        if (cancelled) return;
+
+        const currentEvent = eventResponse.data?.data;
+        const currentJudge = (Array.isArray(judgesResponse.data?.data) ? judgesResponse.data.data : [])
+          .find((item) => getId(item) === String(judgeId) && String(item.eventId) === String(eventId));
+        if (!currentJudge || !currentEvent) {
+          setError('This judge or event could not be found.');
+          return;
         }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err?.response?.data?.error;
-          setJudgesError(
-            typeof message === 'string' && message.trim()
-              ? message
-              : 'Unable to load judges. Please try again.',
-          );
-        }
+
+        const assignedIds = new Set((currentJudge.assignedTeamIds || []).map(String));
+        const assignedTeams = (Array.isArray(teamsResponse.data?.data) ? teamsResponse.data.data : [])
+          .filter((team) => String(team.eventId) === String(eventId) && assignedIds.has(getId(team)));
+
+        setEvent(currentEvent);
+        setJudge(currentJudge);
+        setEvaluationType(MODEL_LABELS[configResponse.data?.data?.model] || 'Not configured');
+        setTeams(assignedTeams);
+        setEvaluations(Array.isArray(evaluationsResponse.data?.data) ? evaluationsResponse.data.data : []);
+      } catch (requestError) {
+        if (!cancelled) setError(requestError?.response?.data?.error || 'Unable to load the judge dashboard.');
       } finally {
-        if (!cancelled) setJudgesLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
-    loadJudges();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    API.get(`/events/${encodeURIComponent(eventId)}`)
-      .then((response) => {
-        if (!cancelled) setEvent(response.data?.data || null);
-      })
-      .catch((err) => {
-        if (!cancelled) setJudgesError(err?.response?.data?.error || 'Unable to load this event.');
-      });
+    loadDashboard();
     return () => { cancelled = true; };
-  }, [eventId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadEvaluations() {
-      try {
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluations`);
-        if (!cancelled) setEvaluations(Array.isArray(response.data?.data) ? response.data.data : []);
-      } catch (error) {
-        if (!cancelled) setEvaluationsError(error?.response?.data?.error || 'Unable to load evaluation progress.');
-      } finally {
-        if (!cancelled) setEvaluationsLoading(false);
-      }
-    }
-    loadEvaluations();
-    return () => { cancelled = true; };
-  }, [eventId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadTeams() {
-      try {
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/teams`);
-        if (!cancelled) {
-          const list = Array.isArray(response.data?.data) ? response.data.data : [];
-          setTeams(
-            list.filter((team) => String(team.eventId) === String(eventId)).map((team) => ({
-              ...team,
-              id: String(team._id || team.teamId || team.id || ''),
-              number: team.teamNumber,
-              name: team.teamName,
-            })),
-          );
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err?.response?.data?.error;
-          setTeamsError(
-            typeof message === 'string' && message.trim()
-              ? message
-              : 'Unable to load teams. Please try again.',
-          );
-        }
-      } finally {
-        if (!cancelled) setTeamsLoading(false);
-      }
-    }
-
-    loadTeams();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadEvaluationConfig() {
-      try {
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`);
-        if (!cancelled) {
-          const config = response.data?.data ?? null;
-          setEvaluationConfig(config);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err?.response?.data?.error;
-          setConfigError(
-            typeof message === 'string' && message.trim()
-              ? message
-              : 'Unable to load evaluation configuration. Please try again.',
-          );
-        }
-      } finally {
-        if (!cancelled) setConfigLoading(false);
-      }
-    }
-
-    loadEvaluationConfig();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('scoreflow.sidebar.collapsed', String(sidebarCollapsed));
-    } catch {
-      // storage unavailable; ignore silently
-    }
-  }, [sidebarCollapsed]);
-  const loading = judgesLoading || teamsLoading || configLoading || evaluationsLoading;
-  const error = judgesError || teamsError || configError || evaluationsError;
-
-  const criteria = extractCriteria(evaluationConfig);
-  const judge = judges.find((item) => item.id === judgeId) || null;
-  const assignedTeams = judge ? teams.filter((team) => (judge.teamIds || []).includes(getTeamId(team))) : [];
+  }, [eventId, judgeId]);
 
   if (loading) {
-    return (
-      <div className="judge-dashboard-page">
-        <div className="judge-dashboard-empty">
-          <p role="status">Loading judge profile...</p>
-        </div>
-      </div>
-    );
+    return <main className="judge-dashboard-page"><div className="judge-dashboard-empty" role="status">Loading judge dashboard...</div></main>;
   }
 
   if (error) {
-    return (
-      <div className="judge-dashboard-page">
-        <div className="judge-dashboard-empty">
-          <h1>Unable to load judge</h1>
-          <p>{error}</p>
-          <Link to="/organizer/events" className="judges-primary-button">Back to Events</Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!judge) {
-    return (
-      <div className="judge-dashboard-page">
-        <div className="judge-dashboard-empty">
-          <h1>Access denied</h1>
-          <p>You are not assigned to this event or this judge profile.</p>
-          <Link to="/organizer/events" className="judges-primary-button">Back to Events</Link>
-        </div>
-      </div>
-    );
+    return <main className="judge-dashboard-page"><div className="judge-dashboard-empty"><h1>Judge Dashboard</h1><p>{error}</p></div></main>;
   }
 
   return (
-    <div className={`judge-dashboard-page ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className={`event-sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-        <Link to="/organizer/dashboard" className="event-brand" aria-label="ScoreFlow home">
-          <span className="event-brand-mark">S</span>
-          <span className="event-brand-text">ScoreFlow</span>
-        </Link>
-        <button
-          type="button"
-          className="event-sidebar-toggle"
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={() => setSidebarCollapsed((current) => !current)}
-        >
-          {sidebarCollapsed ? '⟩' : '⟨'}
-        </button>
-        <nav className="event-navigation" aria-label="Judge navigation">
-          <Link to={`/judge/${eventId}/${judgeId}`} className="event-navigation-active" aria-current="page"><span aria-hidden="true">♙</span><span className="event-nav-label">Dashboard</span></Link>
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Organizer</span></Link>
-        </nav>
-      </aside>
-
-      <main className="judge-dashboard-main">
-        <header className="event-topbar">
+    <main className="judge-dashboard-page">
+      <div className="judge-dashboard-main">
+        <header className="judge-dashboard-header">
           <div className="judge-dashboard-header-copy">
-            <p className="judges-context">Event dashboard</p>
-            <h1>{judge.name}</h1>
+            <p className="judges-context">Judge Dashboard</p>
+            <h1>{event.name}</h1>
+            <p>Judge: {judge.name}</p>
           </div>
-          <div className="judge-summary-pill">
-            <span>Assigned Teams</span>
-            <strong>{assignedTeams.length}</strong>
+          <div className="judge-evaluation-type">
+            <span>Evaluation Type</span>
+            <strong>{evaluationType}</strong>
           </div>
         </header>
 
-        <section className="judge-overview-card">
-          <div>
-            <span className="judges-eyebrow">JUDGE PROFILE</span>
-            <h2>{judge.name}</h2>
-            <p>{judge.email}</p>
-          </div>
-          <div>
-            <span className="judges-eyebrow">CURRENT EVENT</span>
-            <h2>{event?.name || 'Event'}</h2>
-          </div>
-        </section>
+        <h2 className="judge-assigned-heading">Assigned Teams</h2>
+        {teams.length === 0 ? (
+          <div className="judge-empty-state">No teams are assigned to you yet.</div>
+        ) : (
+          <section className="judge-dashboard-grid" aria-label="Assigned teams">
+            {teams.map((team) => {
+              const teamIdValue = getId(team);
+              const evaluation = evaluations.find((item) => String(item.eventId) === String(eventId)
+                && String(item.judgeId) === String(judgeId)
+                && String(item.teamId) === teamIdValue);
+              const completed = evaluation?.status === 'COMPLETED';
+              const githubUrl = safeExternalUrl(team.githubUrl || team.github);
+              const demoUrl = safeExternalUrl(team.demoUrl || team.demo);
 
-        <section className="judge-dashboard-grid">
-          {assignedTeams.length === 0 ? (
-            <div className="judge-empty-state">No teams assigned yet. Please check back later.</div>
-          ) : assignedTeams.map((team) => {
-            const session = evaluations.find((item) => String(item.eventId) === eventId && String(item.judgeId) === judge.id && String(item.teamId) === getTeamId(team));
-            const status = session?.status || 'NOT_STARTED';
-            const sessionPath = `/organizer/events/${eventId}/judges/${judge.id}/evaluation/${getTeamId(team)}`;
-            const completedCount = session && session.scores ? Object.keys(session.scores).length : 0;
-            const criteriaCount = criteria.length;
-            return (
-              <article key={getTeamId(team)} className="judge-team-card">
-                <div className="judge-team-header">
-                  <div>
-                    <span className="judge-team-number">Team {team.number}</span>
-                    <h3>{team.name}</h3>
+              return (
+                <article key={teamIdValue} className="judge-team-card">
+                  <div className="judge-team-header">
+                    <div>
+                      <span className="judge-team-number">Team {team.teamNumber}</span>
+                      <h3>{team.teamName}</h3>
+                    </div>
+                    <span className={`judge-status ${completed ? 'judge-status-completed' : 'judge-status-pending'}`}>
+                      {completed ? 'Completed' : 'Pending'}
+                    </span>
                   </div>
-                  <span className={`judge-status judge-status-${status.toLowerCase()}`}>{status === 'COMPLETED' ? 'Completed' : status === 'IN_PROGRESS' ? 'In Progress' : 'Pending'}</span>
-                </div>
-                <p className="judge-project-name">{team.project || 'Project details not provided'}</p>
-                {(safeExternalUrl(team.githubUrl) || safeExternalUrl(team.demoUrl)) && (
-                  <p className="judge-project-name">
-                    {safeExternalUrl(team.githubUrl) && <a href={safeExternalUrl(team.githubUrl)} target="_blank" rel="noreferrer">GitHub</a>}
-                    {safeExternalUrl(team.githubUrl) && safeExternalUrl(team.demoUrl) ? ' · ' : ''}
-                    {safeExternalUrl(team.demoUrl) && <a href={safeExternalUrl(team.demoUrl)} target="_blank" rel="noreferrer">Demo</a>}
-                  </p>
-                )}
-                <ul className="judge-member-list">
-                  {team.members?.map((member) => <li key={`${team.id}-${member.name}`}>{member.name}</li>) || <li>No members listed</li>}
-                </ul>
-                <div className="judge-card-footer">
-                  <div>
-                    <strong>{completedCount}/{criteriaCount}</strong>
-                    <span>Criteria</span>
+
+                  {team.project && <p className="judge-project-name">{team.project}</p>}
+                  {(githubUrl || demoUrl) && (
+                    <div className="judge-team-links">
+                      {githubUrl && <a href={githubUrl} target="_blank" rel="noreferrer">GitHub</a>}
+                      {demoUrl && <a href={demoUrl} target="_blank" rel="noreferrer">Demo / Project</a>}
+                    </div>
+                  )}
+                  <div className="judge-team-members">
+                    <strong>Members</strong>
+                    {team.members?.length ? (
+                      <ul className="judge-member-list">
+                        {team.members.map((member, index) => <li key={`${teamIdValue}-${member.email || index}`}>{member.name || 'Member'}</li>)}
+                      </ul>
+                    ) : <p>No members listed.</p>}
                   </div>
-                  <Link to={sessionPath} className="judges-primary-button">
-                    {status === 'COMPLETED' ? 'Review' : status === 'IN_PROGRESS' ? 'Continue' : 'Start Evaluation'}
+
+                  <Link
+                    to={`/organizer/events/${eventId}/judges/${judgeId}/evaluation/${teamIdValue}`}
+                    className="judges-primary-button"
+                  >
+                    {completed ? 'View Evaluation' : 'Start Evaluation'}
                   </Link>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      </main>
-    </div>
+                </article>
+              );
+            })}
+          </section>
+        )}
+      </div>
+    </main>
   );
 }
 

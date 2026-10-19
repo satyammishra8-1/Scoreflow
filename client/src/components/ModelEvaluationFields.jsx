@@ -145,6 +145,7 @@ function ModelEvaluationFields({
   onTextChange,
   onFlagChange,
   onCriterionScoreChange,
+  assignedTeamCount = 1,
 }) {
   if (model === 'open-holistic') {
     const cfg = config?.openHolistic || {};
@@ -180,6 +181,7 @@ function ModelEvaluationFields({
               resourceUrl={team?.demo || ''}
               active={flags.projectReviewed}
               readOnly={readOnly}
+              onToggle={() => onFlagChange('projectReviewed', !flags.projectReviewed)}
             />
           )}
         </div>
@@ -270,6 +272,9 @@ function ModelEvaluationFields({
 
   if (model === 'ranking-voting') {
     const cfg = config?.rankingVoting || {};
+    if (cfg.ranking === false) {
+      return <p className="judges-empty-message">Ranking is disabled. Add a comment if this evaluation requires one.</p>;
+    }
     const calculationLabels = {
       total: 'Total points',
       average: 'Average score',
@@ -281,16 +286,16 @@ function ModelEvaluationFields({
         <div className="score-grid">
           <NumberRow
             title="Team Rank"
-            hint={`Enter this team's final rank (1 = best). Calculation: ${calculationLabels[cfg.rankCalculation] || 'Total points'}.`}
+            hint={`Rank this team among the ${assignedTeamCount} teams assigned to you (1 = best). Calculation: ${calculationLabels[cfg.rankCalculation] || 'Total points'}.`}
             value={scores.rank}
-            max={999}
+            max={Math.max(1, assignedTeamCount)}
             step="1"
             readOnly={readOnly}
             suffix="#"
-            onValueChange={(value) => onScoreChange('rank', value, 999)}
+            onValueChange={(value) => onScoreChange('rank', value, Math.max(1, assignedTeamCount))}
           />
         </div>
-        <p className="judges-empty-message">Only one rank entry is required for this team.</p>
+        <p className="judges-empty-message">Enter a rank from 1 to {Math.max(1, assignedTeamCount)} for this team.</p>
       </div>
     );
   }

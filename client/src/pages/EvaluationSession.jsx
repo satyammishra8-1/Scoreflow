@@ -88,7 +88,11 @@ function getElapsedSecondsSince(startedAt) {
 
 
 
-function getMemberAttendanceKey(member) {
+function getMemberAttendanceKey(_member, index) {
+  return `member-${index + 1}`;
+}
+
+function getLegacyMemberAttendanceKey(member) {
 
   if (typeof member.email === 'string' && member.email.trim()) return `email:${member.email.trim().toLowerCase()}`;
 
@@ -109,6 +113,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   const [searchParams] = useSearchParams();
 
   const isAdminMode = searchParams.get('mode') === 'admin';
+  const [editingCompleted, setEditingCompleted] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
 
@@ -425,6 +430,19 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     setElapsedSeconds(currentElapsed);
   }
 
+  function resetTimer() {
+    if (isReadOnly) return;
+    const nextSession = {
+      ...session,
+      startedAt: null,
+      completedAt: null,
+      duration: 0,
+      status: 'NOT_STARTED',
+    };
+    persistSession(nextSession);
+    setElapsedSeconds(0);
+  }
+
   const modelRequirements = useMemo(
 
     () =>
@@ -491,19 +509,22 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   const teamMembers = Array.isArray(team?.members) ? team.members : [];
 
-  const memberAttendance = teamMembers.map((member) => {
+  const memberAttendance = teamMembers.map((member, index) => {
 
     const legacyStatus = session.attendance === 'Absent' ? 'ABSENT' : 'PRESENT';
 
-    const status = session.memberAttendance?.[getMemberAttendanceKey(member)] || legacyStatus;
+    const savedAttendance = session.memberAttendance || {};
+    const status = savedAttendance[getMemberAttendanceKey(member, index)]
+      || savedAttendance[getLegacyMemberAttendanceKey(member)]
+      || legacyStatus;
 
-    return { member, key: getMemberAttendanceKey(member), status };
+    return { member, key: getMemberAttendanceKey(member, index), status };
 
   });
 
   const presentMemberCount = memberAttendance.filter(({ status }) => status === 'PRESENT').length;
 
-  const isReadOnly = session.status === 'COMPLETED';
+  const isReadOnly = session.status === 'COMPLETED' && !editingCompleted;
 
   const isEvaluationReady = totalCriteriaCount > 0
 
@@ -513,9 +534,18 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   async function persistSession(nextSession) {
 
+    const attendanceInput = nextSession.memberAttendance || {};
+    const memberAttendance = Object.fromEntries(teamMembers.flatMap((member, index) => {
+      const key = getMemberAttendanceKey(member, index);
+      const status = attendanceInput[key] || attendanceInput[getLegacyMemberAttendanceKey(member)];
+      return status ? [[key, String(status).toUpperCase()]] : [];
+    }));
+
     const normalized = {
 
       ...nextSession,
+
+      memberAttendance,
 
       totalScore: calculateRawTotal(nextSession.scores || {}, criteria),
 
@@ -800,6 +830,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     if (await persistSession(nextSession)) {
 
       setSuccess('Evaluation submitted successfully.');
+      setEditingCompleted(false);
 
     }
 
@@ -955,7 +986,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
               <p className="judges-context">Evaluation session</p>
 
-              <h1>{team.name}</h1>
+              <h1>Team {team.number}: {team.name}</h1>
 
             </div>
 
@@ -978,7 +1009,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
                 <div className="evaluation-timer-actions">
                   {session.status === 'NOT_STARTED' && (
                     <button type="button" className="evaluation-timer-button primary" onClick={startTimer}>
-                      Start Evaluation
+                      Start
                     </button>
                   )}
                   {session.status === 'IN_PROGRESS' && (
@@ -991,6 +1022,9 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
                       Resume
                     </button>
                   )}
+                  <button type="button" className="evaluation-timer-button" onClick={resetTimer}>
+                    Reset
+                  </button>
                 </div>
               )}
             </div>
@@ -1015,7 +1049,12 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
             <span>Submitted at: {session.completedAt ? new Date(session.completedAt).toLocaleString() : '—'}</span>
 
-            <small>{isAdminMode ? 'This evaluation is locked. Reopen it to make corrections.' : 'This evaluation is locked for judges. Please contact the organizer for corrections.'}</small>
+            <small>Saved values are loaded from this event, judge, and team evaluation.</small>
+            {isReadOnly && !isAdminMode && (
+              <button type="button" className="judges-secondary-button" onClick={() => setEditingCompleted(true)}>
+                Edit Evaluation
+              </button>
+            )}
 
           </div>
 
@@ -1290,6 +1329,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
               flags={session.flags || {}}
 
               team={team}
+              assignedTeamCount={Math.max(1, judge?.teamIds?.length || 1)}
 
               readOnly={isReadOnly}
 
@@ -1413,7 +1453,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
               >
 
-                Complete Evaluation
+                {session.status === 'COMPLETED' ? 'Save Changes' : 'Submit Evaluation'}
 
               </button>
 

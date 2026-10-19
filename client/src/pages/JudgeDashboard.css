@@ -1,137 +1,41 @@
 .judge-dashboard-page {
-  --sidebar-width: 252px;
-  --sidebar-collapsed-width: 82px;
-  display: flex;
   min-height: 100vh;
   background: #f3f6fb;
 }
 
-.judge-dashboard-page .event-sidebar {
-  position: static;
-  z-index: auto;
-  width: var(--sidebar-width);
-  flex: 0 0 var(--sidebar-width);
-  min-height: 100vh;
-  transition: width 0.2s ease, flex-basis 0.2s ease;
+.judge-dashboard-main {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  padding: 28px 28px 42px;
 }
 
-.judge-dashboard-page .event-brand,
-.judge-dashboard-page .event-navigation a {
-  width: 100%;
-}
-
-.judge-dashboard-page .event-brand-text,
-.judge-dashboard-page .event-nav-label {
-  display: inline;
-}
-
-.judge-dashboard-page.sidebar-collapsed .event-sidebar {
-  width: var(--sidebar-collapsed-width);
-  flex-basis: var(--sidebar-collapsed-width);
-}
-
-.judge-dashboard-page.sidebar-collapsed .event-brand-text,
-.judge-dashboard-page.sidebar-collapsed .event-nav-label {
-  display: none;
-}
-
-.judge-dashboard-page.sidebar-collapsed .event-navigation a {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.judge-dashboard-page .event-sidebar-toggle {
+.judge-dashboard-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: calc(100% - 18px);
-  margin: 0 9px 12px;
-  padding: 7px 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #d8deeb;
-  cursor: pointer;
-}
-
-.judge-dashboard-page.sidebar-collapsed .event-sidebar-toggle {
-  width: calc(100% - 10px);
-  margin-left: 5px;
-  margin-right: 5px;
-}
-
-.judge-dashboard-main {
-  flex: 1;
-  min-width: 0;
-  padding: 26px 28px 38px;
-}
-
-.judge-dashboard-header-copy {
-  display: grid;
-  gap: 5px;
-}
-
-.judge-dashboard-header-copy h1 {
-  margin: 0;
-  color: #1b2538;
-  font-size: 30px;
-}
-
-.judge-summary-pill {
-  display: grid;
-  gap: 4px;
-  min-width: 120px;
-  padding: 12px 14px;
-  border: 1px solid #e5ebf5;
-  border-radius: 10px;
-  background: #fff;
-  text-align: center;
-}
-
-.judge-summary-pill span {
-  color: #7a8497;
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.judge-summary-pill strong {
-  color: #2d3b54;
-  font-size: 24px;
-}
-
-.judge-overview-card {
-  display: flex;
   justify-content: space-between;
-  gap: 18px;
-  padding: 20px;
-  margin-top: 18px;
+  gap: 20px;
+  padding: 20px 22px;
   border: 1px solid #e7ebf2;
   border-radius: 12px;
   background: #fff;
 }
 
-.judge-overview-card h2 {
-  margin: 7px 0 4px;
-  color: #202b40;
-  font-size: 20px;
-}
-
-.judge-overview-card p {
-  margin: 0;
-  color: #68758b;
-  font-size: 12px;
-}
+.judge-dashboard-header-copy { display: grid; gap: 5px; }
+.judge-dashboard-header-copy h1 { margin: 0; color: #1b2538; font-size: 28px; }
+.judge-dashboard-header-copy p:last-child { margin: 0; color: #68758b; font-size: 13px; }
+.judge-evaluation-type { display: grid; gap: 5px; color: #68758b; font-size: 12px; }
+.judge-evaluation-type strong { color: #2d3b54; font-size: 15px; }
+.judge-assigned-heading { margin: 25px 0 14px; color: #202b40; font-size: 20px; }
 
 .judge-dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 18px;
-  margin-top: 22px;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 16px;
 }
 
 .judge-team-card {
   display: grid;
+  align-content: start;
   gap: 14px;
   padding: 18px;
   border: 1px solid #e7ebf2;
@@ -139,116 +43,23 @@
   background: #fff;
 }
 
-.judge-team-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
+.judge-team-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.judge-team-number { color: #7a8497; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.judge-team-header h3 { margin: 6px 0 0; color: #2c3a50; font-size: 19px; }
+.judge-status { display: inline-flex; padding: 5px 9px; border-radius: 14px; font-size: 11px; font-weight: 700; }
+.judge-status-pending { color: #805c14; background: #fff4e2; }
+.judge-status-completed { color: #1d7a57; background: #eaf8f2; }
+.judge-project-name { margin: 0; color: #68758b; font-size: 13px; }
+.judge-team-links { display: flex; flex-wrap: wrap; gap: 14px; }
+.judge-team-links a { color: #4169df; font-size: 13px; font-weight: 600; text-decoration: none; }
+.judge-team-members strong { color: #40516d; font-size: 12px; }
+.judge-team-members p { margin: 6px 0 0; color: #7a8497; font-size: 12px; }
+.judge-member-list { margin: 7px 0 0; padding-left: 18px; color: #4d596e; font-size: 13px; line-height: 1.7; }
+.judge-empty-state, .judge-dashboard-empty { padding: 30px; border: 1px solid #e7ebf2; border-radius: 12px; background: #fff; color: #68758b; text-align: center; }
+.judge-dashboard-empty { display: grid; place-items: center; min-height: 240px; }
+.judge-dashboard-empty h1 { margin-top: 0; color: #1b2538; }
 
-.judge-team-number {
-  color: #7a8497;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.judge-team-header h3 {
-  margin: 7px 0 0;
-  color: #2c3a50;
-  font-size: 20px;
-}
-
-.judge-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 9px;
-  border-radius: 14px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.judge-status-not_started,
-.judge-status-pending {
-  color: #a06b1d;
-  background: #fff4e2;
-}
-
-.judge-status-in_progress {
-  color: #335ca9;
-  background: #edf3ff;
-}
-
-.judge-status-completed {
-  color: #1d7a57;
-  background: #eaf8f2;
-}
-
-.judge-project-name {
-  margin: 0;
-  color: #68758b;
-  font-size: 12px;
-}
-
-.judge-member-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #4d596e;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.judge-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: auto;
-}
-
-.judge-card-footer > div {
-  display: grid;
-  gap: 5px;
-}
-
-.judge-card-footer strong {
-  color: #2d3b54;
-  font-size: 18px;
-}
-
-.judge-card-footer span {
-  color: #7a8497;
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.judge-empty-state,
-.judge-dashboard-empty {
-  display: grid;
-  place-items: center;
-  min-height: 260px;
-  padding: 30px;
-  border: 1px solid #e7ebf2;
-  border-radius: 12px;
-  background: #fff;
-  color: #68758b;
-  text-align: center;
-}
-
-.judge-dashboard-empty {
-  min-height: 100vh;
-}
-
-@media (max-width: 720px) {
-  .judge-dashboard-main {
-    padding: 18px 16px 30px;
-  }
-
-  .judge-overview-card,
-  .judge-team-header,
-  .judge-card-footer {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+@media (max-width: 700px) {
+  .judge-dashboard-main { padding: 18px 16px 30px; }
+  .judge-dashboard-header { align-items: flex-start; flex-direction: column; }
 }

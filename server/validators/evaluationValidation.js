@@ -26,9 +26,28 @@ function normalizeCriteriaArray(value = []) {
     .map((item) => ({
       name: typeof item.name === 'string' ? item.name.trim() : '',
       description: typeof item.description === 'string' ? item.description.trim() : '',
-      maxMarks: Number(item.maxMarks) || 0,
-      weight: Number(item.weight) || 0,
+      maxMarks: Number(item.maxMarks),
+      weight: Number(item.weight),
     }));
+}
+
+function validateCriteria(criteria, required = true) {
+  if (required && criteria.length === 0) return 'Add at least one criterion.';
+  const names = new Set();
+  for (const criterion of criteria) {
+    const name = criterion.name.trim();
+    const key = name.toLocaleLowerCase();
+    if (!name) return 'Every criterion needs a name.';
+    if (names.has(key)) return 'Criterion names must be unique.';
+    names.add(key);
+    if (!Number.isFinite(criterion.maxMarks) || criterion.maxMarks <= 0) return `Maximum marks must be greater than zero for "${name}".`;
+    if (!Number.isFinite(criterion.weight) || criterion.weight < 0) return `Weight must be zero or greater for "${name}".`;
+  }
+  if (criteria.length > 0) {
+    const totalWeight = criteria.reduce((sum, criterion) => sum + criterion.weight, 0);
+    if (Math.abs(totalWeight - 100) > 0.01) return `Total weight must equal 100%. Current total: ${totalWeight}.`;
+  }
+  return '';
 }
 
 function normalizeMaterialsArray(value = []) {
@@ -85,12 +104,8 @@ function validateModelConfig(model, payload = {}) {
   switch (model) {
     case 'criteria-based': {
       const criteria = normalizeCriteriaArray(payload.criteriaBased?.criteria);
-      const totalWeight = criteria.reduce((sum, criterion) => sum + criterion.weight, 0);
-      if (criteria.length === 0) {
-        errors.criteriaBased = 'Add at least one criterion.';
-      } else if (Math.abs(totalWeight - 100) > 0.01) {
-        errors.criteriaBased = `Total weight must equal 100%. Current total: ${totalWeight}.`;
-      }
+      const criteriaError = validateCriteria(criteria);
+      if (criteriaError) errors.criteriaBased = criteriaError;
       result.criteriaBased = criteria;
       break;
     }
@@ -131,11 +146,11 @@ function validateModelConfig(model, payload = {}) {
           payload.liveDemo?.judgeQuestions ||
           payload.liveDemo?.overallScoreFeedback
       );
-      const totalWeight = criteria.reduce((sum, criterion) => sum + criterion.weight, 0);
       if (!anyToggle && !hasCriteria) {
         errors.liveDemo = 'Add at least one component: demo, presentation, judge questions, overall score/feedback, or criteria.';
-      } else if (hasCriteria && Math.abs(totalWeight - 100) > 0.01) {
-        errors.liveDemo = `Criteria total weight must equal 100%. Current total: ${totalWeight}.`;
+      } else if (hasCriteria) {
+        const criteriaError = validateCriteria(criteria, false);
+        if (criteriaError) errors.liveDemo = criteriaError;
       }
       result.liveDemo = criteria;
       break;
@@ -150,12 +165,19 @@ function validateModelConfig(model, payload = {}) {
       if (!['total', 'average', 'points', 'composite'].includes(payload.rankingVoting?.rankCalculation)) {
         errors.rankingVoting = 'Please select a valid rank calculation method.';
       }
+      if (payload.rankingVoting?.ranking === false && payload.rankingVoting?.comments === false) {
+        errors.rankingVoting = 'Enable ranking, comments, or both.';
+      }
       break;
     }
     case 'custom': {
       const fields = normalizeCustomFieldsArray(payload.custom?.fields);
       if (fields.length === 0) {
         errors.custom = 'Add at least one custom field.';
+      } else if (fields.some((field) => !field.label)) {
+        errors.custom = 'Every custom field needs a label.';
+      } else if (fields.some((field) => !['criteria', 'marks', 'weight', 'question', 'material', 'feedback'].includes(field.type))) {
+        errors.custom = 'Choose a valid custom field type.';
       }
       result.custom = fields;
       break;
@@ -219,6 +241,7 @@ module.exports = {
   buildEmptyModelPayload,
   validateModelConfig,
   normalizeCriteriaArray,
+  validateCriteria,
   normalizeMaterialsArray,
   normalizeCustomFieldsArray,
   validateEvaluationSubmission,
