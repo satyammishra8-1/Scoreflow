@@ -409,6 +409,74 @@ exports.resendJudgeInvitation = async (req, res) => {
   }
 };
 
+exports.sendJudgeInvitations = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const eventCheck = await ensureEventExists(eventId);
+    if (!eventCheck.valid) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    if (!eventCheck.exists) return res.status(404).json({ success: false, error: 'Event not found.' });
+
+    const recipientMode = req.body?.recipientMode;
+    if (!['all', 'specific'].includes(recipientMode)) {
+      return res.status(400).json({ success: false, error: 'Choose all judges or specific judges.' });
+    }
+
+    let selectedIds = [];
+    if (recipientMode === 'specific') {
+      if (!Array.isArray(req.body?.judgeIds) || req.body.judgeIds.length === 0) {
+        return res.status(400).json({ success: false, error: 'Select at least one judge.' });
+      }
+      selectedIds = [...new Set(req.body.judgeIds.map((id) => String(id).trim()))];
+      if (selectedIds.some((id) => !isValidObjectId(id))) {
+        return res.status(400).json({ success: false, error: 'One or more judge IDs are invalid.' });
+      }
+      if (selectedIds.length > 500) return res.status(400).json({ success: false, error: 'Select no more than 500 judges at a time.' });
+    }
+
+    const query = { eventId, invitationStatus: { $ne: 'accepted' } };
+    if (recipientMode === 'specific') query._id = { $in: selectedIds };
+    const judges = await Judge.find(query).lean();
+    if (recipientMode === 'specific' && judges.length !== selectedIds.length) {
+      return res.status(400).json({ success: false, error: 'One or more selected judges do not belong to this event or have already accepted.' });
+    }
+    if (judges.length === 0) return res.status(400).json({ success: false, error: 'There are no judges eligible for an invitation.' });
+
+    const event = await Event.findById(eventId).lean();
+    if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
+
+    const outcomes = [];
+    for (let index = 0; index < judges.length; index += 5) {
+      const batch = await Promise.all(judges.slice(index, index + 5).map(async (judge) => {
+        try {
+          return await issueJudgeInvitation(judge, event);
+        } catch (error) {
+          console.error('Failed to issue a judge invitation:', error.message);
+          return { sent: false, message: 'Unable to prepare this invitation.' };
+        }
+      }));
+      outcomes.push(...batch);
+    }
+
+    const sentCount = outcomes.filter((outcome) => outcome?.sent).length;
+    const failedCount = outcomes.length - sentCount;
+    const status = sentCount === 0 ? 'failed' : failedCount === 0 ? 'sent' : 'partial';
+    return res.status(200).json({
+      success: true,
+      data: {
+        sentCount,
+        failedCount,
+        status,
+        message: status === 'sent' ? 'Judge invitations sent.'
+          : status === 'partial' ? 'Some invitations were sent; some could not be delivered.'
+            : (outcomes.find((outcome) => outcome?.message)?.message || 'No invitations could be delivered.'),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to send judge invitations:', error.message);
+    return res.status(500).json({ success: false, error: 'Unable to send judge invitations right now.' });
+  }
+};
+
 exports.deleteJudge = async (req, res) => {
   try {
     const { judgeId } = req.params;

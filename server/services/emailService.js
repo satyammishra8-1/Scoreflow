@@ -1,3 +1,5 @@
+const { buildJudgeInvitationEmail } = require('./emailTemplates');
+
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -24,13 +26,12 @@ async function sendJudgeInvitation({ judge, event, token }) {
   }
 
   const invitationUrl = `${clientUrl.replace(/\/+$/, '')}/judge/invite/${encodeURIComponent(token)}`;
-  const eventDate = event.date ? new Date(event.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '';
-  const safeName = escapeHtml(judge.name);
-  const safeEventName = escapeHtml(event.name);
-  const safeDate = escapeHtml(eventDate);
-  const safeUrl = escapeHtml(invitationUrl);
-  const dateMarkup = safeDate ? `<p><strong>Event date:</strong> ${safeDate}</p>` : '';
-  const textDate = eventDate ? `\nEvent date: ${eventDate}` : '';
+  const email = buildJudgeInvitationEmail({
+    judgeName: judge.name,
+    eventName: event.name,
+    eventDate: event.date,
+    invitationUrl,
+  });
 
   try {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -44,9 +45,9 @@ async function sendJudgeInvitation({ judge, event, token }) {
       body: JSON.stringify({
         sender: { email: senderEmail, name: senderName },
         to: [{ email: judge.email, name: judge.name }],
-        subject: `You're invited to judge ${event.name}`,
-        htmlContent: `<!doctype html><html><body style="margin:0;background:#f4f6fa;font-family:Arial,sans-serif;color:#202b40"><main style="max-width:560px;margin:32px auto;padding:32px;background:#fff;border:1px solid #e5e9f0;border-radius:12px"><p style="color:#4169df;font-weight:bold;letter-spacing:.08em">SCOREFLOW</p><h1 style="font-size:24px">You're invited to judge ${safeEventName}</h1><p>Hello ${safeName},</p><p>You've been invited to judge this event in ScoreFlow. Accept the invitation to verify your email address and open your judge dashboard.</p>${dateMarkup}<p style="margin:28px 0"><a href="${safeUrl}" style="display:inline-block;padding:13px 20px;border-radius:7px;background:#4169df;color:#fff;text-decoration:none;font-weight:bold">Accept Invitation</a></p><p style="color:#7a8497;font-size:12px">This invitation link expires in 48 hours and can only be used once.</p></main></body></html>`,
-        textContent: `Hello ${judge.name},\n\nYou've been invited to judge ${event.name} in ScoreFlow.${textDate}\n\nAccept the invitation: ${invitationUrl}\n\nThis invitation link expires in 48 hours and can only be used once.`,
+        subject: email.subject,
+        htmlContent: email.html,
+        textContent: email.text,
       }),
     });
     if (!response.ok) {
