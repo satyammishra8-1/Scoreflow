@@ -20,8 +20,6 @@ function buildNavigation(activeKey, eventId) {
     { key: 'teams', label: 'Teams', icon: '♧', to: `/organizer/events/${safeEventId}/teams` },
     { key: 'judges', label: 'Judges', icon: '♙', to: `/organizer/events/${safeEventId}/judges` },
     { key: 'criteria', label: 'Evaluation Criteria', icon: '☷', to: `/organizer/events/${safeEventId}/evaluation` },
-    { key: 'results', label: 'Results', icon: '▤', to: '/organizer/dashboard' },
-    { key: 'feedback', label: 'Feedback & Emails', icon: '✉', to: '/organizer/dashboard' },
   ].map((item) => ({ ...item, active: item.key === activeKey }));
 }
 
@@ -155,4 +153,3 @@ function OrganizerLayout({
 }
 
 export default OrganizerLayout;
-

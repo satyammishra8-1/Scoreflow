@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
@@ -46,6 +46,8 @@ function getApiErrorMessage(error, fallback) {
 
 function EventManagement() {
   const { eventId: urlEventId } = useParams();
+  const [searchParams] = useSearchParams();
+  const editEventId = urlEventId || searchParams.get('edit');
   const navigate = useNavigate();
 
   const [eventData, setEventData] = useState(emptyEvent);
@@ -54,7 +56,7 @@ function EventManagement() {
   const [errors, setErrors] = useState({});
   const [storageError, setStorageError] = useState('');
   const [saveConfirmation, setSaveConfirmation] = useState('');
-  const [isLoading, setIsLoading] = useState(Boolean(urlEventId));
+  const [isLoading, setIsLoading] = useState(Boolean(editEventId));
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -69,7 +71,7 @@ function EventManagement() {
     let cancelled = false;
 
     async function loadEvent() {
-      if (!urlEventId) {
+      if (!editEventId) {
         setSavedEvent(null);
         setEventData({ ...emptyEvent });
         setIsEditing(true);
@@ -79,7 +81,7 @@ function EventManagement() {
       setIsLoading(true);
       setStorageError('');
       try {
-        const response = await API.get('/events/' + encodeURIComponent(urlEventId));
+        const response = await API.get('/events/' + encodeURIComponent(editEventId));
         if (cancelled) return;
         if (response.data.success && response.data.data) {
           const event = response.data.data;
@@ -106,7 +108,7 @@ function EventManagement() {
     return () => {
       cancelled = true;
     };
-  }, [urlEventId]);
+  }, [editEventId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,7 +180,7 @@ function EventManagement() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    const existingId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || urlEventId;
+    const existingId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || editEventId;
     const isUpdate = Boolean(existingId && savedEvent);
 
     setIsSaving(true);
@@ -195,7 +197,7 @@ function EventManagement() {
       setErrors({});
       setSaveConfirmation(isUpdate ? 'Event updated successfully.' : 'Event saved successfully.');
       const returnedId = String((event && (event.eventId || event._id)) || '');
-      if (returnedId && returnedId !== urlEventId) {
+      if (returnedId && returnedId !== editEventId) {
         navigate('/organizer/events/' + returnedId, { replace: true });
       }
     } catch (error) {
@@ -237,7 +239,7 @@ function EventManagement() {
   }
 
   function openEvaluationConfig() {
-    const currentEventId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || urlEventId || 'default';
+    const currentEventId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || editEventId || 'default';
     navigate('/organizer/events/' + currentEventId + '/evaluation');
   }
 
