@@ -8,6 +8,7 @@ const {
   normalizeCriteriaArray,
   normalizeMaterialsArray,
   normalizeCustomFieldsArray,
+  validateEvaluationSubmission,
 } = require('../validators/evaluationValidation');
 
 /**
@@ -600,13 +601,23 @@ exports.getEvaluationByJudgeTeam = async (req, res) => {
  */
 exports.createEvaluation = async (req, res) => {
   try {
-    const { errors, normalized } = validateEvaluationPayload(req.body);
+    const { errors: schemaErrors, normalized } = validateEvaluationPayload(req.body);
 
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(schemaErrors).length > 0) {
       return res.status(400).json({
         success: false,
         error: 'The evaluation payload is invalid.',
-        details: errors,
+        details: schemaErrors,
+      });
+    }
+
+    const { errors: referentialErrors } = await validateEvaluationSubmission(req.body);
+
+    if (Object.keys(referentialErrors).length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'The evaluation could not be validated against the database.',
+        details: referentialErrors,
       });
     }
 

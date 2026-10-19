@@ -157,6 +157,52 @@ function validateModelConfig(model, payload = {}) {
   return result;
 }
 
+async function validateEvaluationSubmission(payload = {}) {
+  const errors = {};
+  const eventId = typeof payload.eventId === 'string' ? payload.eventId.trim() : '';
+  const judgeId = typeof payload.judgeId === 'string' ? payload.judgeId.trim() : '';
+  const teamId = typeof payload.teamId === 'string' ? payload.teamId.trim() : '';
+  const normalized = { eventId, judgeId, teamId };
+
+  if (!eventId || !isValidObjectId(eventId)) errors.eventId = 'A valid eventId is required.';
+  if (!judgeId || !isValidObjectId(judgeId)) errors.judgeId = 'A valid judgeId is required.';
+  if (!teamId || !isValidObjectId(teamId)) errors.teamId = 'A valid teamId is required.';
+
+  if (Object.keys(errors).length > 0) return { errors, normalized };
+
+  const [event, judge, team] = await Promise.all([
+    Event.findById(eventId).lean(),
+    Judge.findById(judgeId).lean(),
+    Team.findById(teamId).lean(),
+  ]);
+
+  if (!event) errors.eventId = 'Event not found.';
+  if (!judge) errors.judgeId = 'Judge not found.';
+  if (!team) errors.teamId = 'Team not found.';
+
+  if (event && judge && String(judge.eventId) !== String(event._id)) {
+    errors.judgeId = 'Judge does not belong to this event.';
+  }
+  if (event && team && String(team.eventId) !== String(event._id)) {
+    errors.teamId = 'Team does not belong to this event.';
+  }
+
+  if (judge && team) {
+    const judgeIdStr = String(judge._id);
+    const isAssignedByTeam = Array.isArray(team.judges)
+      ? team.judges.some((id) => String(id) === judgeIdStr)
+      : false;
+    const isAssignedByJudge = Array.isArray(judge.assignedTeamIds)
+      ? judge.assignedTeamIds.some((id) => String(id) === String(team._id))
+      : false;
+    if (!isAssignedByTeam && !isAssignedByJudge) {
+      errors.teamId = 'This team is not assigned to the judge.';
+    }
+  }
+
+  return { errors, normalized };
+}
+
 module.exports = {
   EMPTY_MODELS,
   MODEL_FIELDS,
@@ -165,4 +211,5 @@ module.exports = {
   normalizeCriteriaArray,
   normalizeMaterialsArray,
   normalizeCustomFieldsArray,
+  validateEvaluationSubmission,
 };
