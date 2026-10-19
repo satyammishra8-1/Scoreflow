@@ -9,36 +9,8 @@ const API = axios.create({
 });
 
 function getEventId(event) {
-  const rawId = event?.eventId ?? event?._id ?? event?.id;
+  const rawId = event?.eventId ?? event?._id;
   return rawId != null ? String(rawId) : '';
-}
-
-function getEventName(event, eventId) {
-  return (
-    event?.name ||
-    event?.eventName ||
-    event?.title ||
-    `Event ${eventId}`
-  );
-}
-
-function getEventDate(event) {
-  return (
-    event?.date ||
-    event?.eventDate ||
-    event?.startDate ||
-    event?.startAt ||
-    ''
-  );
-}
-
-function getEventLocation(event) {
-  return (
-    event?.location ||
-    event?.venue ||
-    event?.place ||
-    ''
-  );
 }
 
 function getEventStatus(event) {
@@ -84,32 +56,22 @@ function getEventStatus(event) {
     };
   }
 
-  const now = Date.now();
-  const start = event?.startDate
-    ? new Date(event.startDate).getTime()
-    : null;
-  const end = event?.endDate
-    ? new Date(event.endDate).getTime()
-    : null;
-
-  if (start && !Number.isNaN(start) && start > now) {
-    return {
-      label: 'Upcoming',
-      tone: 'upcoming',
-    };
+  const eventDate = typeof event?.date === 'string' ? event.date.slice(0, 10) : '';
+  const today = new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+    return { label: 'Unknown', tone: 'upcoming' };
   }
-
-  if (end && !Number.isNaN(end) && end < now) {
+  if (eventDate > today) {
+    return { label: 'Upcoming', tone: 'upcoming' };
+  }
+  if (eventDate < today) {
     return {
       label: 'Completed',
       tone: 'completed',
     };
   }
 
-  return {
-    label: 'Active',
-    tone: 'active',
-  };
+  return { label: 'Active', tone: 'active' };
 }
 
 function getJudgeId(judge) {
@@ -160,33 +122,36 @@ function buildDashboardData(apiEvents, eventDataMap = {}) {
   const list = Array.isArray(apiEvents) ? apiEvents : [];
 
   const events = list
+    .filter((rawEvent) => getEventId(rawEvent) && typeof rawEvent?.name === 'string' && rawEvent.name.trim())
     .map((rawEvent) => {
       const eventId = getEventId(rawEvent);
       const moduleData = eventDataMap[eventId] || {};
-      const teams = moduleData.teams || [];
-      const judges = moduleData.judges || [];
-      const evaluation = getEvaluationStats(
-        moduleData.evaluations || [],
-        judges,
-      );
+      const teams = Array.isArray(moduleData.teams) ? moduleData.teams : [];
+      const judges = Array.isArray(moduleData.judges) ? moduleData.judges : [];
+      const evaluation = Array.isArray(moduleData.evaluations) && Array.isArray(moduleData.judges)
+        ? getEvaluationStats(moduleData.evaluations, judges)
+        : null;
 
       const status = getEventStatus(rawEvent);
 
       return {
         ...rawEvent,
         id: eventId,
-        name: getEventName(rawEvent, eventId),
-        date: getEventDate(rawEvent),
-        location: getEventLocation(rawEvent),
+        name: rawEvent.name,
+        type: rawEvent.type,
+        date: typeof rawEvent.date === 'string' ? rawEvent.date.slice(0, 10) : '',
+        location: typeof rawEvent.venue === 'string' ? rawEvent.venue : '',
         status: status.label,
         tone: status.tone,
-        teams: teams.length,
-        judges: judges.length,
-        progress: evaluation.progress,
-        completed: `${evaluation.completed} / ${evaluation.totalEvaluations} evaluations completed`,
-        totalEvaluations: evaluation.totalEvaluations,
-        completedEvaluations: evaluation.completed,
-        pendingEvaluations: evaluation.pending,
+        teams: Array.isArray(moduleData.teams) ? teams.length : null,
+        judges: Array.isArray(moduleData.judges) ? judges.length : null,
+        progress: evaluation?.progress ?? null,
+        completed: evaluation
+          ? `${evaluation.completed} / ${evaluation.totalEvaluations} evaluations completed`
+          : 'Evaluation progress unavailable',
+        totalEvaluations: evaluation?.totalEvaluations ?? null,
+        completedEvaluations: evaluation?.completed ?? null,
+        pendingEvaluations: evaluation?.pending ?? null,
       };
     })
     .filter(Boolean);
@@ -197,15 +162,13 @@ function buildDashboardData(apiEvents, eventDataMap = {}) {
     (event) => event.tone === 'active',
   ).length;
 
-  const totalTeams = events.reduce(
-    (total, event) => total + event.teams,
-    0,
-  );
+  const totalTeams = events.some((event) => event.teams == null)
+    ? null
+    : events.reduce((total, event) => total + event.teams, 0);
 
-  const totalJudges = events.reduce(
-    (total, event) => total + event.judges,
-    0,
-  );
+  const totalJudges = events.some((event) => event.judges == null)
+    ? null
+    : events.reduce((total, event) => total + event.judges, 0);
 
   const activeEvent =
     events.find((event) => event.tone === 'active') ||
@@ -245,7 +208,7 @@ function buildDashboardData(apiEvents, eventDataMap = {}) {
         name: getJudgeName(judge),
         assigned,
         completed,
-        progress,
+        progress: Array.isArray(moduleData.evaluations) ? progress : null,
       };
     });
   }
@@ -365,6 +328,8 @@ function EventCard({ event }) {
       <h3>{event.name}</h3>
 
       <div className="event-meta">
+        {event.type && <span>{event.type}</span>}
+
         {event.date && (
           <span>
             <i aria-hidden="true">▦</i>
@@ -382,31 +347,31 @@ function EventCard({ event }) {
 
       <div className="event-counts">
         <span>
-          <strong>{event.teams}</strong> Teams
+          <strong>{event.teams ?? '—'}</strong> Teams
         </span>
 
         <span>
-          <strong>{event.judges}</strong> Judges
+          <strong>{event.judges ?? '—'}</strong> Judges
         </span>
       </div>
 
       <div className="event-progress">
         <div className="event-progress-heading">
           <span>Evaluation Progress</span>
-          <strong>{event.progress}%</strong>
+          <strong>{event.progress == null ? '—' : `${event.progress}%`}</strong>
         </div>
 
         <div
           className="linear-progress"
           role="progressbar"
           aria-label={`${event.name} evaluation progress`}
-          aria-valuenow={event.progress}
+          aria-valuenow={event.progress ?? 0}
           aria-valuemin="0"
           aria-valuemax="100"
         >
           <span
             style={{
-              width: `${event.progress}%`,
+              width: `${event.progress ?? 0}%`,
             }}
           />
         </div>
@@ -417,14 +382,14 @@ function EventCard({ event }) {
       <div className="event-actions">
         <Link
           className="dashboard-button dashboard-button-primary"
-          to={`/organizer/events/${event.id}/teams`}
+          to={`/organizer/events/${event.id}`}
         >
           Manage Event
         </Link>
 
         <Link
           className="dashboard-button dashboard-button-text"
-          to={`/organizer/events/${event.id}/teams`}
+          to={`/organizer/events/${event.id}`}
         >
           View Details
         </Link>
@@ -468,15 +433,15 @@ function OrganizerDashboard() {
           ]);
           const valueAt = (index) => results[index].status === 'fulfilled' && Array.isArray(results[index].value.data?.data)
             ? results[index].value.data.data
-            : [];
+            : null;
           modules[eventId] = {
-            teams: valueAt(0).filter((team) => String(team.eventId) === String(eventId)),
-            judges: valueAt(1).map((judge) => ({
+            teams: valueAt(0)?.filter((team) => String(team.eventId) === String(eventId)) ?? null,
+            judges: valueAt(1)?.map((judge) => ({
               ...judge,
               id: String(judge._id || judge.judgeId || judge.id || ''),
               teamIds: Array.isArray(judge.assignedTeamIds) ? judge.assignedTeamIds.map(String) : [],
-            })),
-            evaluations: valueAt(2).filter((evaluation) => String(evaluation.eventId) === String(eventId)),
+            })) ?? null,
+            evaluations: valueAt(2)?.filter((evaluation) => String(evaluation.eventId) === String(eventId)) ?? null,
           };
         }));
         if (!cancelled) setEventDataMap(modules);
@@ -649,7 +614,7 @@ function OrganizerDashboard() {
 
               <div className="overview-copy">
                 <span>Total Teams</span>
-                <strong>{totalTeams}</strong>
+                <strong>{totalTeams ?? '—'}</strong>
                 <small>
                   Across all events
                 </small>
@@ -666,7 +631,7 @@ function OrganizerDashboard() {
 
               <div className="overview-copy">
                 <span>Total Judges</span>
-                <strong>{totalJudges}</strong>
+                <strong>{totalJudges ?? '—'}</strong>
                 <small>
                   Across all events
                 </small>
@@ -846,21 +811,19 @@ function OrganizerDashboard() {
                                     className="judge-progress-track"
                                     role="progressbar"
                                     aria-label={`${judge.name} progress`}
-                                    aria-valuenow={
-                                      judge.progress
-                                    }
+                                    aria-valuenow={judge.progress ?? 0}
                                     aria-valuemin="0"
                                     aria-valuemax="100"
                                   >
                                     <span
                                       style={{
-                                        width: `${judge.progress}%`,
+                                        width: `${judge.progress ?? 0}%`,
                                       }}
                                     />
                                   </div>
 
                                   <strong>
-                                    {judge.progress}%
+                                    {judge.progress == null ? '—' : `${judge.progress}%`}
                                   </strong>
                                 </div>
                               </td>
