@@ -59,6 +59,8 @@ function EventManagement() {
   const [evaluationConfig, setEvaluationConfig] = useState(null);
   const [evaluationLoading, setEvaluationLoading] = useState(true);
   const [hasEvaluationConfig, setHasEvaluationConfig] = useState(false);
+  const [teamCount, setTeamCount] = useState(null);
+  const [judgeCount, setJudgeCount] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,13 +116,13 @@ function EventManagement() {
       }
       setEvaluationLoading(true);
       try {
-        const response = await API.get('/events/' + encodeURIComponent(String(eventId)) + '/evaluation');
+        const response = await API.get('/events/' + encodeURIComponent(String(eventId)) + '/evaluation-config');
         if (cancelled) return;
         if (response.data.success) {
           setEvaluationConfig(response.data.data);
           setHasEvaluationConfig(Boolean(response.data.data));
         }
-      } catch (err) {
+      } catch {
         if (cancelled) return;
       } finally {
         if (!cancelled) setEvaluationLoading(false);
@@ -131,6 +133,23 @@ function EventManagement() {
     return () => {
       cancelled = true;
     };
+  }, [savedEvent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const eventId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || null;
+    if (!eventId) return () => { cancelled = true; };
+    async function loadWorkspaceCounts() {
+      const [teamsResult, judgesResult] = await Promise.allSettled([
+        API.get(`/events/${encodeURIComponent(String(eventId))}/teams`),
+        API.get(`/events/${encodeURIComponent(String(eventId))}/judges`),
+      ]);
+      if (cancelled) return;
+      if (teamsResult.status === 'fulfilled') setTeamCount(Array.isArray(teamsResult.value.data?.data) ? teamsResult.value.data.data.length : 0);
+      if (judgesResult.status === 'fulfilled') setJudgeCount(Array.isArray(judgesResult.value.data?.data) ? judgesResult.value.data.data.length : 0);
+    }
+    loadWorkspaceCounts();
+    return () => { cancelled = true; };
   }, [savedEvent]);
 
   function updateField(field, value) {
@@ -370,6 +389,26 @@ function EventManagement() {
           </form>
         )}
       </section>
+
+      {savedEvent && !isEditing && (
+        <section className="event-workspace-grid" aria-label="Event workspace">
+          <article className="event-workspace-card">
+            <div><span className="event-workspace-icon" aria-hidden="true">T</span><h2>Teams</h2></div>
+            <p>{teamCount == null ? 'Loading teams…' : `${teamCount} ${teamCount === 1 ? 'team' : 'teams'} in this event`}</p>
+            <Link className="event-primary-button" to={`/organizer/events/${savedEvent.eventId || savedEvent._id}/teams`}>Manage Teams</Link>
+          </article>
+          <article className="event-workspace-card">
+            <div><span className="event-workspace-icon" aria-hidden="true">J</span><h2>Judges</h2></div>
+            <p>{judgeCount == null ? 'Loading judges…' : `${judgeCount} ${judgeCount === 1 ? 'judge' : 'judges'} in this event`}</p>
+            <Link className="event-primary-button" to={`/organizer/events/${savedEvent.eventId || savedEvent._id}/judges`}>Manage Judges</Link>
+          </article>
+          <article className="event-workspace-card">
+            <div><span className="event-workspace-icon" aria-hidden="true">E</span><h2>Evaluation</h2></div>
+            <p>{evaluationLoading ? 'Checking configuration…' : hasEvaluationConfig ? `Configured · ${evaluationConfig?.model || 'Evaluation type selected'}` : 'Not configured'}</p>
+            <button className="event-primary-button" type="button" onClick={openEvaluationConfig}>{hasEvaluationConfig ? 'Edit Evaluation' : 'Configure Evaluation'}</button>
+          </article>
+        </section>
+      )}
     </OrganizerLayout>
   );
 }

@@ -26,11 +26,7 @@ function normalizeString(value) {
 
 function normalizeAssignedTeamIds(value) {
   if (!Array.isArray(value)) return [];
-  return [...new Set(
-    value
-      .map((id) => (id != null ? String(id).trim() : ''))
-      .filter((id) => id && isValidObjectId(id)),
-  )];
+  return [...new Set(value.map((id) => (id != null ? String(id).trim() : '')))];
 }
 
 function isValidEmail(value) {
@@ -52,6 +48,9 @@ function validateJudgePayload(payload = {}) {
   if (!email) errors.email = 'Enter the judge email address.';
   else if (email.length > 254) errors.email = 'Judge email must be at most 254 characters.';
   else if (!isValidEmail(email)) errors.email = 'Enter a valid email address.';
+  if (assignedTeamIds.some((id) => !isValidObjectId(id))) {
+    errors.assignedTeamIds = 'Assigned team IDs must be valid.';
+  }
   if (status && !['Pending', 'Active'].includes(status)) {
     errors.status = 'Status must be Pending or Active.';
   }
@@ -119,6 +118,37 @@ exports.createJudge = async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
     return res.status(500).json({ success: false, error: 'Failed to create the judge.' });
+  }
+};
+
+exports.addJudgeTeam = async (req, res) => {
+  try {
+    const { judgeId, teamId } = req.params;
+    if (!isValidObjectId(judgeId)) return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
+    if (!isValidObjectId(teamId)) return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
+    const judge = await Judge.findById(judgeId).select('eventId').lean();
+    if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
+    const team = await Team.findOne({ _id: teamId, eventId: judge.eventId }).select('_id').lean();
+    if (!team) return res.status(400).json({ success: false, error: 'The team does not belong to this judge\'s event.' });
+    const updated = await Judge.findByIdAndUpdate(judgeId, { $addToSet: { assignedTeamIds: teamId }, $set: { status: 'Active' } }, { new: true, runValidators: true }).lean();
+    return res.status(200).json({ success: true, data: toJudgeResponse(updated) });
+  } catch (error) {
+    console.error('Failed to assign team:', error);
+    return res.status(500).json({ success: false, error: 'Failed to assign the team.' });
+  }
+};
+
+exports.removeJudgeTeam = async (req, res) => {
+  try {
+    const { judgeId, teamId } = req.params;
+    if (!isValidObjectId(judgeId)) return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
+    if (!isValidObjectId(teamId)) return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
+    const judge = await Judge.findByIdAndUpdate(judgeId, { $pull: { assignedTeamIds: teamId } }, { new: true }).lean();
+    if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
+    return res.status(200).json({ success: true, data: toJudgeResponse(judge) });
+  } catch (error) {
+    console.error('Failed to remove team assignment:', error);
+    return res.status(500).json({ success: false, error: 'Failed to remove the team assignment.' });
   }
 };
 
@@ -192,7 +222,15 @@ exports.updateJudge = async (req, res) => {
       return res.status(400).json({ success: false, error: teamsCheck.error });
     }
 
-    const judge = await Judge.findByIdAndUpdate(judgeId, normalized, {
+    const update = {
+      name: normalized.name,
+      email: normalized.email,
+      status: normalized.status,
+    };
+    if (Array.isArray(payload.assignedTeamIds) || Array.isArray(payload.teamIds)) {
+      update.assignedTeamIds = normalized.assignedTeamIds;
+    }
+    const judge = await Judge.findByIdAndUpdate(judgeId, update, {
       new: true,
       runValidators: true,
     }).lean();
@@ -218,6 +256,10 @@ exports.deleteJudge = async (req, res) => {
     if (!judge) {
       return res.status(404).json({ success: false, error: 'Judge not found.' });
     }
+    await Team.updateMany(
+      { eventId: judge.eventId },
+      { $pull: { judges: { $in: [String(judge._id), judge.name] } } },
+    );
     return res.status(200).json({ success: true, data: toJudgeResponse(judge) });
   } catch (error) {
     console.error('Failed to delete judge:', error);

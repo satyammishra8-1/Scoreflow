@@ -107,7 +107,7 @@ function JudgeModal({ onClose, onSave, existingJudge }) {
 }
 
 function AssignTeamsModal({ judge, teams, onClose, onSave }) {
-  const [selectedIds, setSelectedIds] = useState(judge?.teamIds || []);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [error, setError] = useState('');
 
   if (!judge) return null;
@@ -118,8 +118,8 @@ function AssignTeamsModal({ judge, teams, onClose, onSave }) {
       : [...current, teamId]);
   }
 
-  function save() {
-    const result = onSave(judge.id, selectedIds);
+  async function save() {
+    const result = await onSave(judge.id, selectedIds);
     if (result.ok) onClose();
     else setError(result.error);
   }
@@ -144,7 +144,8 @@ function AssignTeamsModal({ judge, teams, onClose, onSave }) {
               <label className="judges-team-option" key={teamId}>
                 <input
                   type="checkbox"
-                  checked={selectedIds.includes(teamId)}
+                  checked={judge.teamIds.includes(teamId) || selectedIds.includes(teamId)}
+                  disabled={judge.teamIds.includes(teamId)}
                   onChange={() => toggleTeam(teamId)}
                 />
                 <span><strong>{team.number} · {team.name}</strong><small>{team.project}</small></span>
@@ -163,7 +164,7 @@ function AssignTeamsModal({ judge, teams, onClose, onSave }) {
   );
 }
 
-function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose }) {
+function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose, onRemoveTeam }) {
   if (!judge) return null;
   const assignedTeams = judge.teamIds
     .map((id) => teams.find((team) => getTeamId(team) === id))
@@ -206,8 +207,9 @@ function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose 
                   <li key={teamId}>
                     <div>
                       <span>{team.number} · {team.name}</span>
-                      <small>{completedIds.has(teamId) ? 'Completed' : 'Pending'}</small>
+                      <small>{completedIds.has(teamId) ? 'Completed' : 'Pending'}{team.members?.length ? ` · ${team.members.map((member) => member.name).join(', ')}` : ''}</small>
                     </div>
+                    <button className="judges-view-button" type="button" onClick={() => onRemoveTeam(judge.id, teamId)}>Remove team</button>
                     <Link to={route} className="judges-assign-button" onClick={onClose}>Start Evaluation</Link>
                   </li>
                 );
@@ -343,15 +345,15 @@ function OrganizerJudges() {
   async function assignTeams(judgeId, teamIds) {
   const judge = judges.find((item) => item.id === judgeId);
   if (!judge) return { ok: false, error: 'This judge could not be found.' };
-  const selected = [...new Set(teamIds)].filter((id) => teams.some((team) => getTeamId(team) === id));
-  if (selected.length === 0) return { ok: false, error: 'Select at least one team.' };
-
   try {
-    const response = await API.put(`/judges/${encodeURIComponent(judgeId)}`, {
-      assignedTeamIds: selected,
-    });
-    const updated = toUiJudge(response.data.data);
-    setJudges((next) => next.map((item) => item.id === judgeId ? updated : item));
+    const additions = [...new Set(teamIds)].filter((id) => teams.some((team) => getTeamId(team) === id) && !judge.teamIds.includes(id));
+    if (!additions.length) return { ok: false, error: 'Select at least one new team.' };
+    for (const teamId of additions) {
+      await API.post(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`);
+    }
+    const loaded = await fetchJudges(eventId);
+    setJudges(loaded);
+    setAssigningJudge(null);
     setPageError('');
     return { ok: true };
   } catch (error) {
@@ -360,6 +362,18 @@ function OrganizerJudges() {
     return { ok: false, error: message };
   }
 }
+
+  async function removeTeamAssignment(judgeId, teamId) {
+    try {
+      const response = await API.delete(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`);
+      const updated = toUiJudge(response.data.data);
+      setJudges((current) => current.map((judge) => judge.id === judgeId ? updated : judge));
+      setSelectedJudge(updated);
+      setPageError('');
+    } catch (error) {
+      setPageError(getApiErrorMessage(error, 'Failed to remove this team assignment.'));
+    }
+  }
 
   const totalAssigned = judges.reduce((total, judge) => total + judge.teamIds.length, 0);
   const uniqueAssignedTeams = new Set(judges.flatMap((judge) => judge.teamIds)).size;
@@ -384,7 +398,7 @@ function OrganizerJudges() {
     >
       <div className="judges-page-heading">
             <div>
-              <p className="judges-context">Annual Innovation Hackathon 2026 <span>·</span> Live event</p>
+              <p className="judges-context">Event {eventId}</p>
               <h1>Judge Management</h1>
               <p>Manage judges, team assignments, and evaluation progress.</p>
             </div>
@@ -441,7 +455,7 @@ function OrganizerJudges() {
                           </div>
                         </td>
                         <td className="judges-email-cell">{judge.email}</td>
-                        <td><strong>{assignedCount}</strong> {assignedCount === 1 ? 'team' : 'teams'}</td>
+                        <td><strong>{assignedCount}</strong> {assignedCount === 1 ? 'team' : 'teams'}<small className="judges-assigned-list">{judge.teamIds.map((id) => teams.find((team) => getTeamId(team) === id)).filter(Boolean).map((team) => `${team.number} · ${team.name}`).join(', ') || 'None yet'}</small></td>
                         <td className="judges-progress-cell">
                           <div className="judges-progress-copy"><strong>{completed} / {assignedCount}</strong><span>Completed</span></div>
                           <div className="judges-progress-track" role="progressbar" aria-label={`${judge.name} progress`} aria-valuenow={progress} aria-valuemin="0" aria-valuemax="100">
@@ -485,6 +499,7 @@ function OrganizerJudges() {
         eventId={eventId}
         evaluationSessions={evaluationSessions}
         onClose={() => setSelectedJudge(null)}
+        onRemoveTeam={removeTeamAssignment}
       />
     </OrganizerLayout>
   );
