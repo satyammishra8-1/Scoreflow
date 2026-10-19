@@ -5,6 +5,7 @@ import OrganizerEventWorkspace from './pages/OrganizerEventWorkspace';
 import OrganizerResults from './pages/OrganizerResults';
 import OrganizerTeams from './pages/OrganizerTeams';
 import OrganizerJudges from './pages/OrganizerJudges';
+import OrganizerAnnouncements from './pages/OrganizerAnnouncements';
 import EvaluationConfiguration from './pages/EvaluationConfiguration';
 import EvaluationSession from './pages/EvaluationSession';
 import JudgeDashboard from './pages/JudgeDashboard';
@@ -26,6 +27,7 @@ function App() {
         <Route path="/organizer/events" element={<EventManagement />} />
         <Route path="/organizer/events/:eventId" element={<OrganizerEventWorkspace />} />
         <Route path="/organizer/events/:eventId/results" element={<OrganizerResults />} />
+        <Route path="/organizer/events/:eventId/announcements" element={<OrganizerAnnouncements />} />
         <Route path="/organizer/events/:eventId/teams" element={<OrganizerTeams />} />
         <Route path="/organizer/events/:eventId/judges" element={<OrganizerJudges />} />
         <Route path="/organizer/events/:eventId/evaluation" element={<EvaluationConfiguration />} />

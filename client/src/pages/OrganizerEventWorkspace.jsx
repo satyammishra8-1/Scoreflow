@@ -53,6 +53,7 @@ function OrganizerEventWorkspace() {
     { title: 'Teams', count: workspace.teams, detail: 'Manage teams registered for this event.', action: 'Open Teams', to: `/organizer/events/${eventId}/teams` },
     { title: 'Judges', count: workspace.judges, detail: 'Manage judges and their team assignments.', action: 'Open Judges', to: `/organizer/events/${eventId}/judges` },
     { title: 'Evaluation', count: null, detail: workspace.evaluation ? `Configured · ${workspace.evaluation.model}` : 'Not configured', action: 'Open Evaluation', to: `/organizer/events/${eventId}/evaluation`, evaluation: true },
+    { title: 'Announcements', count: null, detail: 'Send event updates to judges or team members.', action: 'Open Announcements', to: `/organizer/events/${eventId}/announcements`, evaluation: true },
   ];
 
   return (

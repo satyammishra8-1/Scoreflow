@@ -59,4 +59,36 @@ async function sendJudgeInvitation({ judge, event, token }) {
   }
 }
 
-module.exports = { sendJudgeInvitation };
+async function sendAnnouncementEmail({ recipientEmail, subject, message, eventName }) {
+  const { apiKey, senderEmail, senderName } = getBrevoConfig();
+  if (!apiKey || !senderEmail) {
+    return { sent: false, message: 'Brevo email is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.' };
+  }
+
+  const safeEventName = escapeHtml(eventName || 'ScoreFlow event');
+  const safeSubject = escapeHtml(subject);
+  const safeMessage = escapeHtml(message).replace(/\r?\n/g, '<br>');
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000),
+      headers: { accept: 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { email: senderEmail, name: senderName },
+        to: [{ email: recipientEmail }],
+        subject,
+        htmlContent: `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#202b40"><main style="max-width:600px;margin:24px auto;padding:28px;background:#fff;border:1px solid #e5e9f0;border-radius:12px"><p style="color:#4169df;font-weight:bold;letter-spacing:.08em">SCOREFLOW</p><p>Announcement for ${safeEventName}</p><h1 style="font-size:22px">${safeSubject}</h1><p style="line-height:1.6">${safeMessage}</p></main></body></html>`,
+        textContent: `${eventName || 'ScoreFlow event'}\n\n${subject}\n\n${message}`,
+      }),
+    });
+    if (!response.ok) {
+      return { sent: false, message: 'Brevo rejected this email. Check the sender configuration and try again.' };
+    }
+    return { sent: true };
+  } catch (error) {
+    console.error('Brevo announcement request failed:', error.message);
+    return { sent: false, message: 'The email service is temporarily unavailable.' };
+  }
+}
+
+module.exports = { sendJudgeInvitation, sendAnnouncementEmail };
