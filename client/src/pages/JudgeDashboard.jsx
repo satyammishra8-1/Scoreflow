@@ -29,6 +29,16 @@ function extractCriteria(config) {
   return [];
 }
 
+function safeExternalUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    const url = new URL(value.trim());
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
 function JudgeDashboard() {
   const { eventId = 'default', judgeId } = useParams();
   return <JudgeDashboardEvent key={`${eventId}-${judgeId}`} eventId={eventId} judgeId={judgeId} />;
@@ -44,6 +54,7 @@ function JudgeDashboardEvent({ eventId, judgeId }) {
     }
   });
   const [judges, setJudges] = useState([]);
+  const [event, setEvent] = useState(null);
   const [judgesLoading, setJudgesLoading] = useState(true);
   const [judgesError, setJudgesError] = useState('');
   const [teams, setTeams] = useState([]);
@@ -85,6 +96,18 @@ function JudgeDashboardEvent({ eventId, judgeId }) {
     return () => {
       cancelled = true;
     };
+  }, [eventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    API.get(`/events/${encodeURIComponent(eventId)}`)
+      .then((response) => {
+        if (!cancelled) setEvent(response.data?.data || null);
+      })
+      .catch((err) => {
+        if (!cancelled) setJudgesError(err?.response?.data?.error || 'Unable to load this event.');
+      });
+    return () => { cancelled = true; };
   }, [eventId]);
 
   useEffect(() => {
@@ -261,7 +284,7 @@ function JudgeDashboardEvent({ eventId, judgeId }) {
           </div>
           <div>
             <span className="judges-eyebrow">CURRENT EVENT</span>
-            <h2>{eventId}</h2>
+            <h2>{event?.name || 'Event'}</h2>
           </div>
         </section>
 
@@ -283,7 +306,14 @@ function JudgeDashboardEvent({ eventId, judgeId }) {
                   </div>
                   <span className={`judge-status judge-status-${status.toLowerCase()}`}>{status === 'COMPLETED' ? 'Completed' : status === 'IN_PROGRESS' ? 'In Progress' : 'Pending'}</span>
                 </div>
-                <p className="judge-project-name">{team.project}</p>
+                <p className="judge-project-name">{team.project || 'Project details not provided'}</p>
+                {(safeExternalUrl(team.githubUrl) || safeExternalUrl(team.demoUrl)) && (
+                  <p className="judge-project-name">
+                    {safeExternalUrl(team.githubUrl) && <a href={safeExternalUrl(team.githubUrl)} target="_blank" rel="noreferrer">GitHub</a>}
+                    {safeExternalUrl(team.githubUrl) && safeExternalUrl(team.demoUrl) ? ' · ' : ''}
+                    {safeExternalUrl(team.demoUrl) && <a href={safeExternalUrl(team.demoUrl)} target="_blank" rel="noreferrer">Demo</a>}
+                  </p>
+                )}
                 <ul className="judge-member-list">
                   {team.members?.map((member) => <li key={`${team.id}-${member.name}`}>{member.name}</li>) || <li>No members listed</li>}
                 </ul>

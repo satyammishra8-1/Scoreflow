@@ -1,3 +1,13 @@
+const mongoose = require('mongoose');
+const Event = require('../models/Event');
+const Judge = require('../models/Judge');
+const Team = require('../models/Team');
+const EvaluationConfiguration = require('../models/EvaluationConfiguration');
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
+
 const MODEL_FIELDS = {
   'criteria-based': ['criteriaBased'],
   'open-holistic': ['openHolistic'],
@@ -170,15 +180,19 @@ async function validateEvaluationSubmission(payload = {}) {
 
   if (Object.keys(errors).length > 0) return { errors, normalized };
 
-  const [event, judge, team] = await Promise.all([
+  const [event, judge, team, evaluationConfiguration] = await Promise.all([
     Event.findById(eventId).lean(),
     Judge.findById(judgeId).lean(),
     Team.findById(teamId).lean(),
+    EvaluationConfiguration.findOne({ eventId }).select('eventId').lean(),
   ]);
 
   if (!event) errors.eventId = 'Event not found.';
   if (!judge) errors.judgeId = 'Judge not found.';
   if (!team) errors.teamId = 'Team not found.';
+  if (event && !evaluationConfiguration) {
+    errors.evaluationConfig = 'Evaluation configuration not found for this event.';
+  }
 
   if (event && judge && String(judge.eventId) !== String(event._id)) {
     errors.judgeId = 'Judge does not belong to this event.';
