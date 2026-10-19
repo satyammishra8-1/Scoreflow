@@ -7,11 +7,17 @@ const {
   deleteJudge,
   addJudgeTeam,
   removeJudgeTeam,
+  previewJudgeInvitation,
+  acceptJudgeInvitation,
+  resendJudgeInvitation,
 } = require('../controllers/judgeController');
 
 const router = express.Router();
 
 router.route('/events/:eventId/judges').post(createJudge).get(listJudgesByEvent);
+router.get('/judge-invitations/:token', previewJudgeInvitation);
+router.post('/judge-invitations/accept', acceptJudgeInvitation);
+router.post('/judges/:judgeId/invitation/resend', resendJudgeInvitation);
 router.route('/judges/:judgeId/teams/:teamId').post(addJudgeTeam).delete(removeJudgeTeam);
 router.route('/judges/:judgeId').get(getJudge).put(updateJudge).delete(deleteJudge);
 

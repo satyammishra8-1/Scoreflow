@@ -31,6 +31,16 @@ const judgeSchema = new mongoose.Schema(
       enum: ['Pending', 'Active'],
       default: 'Pending',
     },
+    invitationStatus: {
+      type: String,
+      enum: ['pending', 'accepted', 'expired'],
+    },
+    invitationTokenHash: {
+      type: String,
+      select: false,
+    },
+    invitationExpiresAt: Date,
+    invitationAcceptedAt: Date,
   },
   {
     timestamps: true,

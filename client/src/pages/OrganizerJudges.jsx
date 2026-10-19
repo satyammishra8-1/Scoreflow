@@ -291,6 +291,8 @@ function OrganizerJudgesEvent({ eventId }) {
   }, [eventId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pageError, setPageError] = useState('');
+  const [pageNotice, setPageNotice] = useState('');
+  const [resendingJudgeId, setResendingJudgeId] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingJudge, setEditingJudge] = useState(null);
   const [assigningJudge, setAssigningJudge] = useState(null);
@@ -314,6 +316,9 @@ function OrganizerJudgesEvent({ eventId }) {
       const created = toUiJudge(response.data.data);
       setJudges((next) => [...next, created]);
       setIsAddOpen(false);
+      setPageNotice(response.data.invitation?.sent
+        ? `Invitation sent to ${created.email}.`
+        : response.data.invitation?.message || 'Judge added. The invitation email could not be sent yet. Use Resend Invitation to try again.');
       return { ok: true };
     } catch (error) {
       return { ok: false, error: getApiErrorMessage(error, 'Failed to add this judge.') };
@@ -339,9 +344,32 @@ function OrganizerJudgesEvent({ eventId }) {
       const updated = toUiJudge(response.data.data);
       setJudges((next) => next.map((item) => item.id === judgePayload.id ? updated : item));
       setEditingJudge(null);
+      if (response.data.invitation) {
+        setPageNotice(response.data.invitation.sent
+          ? `Updated invitation sent to ${updated.email}.`
+          : response.data.invitation.message);
+      }
       return { ok: true };
     } catch (error) {
       return { ok: false, error: getApiErrorMessage(error, 'Failed to save this judge.') };
+    }
+  }
+
+  async function resendInvitation(judgeId) {
+    setResendingJudgeId(judgeId);
+    setPageError('');
+    setPageNotice('');
+    try {
+      const response = await API.post(`/judges/${encodeURIComponent(judgeId)}/invitation/resend`, null, { params: { eventId } });
+      const updated = toUiJudge(response.data.data);
+      setJudges((current) => current.map((judge) => judge.id === judgeId ? updated : judge));
+      setPageNotice(response.data.invitation?.sent
+        ? `Invitation resent to ${updated.email}. The previous link is now invalid.`
+        : response.data.invitation?.message || 'The invitation could not be sent. Please try again.');
+    } catch (error) {
+      setPageError(getApiErrorMessage(error, 'Failed to resend the invitation.'));
+    } finally {
+      setResendingJudgeId('');
     }
   }
 
@@ -429,6 +457,7 @@ function OrganizerJudgesEvent({ eventId }) {
           </div>
 
           {pageError && <p className="judges-alert" role="alert">{pageError}</p>}
+          {pageNotice && <p className="judges-invitation-notice" role="status">{pageNotice}</p>}
 
           <section className="judges-summary" aria-label="Judge overview">
             <article className="judges-summary-card">
@@ -458,7 +487,7 @@ function OrganizerJudgesEvent({ eventId }) {
               <table className="judges-table">
                 <thead>
                   <tr>
-                    <th>Judge</th><th>Email</th><th>Assigned Teams</th><th>Progress</th><th>Status</th><th>Actions</th>
+                    <th>Judge</th><th>Email</th><th>Assigned Teams</th><th>Progress</th><th>Status</th><th>Invitation</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -484,11 +513,15 @@ function OrganizerJudgesEvent({ eventId }) {
                           </div>
                         </td>
                         <td><span className={`judges-status judges-status-${assignedCount > 0 ? 'active' : 'pending'}`}>{assignedCount > 0 ? 'Active' : 'Pending'}</span></td>
+                        <td><span className={`invitation-status invitation-status-${judge.invitationStatus || 'none'}`}>{judge.invitationStatus ? judge.invitationStatus[0].toUpperCase() + judge.invitationStatus.slice(1) : 'Not invited'}</span></td>
                         <td>
                           <div className="judges-row-actions">
                             <button className="judges-view-button" type="button" onClick={() => setSelectedJudge(judge)}>View Details</button>
                             <button className="judges-assign-button" type="button" onClick={() => setAssigningJudge(judge)}>Assign Teams</button>
-                            <Link className="judges-assign-button" to={`/judge/${eventId}/${judge.id}`}>Open Dashboard</Link>
+                            {(!judge.invitationStatus || judge.invitationStatus === 'accepted')
+                              ? <Link className="judges-assign-button" to={`/judge/${eventId}/${judge.id}`}>Open Dashboard</Link>
+                              : <span className="judges-invitation-required">Accept invitation first</span>}
+                            {judge.invitationStatus !== 'accepted' && <button className="judges-view-button" type="button" onClick={() => resendInvitation(judge.id)} disabled={resendingJudgeId === judge.id}>{resendingJudgeId === judge.id ? 'Sending...' : 'Resend Invitation'}</button>}
                             <button className="judges-view-button" type="button" onClick={() => setEditingJudge(judge)}>Edit</button>
                             <button className="judges-assign-button" type="button" onClick={() => deleteJudge(judge.id)}>Delete</button>
                           </div>
@@ -497,7 +530,7 @@ function OrganizerJudgesEvent({ eventId }) {
                     );
                   })}
                   {filteredJudges.length === 0 && (
-                    <tr><td className="judges-empty-cell" colSpan="6">{judges.length === 0 ? 'No judges added yet. Add a judge to get started.' : 'No judges match the current search.'}</td></tr>
+                    <tr><td className="judges-empty-cell" colSpan="7">{judges.length === 0 ? 'No judges added yet. Add a judge to get started.' : 'No judges match the current search.'}</td></tr>
                   )}
                 </tbody>
               </table>

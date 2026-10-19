@@ -8,6 +8,7 @@ import OrganizerJudges from './pages/OrganizerJudges';
 import EvaluationConfiguration from './pages/EvaluationConfiguration';
 import EvaluationSession from './pages/EvaluationSession';
 import JudgeDashboard from './pages/JudgeDashboard';
+import JudgeInvitation from './pages/JudgeInvitation';
 import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import './App.css';
 
@@ -30,6 +31,7 @@ function App() {
         <Route path="/organizer/events/:eventId/evaluation" element={<EvaluationConfiguration />} />
         <Route path="/organizer/events/:eventId/judges/:judgeId/evaluation/:teamId" element={<EvaluationSessionRoute />} />
         <Route path="/judge/:eventId/:judgeId" element={<JudgeDashboard />} />
+        <Route path="/judge/invite/:token" element={<JudgeInvitation />} />
         <Route path="/organizer/judges" element={<OrganizerJudges />} />
         <Route path="/dashboard" element={<OrganizerDashboard />} />
         <Route path="*" element={<Home />} />

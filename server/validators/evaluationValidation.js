@@ -219,6 +219,9 @@ async function validateEvaluationSubmission(payload = {}) {
   if (event && judge && String(judge.eventId) !== String(event._id)) {
     errors.judgeId = 'Judge does not belong to this event.';
   }
+  if (judge?.invitationStatus && judge.invitationStatus !== 'accepted') {
+    errors.judgeId = 'This judge must accept the email invitation before submitting evaluations.';
+  }
   if (event && team && String(team.eventId) !== String(event._id)) {
     errors.teamId = 'Team does not belong to this event.';
   }

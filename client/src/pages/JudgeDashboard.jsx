@@ -63,6 +63,10 @@ function JudgeDashboard() {
           setError('This judge or event could not be found.');
           return;
         }
+        if (currentJudge.invitationStatus && currentJudge.invitationStatus !== 'accepted') {
+          setError('Accept the judge invitation from your email before opening this dashboard.');
+          return;
+        }
 
         const assignedIds = new Set((currentJudge.assignedTeamIds || []).map(String));
         const assignedTeams = (Array.isArray(teamsResponse.data?.data) ? teamsResponse.data.data : [])
