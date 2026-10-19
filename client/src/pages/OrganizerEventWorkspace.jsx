@@ -59,7 +59,10 @@ function OrganizerEventWorkspace() {
     <OrganizerLayout activeKey="events" wrapperClassName="event-management" contentClassName="event-content" eventId={eventId}>
       <div className="event-page-heading">
         <div><Link className="event-back-link" to="/organizer/dashboard">← Dashboard</Link><h1>Event Workspace</h1><p>Event details and management tools.</p></div>
-        {event && <Link className="event-secondary-button" to={`/organizer/events?edit=${encodeURIComponent(eventId)}`}>Edit Event</Link>}
+        {event && <div className="event-heading-actions">
+          <Link className="event-secondary-button" to={`/organizer/events/${encodeURIComponent(eventId)}/results`}>View Results</Link>
+          <Link className="event-secondary-button" to={`/organizer/events?edit=${encodeURIComponent(eventId)}`}>Edit Event</Link>
+        </div>}
       </div>
       {loading ? <section className="dashboard-empty-state"><h3>Loading event...</h3><p>Fetching event details and workspace data.</p></section>
         : error ? <section className="dashboard-empty-state" role="alert"><h3>Unable to open event</h3><p>{error}</p><Link className="event-secondary-button" to="/organizer/dashboard">Back to Dashboard</Link></section>

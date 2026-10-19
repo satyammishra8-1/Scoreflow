@@ -1,0 +1,53 @@
+.organizer-results { --results-border: #e5e9f0; }
+.results-content { display: grid; gap: 22px; }
+.results-page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.results-back-link { color: #4169df; font-size: 13px; font-weight: 600; text-decoration: none; }
+.results-page-header h1 { margin: 10px 0 5px; color: #202b40; font-size: 28px; }
+.results-page-header p { margin: 0; color: #7a8497; }
+.results-event-summary { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr)); gap: 16px; padding: 20px; border: 1px solid var(--results-border); border-radius: 10px; background: #fff; }
+.results-event-summary > div { display: grid; align-content: center; gap: 7px; }
+.results-event-summary span { color: #7a8497; font-size: 12px; }
+.results-event-summary strong { color: #202b40; font-size: 16px; }
+.results-event-title h2 { margin: 0; color: #202b40; font-size: 20px; }
+.results-section { display: grid; gap: 14px; }
+.results-section-heading h2 { margin: 0; color: #202b40; font-size: 20px; }
+.results-section-heading p { margin: 5px 0 0; color: #7a8497; font-size: 13px; }
+.team-results-list { display: grid; gap: 14px; }
+.team-result-card { min-width: 0; padding: 18px; border: 1px solid var(--results-border); border-radius: 10px; background: #fff; }
+.team-result-heading, .judge-result-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.team-result-number { color: #7a8497; font-size: 12px; }
+.team-result-heading h3 { margin: 4px 0 0; color: #202b40; font-size: 17px; }
+.result-status { display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.result-status-completed { color: #147b59; background: #e8f7f1; }
+.result-status-pending { color: #9b6811; background: #fff4d9; }
+.team-result-stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 14px; color: #687387; font-size: 12px; }
+.team-result-stats strong { color: #202b40; }
+.team-no-score, .results-empty { margin: 16px 0 0; padding: 13px; border-radius: 7px; color: #687387; background: #f7f8fb; font-size: 13px; }
+.judge-result-list { display: grid; gap: 12px; margin-top: 15px; }
+.judge-result { min-width: 0; padding: 14px; border: 1px solid #edf0f5; border-radius: 8px; background: #fcfcfd; }
+.judge-result-heading { align-items: center; margin-bottom: 10px; }
+.judge-result-heading h4 { margin: 0; color: #344057; font-size: 13px; }
+.judge-result-heading span { color: #147b59; font-size: 11px; font-weight: 600; }
+.criteria-result-table-wrap, .judge-summary-table-wrap { width: 100%; overflow-x: auto; }
+.criteria-result-table, .judge-summary-table { width: 100%; border-collapse: collapse; text-align: left; }
+.criteria-result-table { font-size: 12px; }
+.criteria-result-table th, .criteria-result-table td, .judge-summary-table th, .judge-summary-table td { padding: 9px 10px; border-bottom: 1px solid #edf0f5; }
+.criteria-result-table th, .judge-summary-table th { color: #768196; font-size: 11px; font-weight: 600; }
+.criteria-result-table td, .judge-summary-table td { color: #344057; }
+.judge-score-summary { margin: 10px 0 0; color: #46536a; font-size: 12px; font-weight: 600; }
+.judge-pending-line { margin: 0; color: #9b6811; font-size: 12px; }
+.model-score-list { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+.model-score-list > div { display: flex; gap: 8px; font-size: 12px; }
+.model-score-list dt { color: #768196; }
+.model-score-list dd { margin: 0; color: #344057; font-weight: 600; }
+.judge-summary-table-wrap { padding: 6px 16px; border: 1px solid var(--results-border); border-radius: 9px; background: #fff; }
+.results-state { padding: 24px; border: 1px solid var(--results-border); border-radius: 9px; background: #fff; }
+.results-state h2 { margin: 0; color: #202b40; font-size: 17px; }
+.results-state p { color: #687387; }
+@media (max-width: 760px) {
+  .results-event-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .results-event-title { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .results-event-summary { grid-template-columns: 1fr; }
+}
