@@ -188,14 +188,10 @@ async function validateEvaluationSubmission(payload = {}) {
   }
 
   if (judge && team) {
-    const judgeIdStr = String(judge._id);
-    const isAssignedByTeam = Array.isArray(team.judges)
-      ? team.judges.some((id) => String(id) === judgeIdStr)
-      : false;
     const isAssignedByJudge = Array.isArray(judge.assignedTeamIds)
       ? judge.assignedTeamIds.some((id) => String(id) === String(team._id))
       : false;
-    if (!isAssignedByTeam && !isAssignedByJudge) {
+    if (!isAssignedByJudge) {
       errors.teamId = 'This team is not assigned to the judge.';
     }
   }

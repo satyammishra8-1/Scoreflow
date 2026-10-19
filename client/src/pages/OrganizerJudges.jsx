@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useParams } from 'react-router-dom';
 import OrganizerLayout from './OrganizerLayout';
-import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import './OrganizerDashboard.css';
 import './OrganizerJudges.css';
 
@@ -33,8 +32,8 @@ function toUiJudge(apiJudge) {
   if (!apiJudge || typeof apiJudge !== 'object') return null;
   return {
     ...apiJudge,
-    id: apiJudge.judgeId,
-    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds : [],
+    id: String(apiJudge._id || apiJudge.judgeId || apiJudge.id || ''),
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds.map(String) : [],
   };
 }
 
@@ -47,7 +46,9 @@ function getApiErrorMessage(error, fallback) {
 async function fetchJudges(eventId) {
   try {
     const response = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
-    return (response.data.data || []).map(toUiJudge).filter(Boolean);
+    return (response.data.data || [])
+      .map(toUiJudge)
+      .filter((judge) => judge && String(judge.eventId) === String(eventId));
   } catch {
     return [];
   }
@@ -238,11 +239,30 @@ function JudgeDetailsModal({ judge, teams, eventId, evaluationSessions, onClose,
 
 function OrganizerJudges() {
   const { eventId = 'default' } = useParams();
+  return <OrganizerJudgesEvent key={eventId} eventId={eventId} />;
+}
+
+function OrganizerJudgesEvent({ eventId }) {
   const [teams, setTeams] = useState([]);
-  const evaluationSessions = useMemo(() => readSavedEvaluationSessions(eventId), [eventId]);
+  const [evaluationSessions, setEvaluationSessions] = useState([]);
   const [judges, setJudges] = useState([]);
   useEffect(() => {
-    fetchJudges(eventId).then((loaded) => setJudges(loaded));
+    let cancelled = false;
+    fetchJudges(eventId).then((loaded) => {
+      if (!cancelled) setJudges(loaded);
+    });
+    return () => { cancelled = true; };
+  }, [eventId]);
+  useEffect(() => {
+    let cancelled = false;
+    API.get(`/events/${encodeURIComponent(eventId)}/evaluations`)
+      .then((response) => {
+        if (!cancelled) setEvaluationSessions(Array.isArray(response.data?.data) ? response.data.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setEvaluationSessions([]);
+      });
+    return () => { cancelled = true; };
   }, [eventId]);
   useEffect(() => {
     let cancelled = false;
@@ -254,10 +274,10 @@ function OrganizerJudges() {
           setTeams(
             list.map((team) => ({
               ...team,
-              id: team.teamId,
+              id: String(team._id || team.teamId || team.id || ''),
               number: team.teamNumber,
               name: team.teamName,
-            })),
+            })).filter((team) => String(team.eventId) === String(eventId)),
           );
         }
       } catch {
@@ -312,6 +332,7 @@ function OrganizerJudges() {
 
     try {
       const response = await API.put(`/judges/${encodeURIComponent(judgePayload.id)}`, {
+        eventId,
         name: judgePayload.name,
         email: judgePayload.email.toLowerCase(),
       });
@@ -331,7 +352,7 @@ function OrganizerJudges() {
     if (!confirmed) return { ok: false, error: 'Judge deletion cancelled.' };
 
     try {
-      await API.delete(`/judges/${encodeURIComponent(judgeId)}`);
+      await API.delete(`/judges/${encodeURIComponent(judgeId)}`, { params: { eventId } });
       setJudges((next) => next.filter((item) => item.id !== judgeId));
       setSelectedJudge(null);
       setAssigningJudge(null);
@@ -349,7 +370,7 @@ function OrganizerJudges() {
     const additions = [...new Set(teamIds)].filter((id) => teams.some((team) => getTeamId(team) === id) && !judge.teamIds.includes(id));
     if (!additions.length) return { ok: false, error: 'Select at least one new team.' };
     for (const teamId of additions) {
-      await API.post(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`);
+      await API.post(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`, null, { params: { eventId } });
     }
     const loaded = await fetchJudges(eventId);
     setJudges(loaded);
@@ -365,7 +386,7 @@ function OrganizerJudges() {
 
   async function removeTeamAssignment(judgeId, teamId) {
     try {
-      const response = await API.delete(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`);
+      const response = await API.delete(`/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}`, { params: { eventId } });
       const updated = toUiJudge(response.data.data);
       setJudges((current) => current.map((judge) => judge.id === judgeId ? updated : judge));
       setSelectedJudge(updated);

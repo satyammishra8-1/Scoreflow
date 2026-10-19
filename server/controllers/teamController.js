@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Team = require('../models/Team');
 const Event = require('../models/Event');
+const Judge = require('../models/Judge');
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
@@ -144,13 +145,18 @@ exports.getTeam = async (req, res) => {
 exports.deleteTeam = async (req, res) => {
   try {
     const { teamId } = req.params;
+    const { eventId } = req.query;
     if (!isValidObjectId(teamId)) {
       return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
     }
-    const team = await Team.findByIdAndDelete(teamId).lean();
-    if (!team) {
-      return res.status(404).json({ success: false, error: 'Team not found.' });
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     }
+    const team = await Team.findOneAndDelete({ _id: teamId, eventId }).lean();
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found for this event.' });
+    }
+    await Judge.updateMany({ eventId }, { $pull: { assignedTeamIds: team._id } });
     return res.status(200).json({ success: true, data: toTeamResponse(team) });
   } catch (error) {
     console.error('Failed to delete team:', error);
@@ -163,6 +169,10 @@ exports.updateTeam = async (req, res) => {
     if (!isValidObjectId(teamId)) {
       return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
     }
+    const { eventId } = req.body || {};
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    }
 
     const { errors, normalized } = validateTeamPayload(req.body || {});
     if (Object.keys(errors).length > 0) {
@@ -173,7 +183,7 @@ exports.updateTeam = async (req, res) => {
       });
     }
 
-    const team = await Team.findByIdAndUpdate(teamId, normalized, {
+    const team = await Team.findOneAndUpdate({ _id: teamId, eventId }, normalized, {
       new: true,
       runValidators: true,
     }).lean();

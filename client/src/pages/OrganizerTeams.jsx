@@ -132,7 +132,7 @@ function OrganizerTeamsEvent({ eventId }) {
         ]);
         if (cancelled || activeEventId.current !== eventId) return;
         const list = Array.isArray(teamsResponse.data?.data) ? teamsResponse.data.data : [];
-        setTeams(list.map(toUiTeam).filter(Boolean));
+        setTeams(list.filter((team) => String(team.eventId) === String(eventId)).map(toUiTeam).filter(Boolean));
         const eventNameValue = eventResponse?.data?.data?.name;
         setEventName(typeof eventNameValue === 'string' ? eventNameValue.trim() : '');
       } catch (error) {
@@ -197,7 +197,7 @@ function OrganizerTeamsEvent({ eventId }) {
       const response = await API.get(`/events/${encodeURIComponent(eventId)}/teams`);
       if (activeEventId.current !== eventId) return { ok: false };
       const list = Array.isArray(response.data?.data) ? response.data.data : [];
-      setTeams(list.map(toUiTeam).filter(Boolean));
+      setTeams(list.filter((team) => String(team.eventId) === String(eventId)).map(toUiTeam).filter(Boolean));
       if (successMessage) setPageMessage({ type: 'success', text: successMessage });
       else setPageMessage(null);
       return { ok: true };
@@ -385,7 +385,7 @@ function OrganizerTeamsEvent({ eventId }) {
     const teamKey = getTeamKey(team);
     setIsDeleting(true);
     try {
-      await API.delete(`/teams/${encodeURIComponent(teamKey)}`);
+      await API.delete(`/teams/${encodeURIComponent(teamKey)}`, { params: { eventId } });
       await refreshTeams(`Team ${team.number} deleted successfully.`);
       setSelectedTeam(null);
       setDeletingTeam(null);

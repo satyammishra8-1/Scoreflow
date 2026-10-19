@@ -12,9 +12,7 @@ import {
 
   normalizeCriterion,
 
-  readSavedCriteria,
-
-} from '../data/evaluationStorage';
+} from '../data/evaluationUtils';
 
 import {
 
@@ -46,9 +44,9 @@ function toUiJudge(apiJudge) {
 
     ...apiJudge,
 
-    id: apiJudge.judgeId,
+    id: String(apiJudge._id || apiJudge.judgeId || apiJudge.id || ''),
 
-    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds : [],
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds.map(String) : [],
 
   };
 
@@ -67,28 +65,6 @@ function formatDuration(valueInSeconds) {
   const pad = (input) => String(input).padStart(2, '0');
 
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-
-}
-
-
-
-function readStoredTeams(eventId) {
-
-  try {
-
-    const stored = window.localStorage.getItem(`scoreflow.organizer.event.${eventId}.teams`);
-
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    return Array.isArray(parsed) ? parsed : [];
-
-  } catch {
-
-    return [];
-
-  }
 
 }
 
@@ -150,11 +126,34 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   });
 
+  const [teams, setTeams] = useState([]);
+  const [judges, setJudges] = useState([]);
+  const [judgesLoading, setJudgesLoading] = useState(true);
+  const [judgesError, setJudgesError] = useState('');
+  const [session, setSession] = useState(() => ({
+    id: `session-${getCurrentTimestamp()}`,
+    eventId,
+    teamId,
+    judgeId,
+    startedAt: null,
+    completedAt: null,
+    duration: 0,
+    attendance: 'Present',
+    scores: {},
+    totalScore: 0,
+    weightedScore: 0,
+    feedback: '',
+    status: 'NOT_STARTED',
+  }));
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => Number(session.duration || 0));
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [evaluationLoading, setEvaluationLoading] = useState(true);
+  const [evaluationAccessError, setEvaluationAccessError] = useState('');
+
   const [evalConfig, setEvalConfig] = useState(null);
 
   const [configLoading, setConfigLoading] = useState(true);
-
-  const legacyCriteria = useMemo(() => readSavedCriteria(eventId).criteria, [eventId]);
 
   useEffect(() => {
 
@@ -164,17 +163,18 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
       try {
 
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluation`);
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`);
 
         if (!cancelled && response.data?.success) {
 
-          setEvalConfig(response.data.data || null);
+          if (response.data.data) setEvalConfig(response.data.data);
+          else setJudgesError('Evaluation is not configured for this event yet.');
 
         }
 
       } catch {
 
-        // Configuration unavailable; fall back to the legacy local criteria.
+        if (!cancelled) setJudgesError('Unable to load this event\'s evaluation configuration.');
 
       } finally {
 
@@ -196,7 +196,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   const criteria = useMemo(() => {
 
-    if (!evalConfig) return legacyCriteria;
+    if (!evalConfig) return [];
 
     if (evalConfig.model === 'criteria-based') {
 
@@ -220,25 +220,34 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     return [];
 
-  }, [evalConfig, legacyCriteria, eventId]);
+  }, [evalConfig, eventId]);
 
   const evalModel = evalConfig?.model || 'criteria-based';
 
-  const [teams] = useState(() => readStoredTeams(eventId));
-
-  const [judges, setJudges] = useState([]);
-  const [judgesLoading, setJudgesLoading] = useState(true);
-  const [judgesError, setJudgesError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadJudges() {
       try {
-        const response = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
+        const [judgeResponse, teamResponse] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+        ]);
         if (!cancelled) {
-          const list = Array.isArray(response.data?.data) ? response.data.data : [];
-          setJudges(list.map(toUiJudge).filter(Boolean));
+          const list = Array.isArray(judgeResponse.data?.data) ? judgeResponse.data.data : [];
+          setJudges(list.map(toUiJudge).filter((judge) => judge && String(judge.eventId) === String(eventId)));
+          const eventTeams = Array.isArray(teamResponse.data?.data) ? teamResponse.data.data : [];
+          setTeams(eventTeams
+            .filter((team) => String(team.eventId) === String(eventId))
+            .map((team) => ({
+              ...team,
+              id: String(team._id || team.teamId || team.id || ''),
+              number: team.teamNumber,
+              name: team.teamName,
+              github: team.githubUrl || '',
+              demo: team.demoUrl || '',
+            })));
         }
       } catch (err) {
         if (!cancelled) {
@@ -328,12 +337,14 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
         }
 
-      } catch {
-
-        // No existing evaluation yet (404) or the API is unavailable;
-
-        // fall back to a fresh session so evaluation can still begin.
-
+      } catch (loadError) {
+        if (!cancelled && loadError?.response?.status !== 404) {
+          const message = loadError?.response?.data?.error || 'Unable to load the evaluation from MongoDB.';
+          setEvaluationAccessError(message);
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) setEvaluationLoading(false);
       }
 
     }
@@ -364,47 +375,8 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   }, [sidebarCollapsed]);
 
-  const [session, setSession] = useState(() => ({
-
-    id: `session-${getCurrentTimestamp()}`,
-
-    eventId,
-
-    teamId,
-
-    judgeId,
-
-    startedAt: null,
-
-    completedAt: null,
-
-    duration: 0,
-
-    attendance: 'Present',
-
-    scores: {},
-
-    totalScore: 0,
-
-    weightedScore: 0,
-
-    feedback: '',
-
-    status: 'NOT_STARTED',
-
-  }));
-
-  const [elapsedSeconds, setElapsedSeconds] = useState(() => Number(session.duration || 0));
-
-  const [error, setError] = useState('');
-
-  const [success, setSuccess] = useState('');
-
-
-
   useEffect(() => {
     if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
-      setElapsedSeconds(Number(session.duration || 0));
       return undefined;
     }
 
@@ -414,7 +386,6 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
       );
     };
 
-    updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
   }, [session.status, session.startedAt, session.duration]);
@@ -510,11 +481,13 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  const team = teams.find((item) => String(item.id || item.number) === String(teamId));
+  const team = teams.find((item) => String(item._id || item.id || item.number) === String(teamId));
 
   const judge = judges.find((item) => String(item.id) === String(judgeId));
 
-  const assignedToJudge = judge && team && (judge.teamIds || []).includes(String(team.id || team.number));
+  const assignedToJudge = judge && team && String(team.eventId) === String(eventId)
+    && String(judge.eventId) === String(eventId)
+    && (judge.teamIds || []).includes(String(team._id || team.id || team.number));
 
   const teamMembers = Array.isArray(team?.members) ? team.members : [];
 
@@ -860,7 +833,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  if (judgesLoading) {
+  if (judgesLoading || configLoading || evaluationLoading) {
 
     return (
 
@@ -904,7 +877,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  if (!team || !judge || !assignedToJudge) {
+  if (evaluationAccessError || !team || !judge || !assignedToJudge) {
 
     return (
 
@@ -914,7 +887,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <h1>Evaluation is unavailable</h1>
 
-          <p>This team is not assigned to this judge for this event.</p>
+          <p>{evaluationAccessError || 'This team is not assigned to this judge for this event.'}</p>
 
           <Link to={`/organizer/events/${eventId}/judges`} className="judges-primary-button">Back to Judges</Link>
 

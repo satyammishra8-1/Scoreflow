@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import OrganizerLayout from './OrganizerLayout';
 import './EvaluationConfiguration.css';
 import axios from 'axios';
@@ -107,7 +107,8 @@ function CriteriaForm({
       return;
     }
 
-    onAddCriterion ? onAddCriterion(nextCriteria) : onUpdateCriterion(nextCriterion);
+    if (onAddCriterion) onAddCriterion(nextCriteria);
+    else onUpdateCriterion(nextCriterion);
     setDraft(EMPTY_CRITERION);
     setEditingId(null);
   }
@@ -129,7 +130,8 @@ function CriteriaForm({
       alert(`Total weight must equal 100%. Current total: ${nextTotal}.`);
       return;
     }
-    onDeleteCriterion ? onDeleteCriterion(criterionId) : onUpdateCriterion(nextCriteria);
+    if (onDeleteCriterion) onDeleteCriterion(criterionId);
+    else onUpdateCriterion(nextCriteria);
   }
 
   return (
@@ -290,9 +292,8 @@ function RemoteAsyncForm({ materials = [], onChange, onAddMaterial, onDeleteMate
       alert('Please enter a label and URL.');
       return;
     }
-    onAddMaterial
-      ? onAddMaterial([...materials, { label: draft.label.trim(), url: draft.url.trim() }])
-      : onChange('remoteAsync.materials', materials.concat({ label: draft.label.trim(), url: draft.url.trim() }));
+    if (onAddMaterial) onAddMaterial([...materials, { label: draft.label.trim(), url: draft.url.trim() }]);
+    else onChange('remoteAsync.materials', materials.concat({ label: draft.label.trim(), url: draft.url.trim() }));
     setDraft(EMPTY_MATERIAL);
   }
 
@@ -448,9 +449,8 @@ function CustomForm({ fields = [], onChange, onAddField, onDeleteField }) {
       alert('Please enter a label for the custom field.');
       return;
     }
-    onAddField
-      ? onAddField([...fields, { type: draft.type, label: draft.label.trim(), required: draft.required }])
-      : onChange('custom.fields', fields.concat({ type: draft.type, label: draft.label.trim(), required: draft.required }));
+    if (onAddField) onAddField([...fields, { type: draft.type, label: draft.label.trim(), required: draft.required }]);
+    else onChange('custom.fields', fields.concat({ type: draft.type, label: draft.label.trim(), required: draft.required }));
     setDraft(EMPTY_CUSTOM_FIELD);
   }
 
@@ -579,11 +579,37 @@ function deleteCustomField(index) {
   }));
 }
 
+function mergeModelConfig(model, data) {
+  if (!data) return {};
+  const merged = {};
+  if (model === 'criteria-based') {
+    merged.criteriaBased = data.criteriaBased || { criteria: [] };
+  } else if (model === 'open-holistic') {
+    merged.openHolistic = data.openHolistic || {};
+  } else if (model === 'remote-async') {
+    merged.remoteAsync = data.remoteAsync || { materials: [] };
+  } else if (model === 'live-demo') {
+    merged.liveDemo = data.liveDemo || {
+      demoEvaluation: true,
+      presentationEvaluation: true,
+      judgeQuestions: true,
+      overallScoreFeedback: true,
+      criteria: [],
+    };
+  } else if (model === 'ranking-voting') {
+    merged.rankingVoting = data.rankingVoting || { ranking: true, comments: true, rankCalculation: 'total' };
+  } else if (model === 'custom') {
+    merged.custom = data.custom || { fields: [] };
+  }
+  return merged;
+}
+
 function EvaluationConfiguration() {
   const { eventId = 'default' } = useParams();
-  const navigate = useNavigate();
+  return <EvaluationConfigurationPage key={eventId} eventId={eventId} />;
+}
 
-  const [config, setConfig] = useState(null);
+function EvaluationConfigurationPage({ eventId }) {
   const [configError, setConfigError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -594,57 +620,35 @@ function EvaluationConfiguration() {
   const [modelConfig, setModelConfig] = useState({});
 
   useEffect(() => {
+    let cancelled = false;
     async function loadConfig() {
       try {
         const response = await API.get(
           `/events/${encodeURIComponent(eventId)}/evaluation-config`,
         );
+        if (cancelled) return;
         if (response.data.success) {
-          setConfig(response.data.data);
+          const savedConfig = response.data.data;
+          if (savedConfig?.model) {
+            setSelectedModel(savedConfig.model);
+            setModelConfig(mergeModelConfig(savedConfig.model, savedConfig));
+          } else {
+            setSelectedModel(MODELS[0]);
+            setModelConfig({});
+          }
         } else {
           setConfigError(response.data.error || 'Failed to load evaluation configuration.');
         }
-      } catch (error) {
-        setConfigError('Unable to reach the evaluation API. Check the server and try again.');
+      } catch {
+        if (!cancelled) setConfigError('Unable to reach the evaluation API. Check the server and try again.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadConfig();
+    return () => { cancelled = true; };
   }, [eventId]);
-
-  useEffect(() => {
-    if (config && config.model) {
-      setSelectedModel(config.model);
-      setModelConfig(mergeModelConfig(config.model, config));
-    }
-  }, [config?.model]);
-
-  function mergeModelConfig(model, data) {
-    if (!data) return {};
-    const merged = {};
-    if (model === 'criteria-based') {
-      merged.criteriaBased = data.criteriaBased || { criteria: [] };
-    } else if (model === 'open-holistic') {
-      merged.openHolistic = data.openHolistic || {};
-    } else if (model === 'remote-async') {
-      merged.remoteAsync = data.remoteAsync || { materials: [] };
-    } else if (model === 'live-demo') {
-      merged.liveDemo = data.liveDemo || {
-        demoEvaluation: true,
-        presentationEvaluation: true,
-        judgeQuestions: true,
-        overallScoreFeedback: true,
-        criteria: [],
-      };
-    } else if (model === 'ranking-voting') {
-      merged.rankingVoting = data.rankingVoting || { ranking: true, comments: true, rankCalculation: 'total' };
-    } else if (model === 'custom') {
-      merged.custom = data.custom || { fields: [] };
-    }
-    return merged;
-  }
 
   function updateModelField(field, value) {
     setModelConfig((current) => ({ ...current, [field]: value }));
@@ -662,7 +666,6 @@ function EvaluationConfiguration() {
         payload,
       );
       if (response.data.success) {
-        setConfig(response.data.data);
         setSaved(true);
       } else {
         alert(response.data.error || 'Failed to save the evaluation configuration.');

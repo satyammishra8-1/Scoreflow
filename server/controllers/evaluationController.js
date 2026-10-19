@@ -75,16 +75,18 @@ function buildConfigurationPayload(model, payload) {
   return payloadPresence;
 }
 
+async function validateEventReference(eventId) {
+  if (!isValidObjectId(eventId)) return { status: 400 };
+  const event = await Event.findById(eventId).select('_id').lean();
+  return event ? { event } : { status: 404 };
+}
+
 exports.getEvaluationConfiguration = async (req, res) => {
   try {
     const { eventId } = req.params;
 
-    if (!eventId || typeof eventId !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid eventId is required.',
-      });
-    }
+    const eventCheck = await validateEventReference(eventId);
+    if (!eventCheck.event) return res.status(eventCheck.status).json({ success: false, error: eventCheck.status === 404 ? 'Event not found.' : 'A valid eventId is required.' });
 
     const configuration = await EvaluationConfiguration.findOne({ eventId }).lean();
 
@@ -113,12 +115,8 @@ exports.createOrUpdateEvaluationConfiguration = async (req, res) => {
     const { eventId } = req.params;
     const payload = req.body || {};
 
-    if (!eventId || typeof eventId !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid eventId is required.',
-      });
-    }
+    const eventCheck = await validateEventReference(eventId);
+    if (!eventCheck.event) return res.status(eventCheck.status).json({ success: false, error: eventCheck.status === 404 ? 'Event not found.' : 'A valid eventId is required.' });
 
     const model = String(payload.model || '').trim().toLowerCase();
     if (!MODEL_FIELDS[model]) {
@@ -222,25 +220,9 @@ exports.getEvaluationConfigByEvent = async (req, res) => {
   try {
     const { eventId } = req.params;
 
-    if (!eventId || typeof eventId !== 'string' || !eventId.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid eventId is required.',
-      });
-    }
-
-    const normalizedEventId = eventId.trim();
-
-    // 404: a valid ObjectId that does not exist in the events collection
-    if (mongoose.Types.ObjectId.isValid(normalizedEventId)) {
-      const event = await Event.findById(normalizedEventId).lean();
-      if (!event) {
-        return res.status(404).json({
-          success: false,
-          error: 'Event not found.',
-        });
-      }
-    }
+    const normalizedEventId = typeof eventId === 'string' ? eventId.trim() : '';
+    const eventCheck = await validateEventReference(normalizedEventId);
+    if (!eventCheck.event) return res.status(eventCheck.status).json({ success: false, error: eventCheck.status === 404 ? 'Event not found.' : 'A valid eventId is required.' });
 
     const configuration = await EvaluationConfiguration.findOne({
       eventId: normalizedEventId,
@@ -272,25 +254,9 @@ exports.createEvaluationConfig = async (req, res) => {
     const { eventId } = req.params;
     const payload = req.body || {};
 
-    if (!eventId || typeof eventId !== 'string' || !eventId.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid eventId is required.',
-      });
-    }
-
-    const normalizedEventId = eventId.trim();
-
-    // 404: a valid ObjectId that does not exist in the events collection
-    if (mongoose.Types.ObjectId.isValid(normalizedEventId)) {
-      const event = await Event.findById(normalizedEventId).lean();
-      if (!event) {
-        return res.status(404).json({
-          success: false,
-          error: 'Event not found.',
-        });
-      }
-    }
+    const normalizedEventId = typeof eventId === 'string' ? eventId.trim() : '';
+    const eventCheck = await validateEventReference(normalizedEventId);
+    if (!eventCheck.event) return res.status(eventCheck.status).json({ success: false, error: eventCheck.status === 404 ? 'Event not found.' : 'A valid eventId is required.' });
 
     const model = String(payload.model || '').trim().toLowerCase();
     if (!MODEL_FIELDS[model]) {
@@ -358,25 +324,9 @@ exports.updateEvaluationConfig = async (req, res) => {
     const { eventId } = req.params;
     const payload = req.body || {};
 
-    if (!eventId || typeof eventId !== 'string' || !eventId.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid eventId is required.',
-      });
-    }
-
-    const normalizedEventId = eventId.trim();
-
-    // 404: a valid ObjectId that does not exist in the events collection
-    if (mongoose.Types.ObjectId.isValid(normalizedEventId)) {
-      const event = await Event.findById(normalizedEventId).lean();
-      if (!event) {
-        return res.status(404).json({
-          success: false,
-          error: 'Event not found.',
-        });
-      }
-    }
+    const normalizedEventId = typeof eventId === 'string' ? eventId.trim() : '';
+    const eventCheck = await validateEventReference(normalizedEventId);
+    if (!eventCheck.event) return res.status(eventCheck.status).json({ success: false, error: eventCheck.status === 404 ? 'Event not found.' : 'A valid eventId is required.' });
 
     const configuration = await EvaluationConfiguration.findOne({
       eventId: normalizedEventId,
@@ -552,6 +502,8 @@ exports.listEvaluationsByEvent = async (req, res) => {
     if (!isValidObjectId(eventId)) {
       return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     }
+    const event = await Event.findById(eventId).select('_id').lean();
+    if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
     const evaluations = await Evaluation.find({ eventId })
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
@@ -579,6 +531,10 @@ exports.getEvaluationByJudgeTeam = async (req, res) => {
     }
     if (!isValidObjectId(teamId)) {
       return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
+    }
+    const { errors } = await validateEvaluationSubmission({ eventId, judgeId, teamId });
+    if (Object.keys(errors).length > 0) {
+      return res.status(400).json({ success: false, error: 'The judge, team and event relationship is invalid.', details: errors });
     }
     const evaluation = await Evaluation.findOne({ eventId, judgeId, teamId }).lean();
     if (!evaluation) {

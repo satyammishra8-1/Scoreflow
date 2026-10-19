@@ -8,45 +8,9 @@ const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-const EVENT_KEY_PREFIX = 'scoreflow.organizer.event.';
-
-function readJSON(key, fallback = []) {
-  try {
-    const value = window.localStorage.getItem(key);
-
-    if (!value) {
-      return fallback;
-    }
-
-    const parsed = JSON.parse(value);
-
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 function getEventId(event) {
   const rawId = event?.eventId ?? event?._id ?? event?.id;
   return rawId != null ? String(rawId) : '';
-}
-
-function readTeams(eventId) {
-  const stored = readJSON(
-    `${EVENT_KEY_PREFIX}${eventId}.teams`,
-    [],
-  );
-
-  return Array.isArray(stored) ? stored : [];
-}
-
-function readJudges(eventId) {
-  const stored = readJSON(
-    `${EVENT_KEY_PREFIX}${eventId}.judges`,
-    [],
-  );
-
-  return Array.isArray(stored) ? stored : [];
 }
 
 function getEventName(event, eventId) {
@@ -148,10 +112,6 @@ function getEventStatus(event) {
   };
 }
 
-function getTeamId(team) {
-  return String(team?.id || team?.number || '');
-}
-
 function getJudgeId(judge) {
   return String(judge?.id || judge?.email || judge?.name || '');
 }
@@ -166,27 +126,16 @@ function getJudgeName(judge) {
 }
 
 function getEvaluationStats(sessions, judges) {
-  const completedSessions = sessions.filter(
-    (session) => session.status === 'COMPLETED',
-  );
-
-  const totalAssigned = judges.reduce(
-    (total, judge) => {
-      const assigned = Array.isArray(judge?.teamIds)
-        ? judge.teamIds.length
-        : 0;
-
-      return total + assigned;
-    },
-    0,
-  );
-
-  const totalEvaluations =
-    totalAssigned > 0
-      ? totalAssigned
-      : sessions.length;
-
-  const completed = completedSessions.length;
+  const assignments = new Set(judges.flatMap((judge) => (
+    Array.isArray(judge?.teamIds)
+      ? judge.teamIds.map((teamId) => `${getJudgeId(judge)}:${String(teamId)}`)
+      : []
+  )));
+  const totalEvaluations = assignments.size;
+  const completed = sessions.filter((session) => (
+    session.status === 'COMPLETED'
+    && assignments.has(`${String(session.judgeId)}:${String(session.teamId)}`)
+  )).length;
 
   const pending = Math.max(
     totalEvaluations - completed,
@@ -207,17 +156,17 @@ function getEvaluationStats(sessions, judges) {
   };
 }
 
-function buildDashboardData(apiEvents , eventEvaluationsMap ) {
-  const evaluationsMap = eventEvaluationsMap || {};
+function buildDashboardData(apiEvents, eventDataMap = {}) {
   const list = Array.isArray(apiEvents) ? apiEvents : [];
 
   const events = list
     .map((rawEvent) => {
       const eventId = getEventId(rawEvent);
-      const teams = readTeams(eventId);
-      const judges = readJudges(eventId);
+      const moduleData = eventDataMap[eventId] || {};
+      const teams = moduleData.teams || [];
+      const judges = moduleData.judges || [];
       const evaluation = getEvaluationStats(
-        evaluationsMap[eventId] || [],
+        moduleData.evaluations || [],
         judges,
       );
 
@@ -266,8 +215,9 @@ function buildDashboardData(apiEvents , eventEvaluationsMap ) {
   let judges = [];
 
   if (activeEvent) {
-    judges = readJudges(activeEvent.id).map((judge) => {
-      const sessions = eventEvaluationsMap[activeEvent.id] || [];
+    const moduleData = eventDataMap[activeEvent.id] || {};
+    judges = (moduleData.judges || []).map((judge) => {
+      const sessions = moduleData.evaluations || [];
 
       const judgeId = getJudgeId(judge);
 
@@ -277,19 +227,13 @@ function buildDashboardData(apiEvents , eventEvaluationsMap ) {
         ? judge.teamIds.map(String)
         : [];
 
-      const assigned =
-        assignedTeamIds.length > 0
-          ? assignedTeamIds.length
-          : sessions.filter(
-              (session) =>
-                String(session.judgeId) === judgeId,
-            ).length;
+      const assigned = assignedTeamIds.length;
 
-      const completed = sessions.filter(
-        (session) =>
-          String(session.judgeId) === judgeId &&
-          session.status === 'COMPLETED',
-      ).length;
+      const completed = sessions.filter((session) => (
+        String(session.judgeId) === judgeId
+        && assignedTeamIds.includes(String(session.teamId))
+        && session.status === 'COMPLETED'
+      )).length;
 
       const progress =
         assigned > 0
@@ -500,7 +444,7 @@ function OrganizerDashboard() {
   const [activeJudges, setActiveJudges] = useState([]);
   const [isLoadingActiveData, setIsLoadingActiveData] = useState(false);
   const [activeDataError, setActiveDataError] = useState('');
-  const [eventEvaluationsMap, setEventEvaluationsMap] = useState({});
+  const [eventDataMap, setEventDataMap] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -514,19 +458,28 @@ function OrganizerDashboard() {
         if (response.data && response.data.success) {
           const events = Array.isArray(response.data.data) ? response.data.data : [];
         setApiEvents(events);
-
-        // Fetch evaluations for each event from the API (replaces localStorage)
-        const evaluationsMap = {};
+        const modules = {};
         await Promise.all(events.map(async (event) => {
           const eventId = getEventId(event);
-          try {
-            const evalRes = await API.get(`/events/${encodeURIComponent(eventId)}/evaluations`);
-            evaluationsMap[eventId] = Array.isArray(evalRes.data?.data) ? evalRes.data.data : [];
-          } catch {
-            evaluationsMap[eventId] = [];
-          }
+          const results = await Promise.allSettled([
+            API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+            API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+            API.get(`/events/${encodeURIComponent(eventId)}/evaluations`),
+          ]);
+          const valueAt = (index) => results[index].status === 'fulfilled' && Array.isArray(results[index].value.data?.data)
+            ? results[index].value.data.data
+            : [];
+          modules[eventId] = {
+            teams: valueAt(0).filter((team) => String(team.eventId) === String(eventId)),
+            judges: valueAt(1).map((judge) => ({
+              ...judge,
+              id: String(judge._id || judge.judgeId || judge.id || ''),
+              teamIds: Array.isArray(judge.assignedTeamIds) ? judge.assignedTeamIds.map(String) : [],
+            })),
+            evaluations: valueAt(2).filter((evaluation) => String(evaluation.eventId) === String(eventId)),
+          };
         }));
-        if (!cancelled) setEventEvaluationsMap(evaluationsMap);
+        if (!cancelled) setEventDataMap(modules);
         } else {
           setEventsError('Unable to load events. Try again.');
         }
@@ -545,8 +498,8 @@ function OrganizerDashboard() {
   }, []);
 
     const dashboard = useMemo(
-    () => buildDashboardData(apiEvents),
-    [apiEvents],
+    () => buildDashboardData(apiEvents, eventDataMap),
+    [apiEvents, eventDataMap],
   );
 
   const {
@@ -572,43 +525,25 @@ function OrganizerDashboard() {
         return;
       }
 
-      const eventId = String(activeEvent.id);
-      setIsLoadingActiveData(true);
-      setActiveDataError('');
-
-      try {
-        const [evalRes, teamRes, judgeRes] = await Promise.all([
-          API.get(`/events/${encodeURIComponent(eventId)}/evaluations`),
-          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
-          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
-        ]);
-
+      const moduleData = eventDataMap[String(activeEvent.id)];
+      if (!moduleData) {
         if (cancelled) return;
-
-        setActiveEvaluations(
-          Array.isArray(evalRes.data?.data) ? evalRes.data.data : [],
-        );
-        setActiveTeams(
-          Array.isArray(teamRes.data?.data) ? teamRes.data.data : [],
-        );
-        setActiveJudges(
-          Array.isArray(judgeRes.data?.data) ? judgeRes.data.data : [],
-        );
-      } catch {
-        if (cancelled) return;
-        setActiveDataError(
-          'Unable to load results data. Check the API connection and try again.',
-        );
-      } finally {
-        if (!cancelled) setIsLoadingActiveData(false);
+        setIsLoadingActiveData(isLoadingEvents);
+        return;
       }
+      if (cancelled) return;
+      setActiveEvaluations(moduleData.evaluations || []);
+      setActiveTeams(moduleData.teams || []);
+      setActiveJudges(moduleData.judges || []);
+      setActiveDataError('');
+      setIsLoadingActiveData(false);
     }
 
     loadActiveEventData();
     return () => {
       cancelled = true;
     };
-  }, [activeEvent]);
+  }, [activeEvent, eventDataMap, isLoadingEvents]);
 
 
 

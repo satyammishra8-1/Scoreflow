@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axios from 'axios';
-import { readSavedEvaluationSessions } from '../data/evaluationStorage';
 import './EventManagement.css';
 import './OrganizerJudges.css';
 import './JudgeDashboard.css';
@@ -11,15 +10,15 @@ const API = axios.create({
 });
 
 function getTeamId(team) {
-  return String(team.id || team.teamId || team.number || team.teamNumber);
+  return String(team._id || team.teamId || team.id || team.number || team.teamNumber);
 }
 
 function toUiJudge(apiJudge) {
   if (!apiJudge || typeof apiJudge !== 'object') return null;
   return {
     ...apiJudge,
-    id: apiJudge.judgeId,
-    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds : [],
+    id: String(apiJudge._id || apiJudge.judgeId || apiJudge.id || ''),
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds.map(String) : [],
   };
 }
 
@@ -32,6 +31,10 @@ function extractCriteria(config) {
 
 function JudgeDashboard() {
   const { eventId = 'default', judgeId } = useParams();
+  return <JudgeDashboardEvent key={`${eventId}-${judgeId}`} eventId={eventId} judgeId={judgeId} />;
+}
+
+function JudgeDashboardEvent({ eventId, judgeId }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
@@ -49,6 +52,9 @@ function JudgeDashboard() {
   const [evaluationConfig, setEvaluationConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState('');
+  const [evaluations, setEvaluations] = useState([]);
+  const [evaluationsLoading, setEvaluationsLoading] = useState(true);
+  const [evaluationsError, setEvaluationsError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +89,22 @@ function JudgeDashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    async function loadEvaluations() {
+      try {
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluations`);
+        if (!cancelled) setEvaluations(Array.isArray(response.data?.data) ? response.data.data : []);
+      } catch (error) {
+        if (!cancelled) setEvaluationsError(error?.response?.data?.error || 'Unable to load evaluation progress.');
+      } finally {
+        if (!cancelled) setEvaluationsLoading(false);
+      }
+    }
+    loadEvaluations();
+    return () => { cancelled = true; };
+  }, [eventId]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function loadTeams() {
       try {
@@ -90,9 +112,9 @@ function JudgeDashboard() {
         if (!cancelled) {
           const list = Array.isArray(response.data?.data) ? response.data.data : [];
           setTeams(
-            list.map((team) => ({
+            list.filter((team) => String(team.eventId) === String(eventId)).map((team) => ({
               ...team,
-              id: team.teamId,
+              id: String(team._id || team.teamId || team.id || ''),
               number: team.teamNumber,
               name: team.teamName,
             })),
@@ -157,13 +179,12 @@ function JudgeDashboard() {
       // storage unavailable; ignore silently
     }
   }, [sidebarCollapsed]);
-  const loading = judgesLoading || teamsLoading || configLoading;
-  const error = judgesError || teamsError || configError;
+  const loading = judgesLoading || teamsLoading || configLoading || evaluationsLoading;
+  const error = judgesError || teamsError || configError || evaluationsError;
 
   const criteria = extractCriteria(evaluationConfig);
   const judge = judges.find((item) => item.id === judgeId) || null;
   const assignedTeams = judge ? teams.filter((team) => (judge.teamIds || []).includes(getTeamId(team))) : [];
-  const sessions = readSavedEvaluationSessions(eventId);
 
   if (loading) {
     return (
@@ -248,7 +269,7 @@ function JudgeDashboard() {
           {assignedTeams.length === 0 ? (
             <div className="judge-empty-state">No teams assigned yet. Please check back later.</div>
           ) : assignedTeams.map((team) => {
-            const session = sessions.find((item) => item.eventId === eventId && item.judgeId === judge.id && item.teamId === getTeamId(team));
+            const session = evaluations.find((item) => String(item.eventId) === eventId && String(item.judgeId) === judge.id && String(item.teamId) === getTeamId(team));
             const status = session?.status || 'NOT_STARTED';
             const sessionPath = `/organizer/events/${eventId}/judges/${judge.id}/evaluation/${getTeamId(team)}`;
             const completedCount = session && session.scores ? Object.keys(session.scores).length : 0;

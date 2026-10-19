@@ -124,9 +124,11 @@ exports.createJudge = async (req, res) => {
 exports.addJudgeTeam = async (req, res) => {
   try {
     const { judgeId, teamId } = req.params;
+    const { eventId } = req.query;
     if (!isValidObjectId(judgeId)) return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
     if (!isValidObjectId(teamId)) return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
-    const judge = await Judge.findById(judgeId).select('eventId').lean();
+    if (!isValidObjectId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    const judge = await Judge.findOne({ _id: judgeId, eventId }).select('eventId').lean();
     if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
     const team = await Team.findOne({ _id: teamId, eventId: judge.eventId }).select('_id').lean();
     if (!team) return res.status(400).json({ success: false, error: 'The team does not belong to this judge\'s event.' });
@@ -141,9 +143,13 @@ exports.addJudgeTeam = async (req, res) => {
 exports.removeJudgeTeam = async (req, res) => {
   try {
     const { judgeId, teamId } = req.params;
+    const { eventId } = req.query;
     if (!isValidObjectId(judgeId)) return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
     if (!isValidObjectId(teamId)) return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
-    const judge = await Judge.findByIdAndUpdate(judgeId, { $pull: { assignedTeamIds: teamId } }, { new: true }).lean();
+    if (!isValidObjectId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    const team = await Team.findOne({ _id: teamId, eventId }).select('_id').lean();
+    if (!team) return res.status(404).json({ success: false, error: 'Team not found for this event.' });
+    const judge = await Judge.findOneAndUpdate({ _id: judgeId, eventId }, { $pull: { assignedTeamIds: teamId } }, { new: true }).lean();
     if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
     return res.status(200).json({ success: true, data: toJudgeResponse(judge) });
   } catch (error) {
@@ -173,10 +179,12 @@ exports.listJudgesByEvent = async (req, res) => {
 exports.getJudge = async (req, res) => {
   try {
     const { judgeId } = req.params;
+    const { eventId } = req.query;
     if (!isValidObjectId(judgeId)) {
       return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
     }
-    const judge = await Judge.findById(judgeId).lean();
+    if (!isValidObjectId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    const judge = await Judge.findOne({ _id: judgeId, eventId }).lean();
     if (!judge) {
       return res.status(404).json({ success: false, error: 'Judge not found.' });
     }
@@ -190,11 +198,15 @@ exports.getJudge = async (req, res) => {
 exports.updateJudge = async (req, res) => {
   try {
     const { judgeId } = req.params;
+    const { eventId } = req.body || {};
     if (!isValidObjectId(judgeId)) {
       return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
     }
+    const eventCheck = await ensureEventExists(eventId);
+    if (!eventCheck.valid) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    if (!eventCheck.exists) return res.status(404).json({ success: false, error: 'Event not found.' });
 
-    const existing = await Judge.findById(judgeId).select('eventId name email assignedTeamIds').lean();
+    const existing = await Judge.findOne({ _id: judgeId, eventId }).select('eventId name email assignedTeamIds').lean();
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Judge not found.' });
     }
@@ -249,10 +261,12 @@ exports.updateJudge = async (req, res) => {
 exports.deleteJudge = async (req, res) => {
   try {
     const { judgeId } = req.params;
+    const { eventId } = req.query;
     if (!isValidObjectId(judgeId)) {
       return res.status(400).json({ success: false, error: 'A valid judgeId is required.' });
     }
-    const judge = await Judge.findByIdAndDelete(judgeId).lean();
+    if (!isValidObjectId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    const judge = await Judge.findOneAndDelete({ _id: judgeId, eventId }).lean();
     if (!judge) {
       return res.status(404).json({ success: false, error: 'Judge not found.' });
     }
