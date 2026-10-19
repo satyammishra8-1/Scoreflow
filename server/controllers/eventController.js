@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 const Event = require('../models/Event');
+const Team = require('../models/Team');
+const Judge = require('../models/Judge');
+const EvaluationConfiguration = require('../models/EvaluationConfiguration');
+const Evaluation = require('../models/Evaluation');
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
@@ -134,5 +138,38 @@ exports.updateEvent = async (req, res) => {
       return res.status(400).json({ success: false, error: error.message });
     }
     return res.status(500).json({ success: false, error: 'Failed to update the event.' });
+  }
+};
+
+exports.deleteEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+    }
+
+    const event = await Event.findById(eventId).select('_id').lean();
+    if (!event) {
+      return res.status(404).json({ success: false, error: 'Event not found.' });
+    }
+
+    const scopedEventId = event._id;
+    await Team.deleteMany({ eventId: scopedEventId });
+    await Judge.deleteMany({ eventId: scopedEventId });
+    await EvaluationConfiguration.deleteMany({ eventId: String(scopedEventId) });
+    await Evaluation.deleteMany({ eventId: scopedEventId });
+
+    const deletedEvent = await Event.findByIdAndDelete(scopedEventId).select('_id').lean();
+    if (!deletedEvent) {
+      return res.status(404).json({ success: false, error: 'Event not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { eventId: String(deletedEvent._id) },
+    });
+  } catch (error) {
+    console.error('Failed to delete event and associated data:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete the event and its associated data.' });
   }
 };

@@ -56,6 +56,9 @@ function EventManagement() {
   const [saveConfirmation, setSaveConfirmation] = useState('');
   const [isLoading, setIsLoading] = useState(Boolean(urlEventId));
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [evaluationConfig, setEvaluationConfig] = useState(null);
   const [evaluationLoading, setEvaluationLoading] = useState(true);
   const [hasEvaluationConfig, setHasEvaluationConfig] = useState(false);
@@ -214,6 +217,25 @@ function EventManagement() {
     setIsEditing(true);
   }
 
+  async function deleteSavedEvent() {
+    const eventId = savedEvent && (savedEvent.eventId || savedEvent._id);
+    if (!eventId) {
+      setDeleteError('Unable to identify this event. Reload the page and try again.');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await API.delete('/events/' + encodeURIComponent(String(eventId)));
+      navigate('/organizer/dashboard', { replace: true });
+    } catch (error) {
+      setDeleteError(getApiErrorMessage(error, 'Unable to delete the event. Check the server connection and try again.'));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   function openEvaluationConfig() {
     const currentEventId = (savedEvent && (savedEvent.eventId || savedEvent._id)) || urlEventId || 'default';
     navigate('/organizer/events/' + currentEventId + '/evaluation');
@@ -253,6 +275,18 @@ function EventManagement() {
           {savedEvent && !isEditing && !evaluationLoading && (
             <button className='event-primary-button' type='button' onClick={startEditing}>
               Edit Event
+            </button>
+          )}
+          {savedEvent && !isEditing && (
+            <button
+              className='event-danger-button'
+              type='button'
+              onClick={() => {
+                setDeleteError('');
+                setShowDeleteConfirmation(true);
+              }}
+            >
+              Delete Event
             </button>
           )}
         </div>
@@ -408,6 +442,46 @@ function EventManagement() {
             <button className="event-primary-button" type="button" onClick={openEvaluationConfig}>{hasEvaluationConfig ? 'Edit Evaluation' : 'Configure Evaluation'}</button>
           </article>
         </section>
+      )}
+
+      {showDeleteConfirmation && (
+        <div
+          className='event-modal-backdrop'
+          role='presentation'
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isDeleting) setShowDeleteConfirmation(false);
+          }}
+        >
+          <section
+            className='event-delete-modal'
+            role='alertdialog'
+            aria-modal='true'
+            aria-labelledby='delete-event-title'
+            aria-describedby='delete-event-description'
+          >
+            <h2 id='delete-event-title'>Delete Event?</h2>
+            <p id='delete-event-description'>This will permanently delete the event and its associated teams, judges, assignments, evaluation configuration, and evaluations.</p>
+            {deleteError && <p className='event-feedback event-feedback-error' role='alert'>{deleteError}</p>}
+            <div className='event-delete-actions'>
+              <button
+                className='event-secondary-button'
+                type='button'
+                onClick={() => setShowDeleteConfirmation(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className='event-danger-button'
+                type='button'
+                onClick={deleteSavedEvent}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete Event'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </OrganizerLayout>
   );
