@@ -2,7 +2,7 @@ import {
   createLocalId,
   normalizeExternalUrl,
   normalizeMemberIdentifier,
-} from './teamValidation';
+} from './teamValidation.js';
 
 const requiredColumns = ['teamNumber', 'memberName'];
 
@@ -347,4 +347,19 @@ export async function parseTeamWorkbook(file) {
     errors,
     warnings: groupedWarnings,
   };
+}
+
+export function buildTeamImportPlan(importedTeams, existingTeams, duplicateStrategy) {
+  const existingByNumber = new Map(
+    existingTeams.map((team) => [String(team.number).toLowerCase(), team]),
+  );
+  return importedTeams.map((imported) => {
+    const existing = existingByNumber.get(String(imported.number).toLowerCase());
+    if (!existing) return { imported, existing: null, action: 'add' };
+    return {
+      imported,
+      existing,
+      action: duplicateStrategy === 'skip' ? 'skip' : duplicateStrategy === 'replace' ? 'replace' : 'blocked',
+    };
+  });
 }

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
-import { createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
+import { buildTeamImportPlan, createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
 import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
 import {
   DeleteTeamModal,
@@ -332,21 +332,21 @@ function OrganizerTeamsEvent({ eventId }) {
     ) return;
     setIsImporting(true);
     setPageMessage(null);
-    const existingByNumber = new Map(teams.map((team) => [team.number.toLowerCase(), team]));
+    const importPlan = buildTeamImportPlan(previewData.teams, teams, duplicateStrategy);
     let addedCount = 0;
     let replacedCount = 0;
     let skippedCount = 0;
     let importedMembers = 0;
 
     try {
-      for (const imported of previewData.teams) {
-        const existing = existingByNumber.get(imported.number.toLowerCase());
-        if (existing && duplicateStrategy === 'skip') {
+      for (const { imported, existing, action } of importPlan) {
+        if (action === 'skip') {
           skippedCount += 1;
           continue;
         }
+        if (action === 'blocked') throw new Error(`Choose whether to skip or replace existing team ${imported.number}.`);
         importedMembers += imported.members.length;
-        if (existing) {
+        if (action === 'replace') {
           await API.put(
             `/teams/${encodeURIComponent(getTeamKey(existing))}`,
             toApiPayload({ ...imported, status: existing.status, judges: existing.judges }, eventId),

@@ -62,9 +62,9 @@ const TEAM_DATA = [
   },
 ].map((team) => ({
   ...team,
-  members: team.members.map(([name, emailName], index) => ({
+  members: team.members.map(([name], index) => ({
     name,
-    email: `${emailName}@technova-demo.scoreflow.test`,
+    email: `satmis2024+team${team.teamNumber}member${index + 1}@gmail.com`,
     usn: `TN26${team.teamNumber.padStart(2, '0')}${String(index + 1).padStart(2, '0')}`,
     section: 'CSE',
     github: team.githubUrl,
@@ -73,8 +73,8 @@ const TEAM_DATA = [
 }));
 
 const JUDGE_DATA = [
-  { name: 'Dr. Rahul Mehta', email: 'rahul.mehta.demo@example.com', teamNumbers: ['1', '3'], initialInvitationStatus: 'pending' },
-  { name: 'Priya Nair', email: 'priya.nair.demo@example.com', teamNumbers: ['2', '4'], initialInvitationStatus: 'pending' },
+  { name: 'Dr. Rahul Mehta', email: 'rahul.mehta.demo@example.com', teamNumbers: ['1', '3', '5'], initialInvitationStatus: 'accepted' },
+  { name: 'Priya Nair', email: 'priya.nair.demo@example.com', teamNumbers: ['2', '4'], initialInvitationStatus: 'accepted' },
   { name: 'Arjun Sharma', email: 'arjun.sharma.demo@example.com', teamNumbers: ['5', '1'], initialInvitationStatus: 'accepted' },
 ];
 
@@ -84,6 +84,14 @@ const CRITERIA = [
   { name: 'Presentation', description: 'Clarity and effectiveness of the team presentation.', maxMarks: 20, weight: 20 },
   { name: 'Impact & Feasibility', description: 'Potential impact and practicality of implementation.', maxMarks: 10, weight: 10 },
 ];
+
+const SEEDED_EVALUATIONS = [
+  { judgeEmail: 'rahul.mehta.demo@example.com', teamNumber: '1', scores: [27, 35, 17, 8], feedback: 'Strong, original concept with a polished implementation and clear path to campus adoption.' },
+  { judgeEmail: 'priya.nair.demo@example.com', teamNumber: '2', scores: [24, 32, 16, 7], feedback: 'Well executed product idea; a broader pilot would strengthen the impact case.' },
+  { judgeEmail: 'rahul.mehta.demo@example.com', teamNumber: '3', scores: [21, 28, 14, 6], feedback: 'Useful civic problem selection and a solid prototype; improve the accessibility walkthrough.' },
+  { judgeEmail: 'priya.nair.demo@example.com', teamNumber: '4', scores: [15, 25, 10, 5], feedback: 'Promising direction, though the demo and deployment plan need more validation.' },
+];
+const SEEDED_FEEDBACK_PREFIX = 'Seeded TechNova verification evaluation:';
 
 function getTargetDescription() {
   if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is missing; refusing to seed without a known target.');
@@ -144,6 +152,12 @@ async function upsertDemoJudge(eventId, judgeData, teamsByNumber) {
   const matches = await Judge.find({ eventId, email: judgeData.email });
   if (matches.length > 1) throw new Error(`Duplicate demo judge email ${judgeData.email}; refusing to guess which record to update.`);
   const assignedTeamIds = judgeData.teamNumbers.map((number) => String(teamsByNumber.get(number)._id));
+  if (matches[0]?.assignedTeamIds?.length) {
+    const existingAssignments = matches[0].assignedTeamIds.map(String).sort();
+    if (existingAssignments.join(',') !== [...assignedTeamIds].sort().join(',')) {
+      throw new Error(`Existing assignments for ${judgeData.name} differ from the verification fixture; refusing to reassign this judge.`);
+    }
+  }
   const judge = matches[0] || new Judge({
     eventId,
     email: judgeData.email,
@@ -155,24 +169,100 @@ async function upsertDemoJudge(eventId, judgeData, teamsByNumber) {
   judge.email = judgeData.email;
   judge.assignedTeamIds = assignedTeamIds;
   judge.status = 'Active';
+  judge.invitationStatus = 'accepted';
+  judge.invitationAcceptedAt = judge.invitationAcceptedAt || new Date();
   await judge.save();
+  await Judge.updateOne(
+    { _id: judge._id, eventId },
+    { $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 } },
+  );
   return judge;
+}
+
+function toScoreObject(value) {
+  if (value instanceof Map) return Object.fromEntries(value);
+  return value && typeof value === 'object' ? value : {};
+}
+
+function calculateWeightedScore(scores) {
+  return Number(CRITERIA.reduce((sum, criterion, index) => {
+    const score = Number(scores[`criterion-${index + 1}`]);
+    return sum + (score / criterion.maxMarks) * criterion.weight;
+  }, 0).toFixed(2));
+}
+
+async function upsertSeedEvaluations(eventId, teamsByNumber, judgesByEmail) {
+  const completedEvaluations = [];
+  for (const fixture of SEEDED_EVALUATIONS) {
+    const judge = judgesByEmail.get(fixture.judgeEmail);
+    const team = teamsByNumber.get(fixture.teamNumber);
+    const filter = { eventId, judgeId: judge._id, teamId: team._id };
+    const existing = await Evaluation.findOne(filter);
+    if (existing) {
+      completedEvaluations.push(existing);
+      continue;
+    }
+    const scores = Object.fromEntries(fixture.scores.map((score, index) => [`criterion-${index + 1}`, score]));
+    const now = new Date();
+    const document = {
+      ...filter,
+      scores,
+      totalScore: fixture.scores.reduce((sum, score) => sum + score, 0),
+      weightedScore: calculateWeightedScore(scores),
+      feedback: `${SEEDED_FEEDBACK_PREFIX} ${fixture.feedback}`,
+      status: 'COMPLETED',
+      attendance: 'Present',
+      startedAt: new Date(now.getTime() - 45 * 60 * 1000),
+      completedAt: now,
+      duration: 45 * 60,
+      memberAttendance: {},
+      textAnswers: {},
+      flags: {},
+    };
+    const saved = await Evaluation.create(document);
+    completedEvaluations.push(saved);
+  }
+
+  // Keep stored aggregate fields consistent for the existing demo scores without changing them.
+  const judgeIds = [...judgesByEmail.values()].map((judge) => judge._id);
+  const teamIds = [...teamsByNumber.values()].map((team) => team._id);
+  const existingCompleted = await Evaluation.find({ eventId, judgeId: { $in: judgeIds }, teamId: { $in: teamIds }, status: 'COMPLETED' });
+  for (const evaluation of existingCompleted) {
+    const scores = toScoreObject(evaluation.scores);
+    const values = CRITERIA.map((_, index) => Number(scores[`criterion-${index + 1}`]));
+    if (values.some((value) => !Number.isFinite(value))) continue;
+    const totalScore = values.reduce((sum, value) => sum + value, 0);
+    const weightedScore = calculateWeightedScore(scores);
+    if (evaluation.totalScore !== totalScore || evaluation.weightedScore !== weightedScore) {
+      evaluation.totalScore = totalScore;
+      evaluation.weightedScore = weightedScore;
+      await evaluation.save();
+    }
+  }
+  return completedEvaluations;
 }
 
 async function verifySeed(event, teams, judges, configuration) {
   const eventId = String(event._id);
-  const teamsInEvent = await Team.find({ eventId, teamNumber: { $in: TEAM_DATA.map((team) => team.teamNumber) } }).lean();
+  const teamsInEvent = await Team.find({ eventId }).lean();
   const judgesInEvent = await Judge.find({ eventId, email: { $in: JUDGE_DATA.map((judge) => judge.email) } }).lean();
   const configurations = await EvaluationConfiguration.find({ eventId }).lean();
-  const evaluationCount = await Evaluation.countDocuments({ eventId });
+  const evaluations = await Evaluation.find({ eventId }).lean();
   const teamKeys = teamsInEvent.map((team) => `${team.teamNumber}:${team.teamName}`);
   const members = teamsInEvent.reduce((sum, team) => sum + team.members.length, 0);
+  const memberEmails = teamsInEvent.flatMap((team) => team.members.map((member) => member.email));
   const assignments = judgesInEvent.reduce((sum, judge) => sum + judge.assignedTeamIds.length, 0);
-  if (teamsInEvent.length !== 5 || new Set(teamKeys).size !== 5 || members !== 18) throw new Error('Seed verification failed for demo teams or members.');
-  if (judgesInEvent.length !== 3 || new Set(judgesInEvent.map((judge) => judge.email)).size !== 3 || assignments !== 6) throw new Error('Seed verification failed for demo judges or assignments.');
+  if (teamsInEvent.length !== 5 || new Set(teamKeys).size !== 5 || members !== 18
+    || new Set(memberEmails).size !== 18
+    || memberEmails.some((email) => !/^satmis2024\+team[1-5]member[1-4]@gmail\.com$/.test(email))) {
+    throw new Error('Seed verification failed for demo teams or member emails.');
+  }
+  if (judgesInEvent.length !== 3 || new Set(judgesInEvent.map((judge) => judge.email)).size !== 3 || assignments !== 7) throw new Error('Seed verification failed for demo judges or assignments.');
+  if (judgesInEvent.some((judge) => judge.invitationStatus !== 'accepted')) throw new Error('Seed verification failed: all demo judges must be accepted.');
   if (configurations.length !== 1 || configurations[0]._id.toString() !== configuration._id.toString()
     || configurations[0].criteriaBased.criteria.length !== 4) throw new Error('Seed verification failed for evaluation configuration.');
-  if (evaluationCount !== 0) throw new Error('Seed verification found unexpected evaluations; the seed is intended to leave evaluations pending.');
+  if (event.type !== EVENT.type || teamsInEvent.some((team) => String(team.eventId) !== eventId)
+    || judgesInEvent.some((judge) => String(judge.eventId) !== eventId)) throw new Error('Seed verification found records outside the demo event.');
   const teamIds = new Set(teams.map((team) => String(team._id)));
   const teamsByNumber = new Map(teams.map((team) => [team.teamNumber, String(team._id)]));
   const judgesByEmail = new Map(judgesInEvent.map((judge) => [judge.email, judge]));
@@ -201,6 +291,33 @@ async function verifySeed(event, teams, judges, configuration) {
   }
   const criteria = configurations[0].criteriaBased.criteria;
   if (criteria.reduce((sum, criterion) => sum + criterion.weight, 0) !== 100) throw new Error('Seed verification found criterion weights that do not total 100%.');
+  const evaluationPairs = new Set();
+  for (const evaluation of evaluations) {
+    const pair = `${evaluation.judgeId}:${evaluation.teamId}`;
+    if (evaluationPairs.has(pair)) throw new Error('Seed verification found duplicate judge-team evaluations.');
+    evaluationPairs.add(pair);
+    const judge = judgesById.get(String(evaluation.judgeId));
+    if (!judge || !teamIds.has(String(evaluation.teamId)) || !judge.assignedTeamIds.map(String).includes(String(evaluation.teamId))) {
+      throw new Error('Seed verification found an evaluation with an invalid event/judge/team relationship.');
+    }
+    if (evaluation.status === 'COMPLETED') {
+      const scores = toScoreObject(evaluation.scores);
+      const rawTotal = CRITERIA.reduce((sum, criterion, index) => sum + Number(scores[`criterion-${index + 1}`] || 0), 0);
+      if (Math.abs(rawTotal - Number(evaluation.totalScore)) > 0.01
+        || Math.abs(calculateWeightedScore(scores) - Number(evaluation.weightedScore)) > 0.01) {
+        throw new Error('Seed verification found a completed score that does not match the configured criteria.');
+      }
+    }
+  }
+  const expectedCompletedPairs = SEEDED_EVALUATIONS.map((fixture) => {
+    const judge = judgesByEmail.get(fixture.judgeEmail);
+    const team = teams.find((item) => item.teamNumber === fixture.teamNumber);
+    return `${judge._id}:${team._id}`;
+  });
+  if (expectedCompletedPairs.some((pair) => !evaluationPairs.has(pair)
+    || evaluations.find((evaluation) => `${evaluation.judgeId}:${evaluation.teamId}` === pair)?.status !== 'COMPLETED')) {
+    throw new Error('Seed verification failed to find all completed evaluation fixtures.');
+  }
 }
 
 async function main() {
@@ -221,6 +338,9 @@ async function main() {
       .map((judge) => String(judge._id));
     await Team.updateOne({ _id: team._id, eventId: event._id }, { $set: { judges: assignedJudgeIds } });
   }
+
+  const judgesByEmail = new Map(judges.map((judge) => [judge.email, judge]));
+  await upsertSeedEvaluations(event._id, teamsByNumber, judgesByEmail);
 
   const configuration = await EvaluationConfiguration.findOneAndUpdate(
     { eventId: String(event._id) },
@@ -243,15 +363,16 @@ async function main() {
   console.log('Teams: 5');
   console.log('Members: 18');
   console.log('Judges: 3');
-  console.log('Assignments: 6');
+  console.log('Assignments: 7');
   console.log('Evaluation Criteria: 4');
   console.log('Team IDs:');
   teams.forEach((team) => console.log(`  ${team.teamNumber} ${team.teamName}: ${team._id}`));
   console.log('Judge IDs:');
   judges.forEach((judge) => console.log(`  ${judge.name}: ${judge._id}`));
   console.log(`Evaluation Configuration ID: ${configuration._id}`);
-  console.log('Evaluations: 0 (left ready for manual testing)');
-  console.log('Announcements: none seeded; the seed does not deliver email.');
+  console.log(`Completed evaluations: ${await Evaluation.countDocuments({ eventId: event._id, status: 'COMPLETED' })} (existing non-seed scores are preserved)`);
+  console.log('Pending assignment: Dr. Rahul Mehta -> DevPulse');
+  console.log('Emails: Gmail plus-addresses are stored; no email was sent.');
 }
 
 main()
