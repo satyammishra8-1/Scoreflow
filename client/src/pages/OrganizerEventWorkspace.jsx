@@ -62,6 +62,7 @@ function OrganizerEventWorkspace() {
         <div><Link className="event-back-link" to="/organizer/dashboard">← Dashboard</Link><h1>Event Workspace</h1><p>Event details and management tools.</p></div>
         {event && <div className="event-heading-actions">
           <Link className="event-secondary-button" to={`/organizer/events/${encodeURIComponent(eventId)}/results`}>View Results</Link>
+          <Link className="event-primary-button" to={`/organizer/events/${encodeURIComponent(eventId)}/result-reports`}>AI Result Reports</Link>
           <Link className="event-secondary-button" to={`/organizer/events?edit=${encodeURIComponent(eventId)}`}>Edit Event</Link>
         </div>}
       </div>

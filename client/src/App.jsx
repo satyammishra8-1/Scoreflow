@@ -3,6 +3,7 @@ import OrganizerDashboard from './pages/OrganizerDashboard';
 import EventManagement from './pages/EventManagement';
 import OrganizerEventWorkspace from './pages/OrganizerEventWorkspace';
 import OrganizerResults from './pages/OrganizerResults';
+import OrganizerResultReports from './pages/OrganizerResultReports';
 import OrganizerTeams from './pages/OrganizerTeams';
 import OrganizerJudges from './pages/OrganizerJudges';
 import OrganizerAnnouncements from './pages/OrganizerAnnouncements';
@@ -27,6 +28,7 @@ function App() {
         <Route path="/organizer/events" element={<EventManagement />} />
         <Route path="/organizer/events/:eventId" element={<OrganizerEventWorkspace />} />
         <Route path="/organizer/events/:eventId/results" element={<OrganizerResults />} />
+        <Route path="/organizer/events/:eventId/result-reports" element={<OrganizerResultReports />} />
         <Route path="/organizer/events/:eventId/announcements" element={<OrganizerAnnouncements />} />
         <Route path="/organizer/events/:eventId/teams" element={<OrganizerTeams />} />
         <Route path="/organizer/events/:eventId/judges" element={<OrganizerJudges />} />

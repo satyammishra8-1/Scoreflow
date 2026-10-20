@@ -20,6 +20,7 @@ function buildNavigation(activeKey, eventId) {
     { key: 'teams', label: 'Teams', icon: '♧', to: `/organizer/events/${safeEventId}/teams` },
     { key: 'judges', label: 'Judges', icon: '♙', to: `/organizer/events/${safeEventId}/judges` },
     { key: 'criteria', label: 'Evaluation Criteria', icon: '☷', to: `/organizer/events/${safeEventId}/evaluation` },
+    { key: 'reports', label: 'Result Reports', icon: '✦', to: `/organizer/events/${safeEventId}/result-reports` },
   ].map((item) => ({ ...item, active: item.key === activeKey }));
 }
 

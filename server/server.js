@@ -23,6 +23,7 @@ const eventRoutes = require('./routes/events');
 const teamRoutes = require('./routes/teams');
 const judgeRoutes = require('./routes/judges');
 const announcementRoutes = require('./routes/announcements');
+const resultReportRoutes = require('./routes/resultReports');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api', eventRoutes);
 app.use('/api', teamRoutes);
 app.use('/api', judgeRoutes);
 app.use('/api', announcementRoutes);
+app.use('/api', resultReportRoutes);
 app.use('/api', evaluationRoutes);
 
 app.get('/', (req, res) => {
