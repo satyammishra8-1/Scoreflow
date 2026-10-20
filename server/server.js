@@ -1,6 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('node:path');
+
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+const brevoApiKey = process.env.BREVO_API_KEY || '';
+if (process.env.NODE_ENV !== 'production') {
+  console.info('Brevo API key diagnostic:', {
+    loaded: Boolean(brevoApiKey),
+    length: brevoApiKey.length,
+    surroundingWhitespace: brevoApiKey !== brevoApiKey.trim(),
+    startsWithQuote: brevoApiKey.startsWith('"') || brevoApiKey.startsWith("'"),
+    appearsToBeSmtpKey: brevoApiKey.startsWith('xsmtpsib-'),
+  });
+}
+
 const connectDB = require('./config/db');
 
 const evaluationRoutes = require('./routes/evaluation');
@@ -8,8 +23,6 @@ const eventRoutes = require('./routes/events');
 const teamRoutes = require('./routes/teams');
 const judgeRoutes = require('./routes/judges');
 const announcementRoutes = require('./routes/announcements');
-
-dotenv.config();
 
 const app = express();
 

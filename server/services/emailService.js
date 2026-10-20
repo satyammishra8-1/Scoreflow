@@ -12,15 +12,33 @@ function escapeHtml(value) {
 
 function getBrevoConfig() {
   return {
-    apiKey: process.env.BREVO_API_KEY,
+    apiKey: (process.env.BREVO_API_KEY || '').trim(),
     senderEmail: process.env.BREVO_SENDER_EMAIL,
     senderName: process.env.BREVO_SENDER_NAME || 'ScoreFlow',
     clientUrl: process.env.CLIENT_URL,
   };
 }
 
+function isSmtpCredential(apiKey) {
+  return apiKey.toLowerCase().startsWith('xsmtpsib-');
+}
+
+async function logBrevoRejection(label, response, apiKey) {
+  let responseBody = '';
+  try {
+    responseBody = await response.text();
+  } catch (error) {
+    responseBody = `Unable to read Brevo response body: ${error.message}`;
+  }
+  const safeResponseBody = apiKey ? responseBody.split(apiKey).join('[REDACTED]') : responseBody;
+  console.error(`Brevo ${label} rejected email. HTTP status: ${response.status}. Response body: ${safeResponseBody || '(empty)'}`);
+}
+
 async function sendJudgeInvitation({ judge, event, token }) {
   const { apiKey, senderEmail, senderName, clientUrl } = getBrevoConfig();
+  if (isSmtpCredential(apiKey)) {
+    return { sent: false, message: 'The configured Brevo credential is an SMTP key. Set BREVO_API_KEY to a Brevo API v3 key.' };
+  }
   if (!apiKey || !senderEmail || !clientUrl) {
     return { sent: false, message: 'Invitation saved, but email is not configured. Set the Brevo and client URL environment variables, then resend.' };
   }
@@ -51,6 +69,7 @@ async function sendJudgeInvitation({ judge, event, token }) {
       }),
     });
     if (!response.ok) {
+      await logBrevoRejection('judge invitation', response, apiKey);
       return { sent: false, message: 'Invitation saved, but Brevo could not send the email. Please try resending.' };
     }
     return { sent: true };
@@ -62,6 +81,9 @@ async function sendJudgeInvitation({ judge, event, token }) {
 
 async function sendAnnouncementEmail({ recipientEmail, subject, message, eventName }) {
   const { apiKey, senderEmail, senderName } = getBrevoConfig();
+  if (isSmtpCredential(apiKey)) {
+    return { sent: false, message: 'The configured Brevo credential is an SMTP key. Set BREVO_API_KEY to a Brevo API v3 key.' };
+  }
   if (!apiKey || !senderEmail) {
     return { sent: false, message: 'Brevo email is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.' };
   }
@@ -83,6 +105,7 @@ async function sendAnnouncementEmail({ recipientEmail, subject, message, eventNa
       }),
     });
     if (!response.ok) {
+      await logBrevoRejection('announcement', response, apiKey);
       return { sent: false, message: 'Brevo rejected this email. Check the sender configuration and try again.' };
     }
     return { sent: true };
