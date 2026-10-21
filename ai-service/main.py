@@ -16,6 +16,15 @@ load_dotenv()
 
 PROMPT_VERSION = "result-report-v1"
 logger = logging.getLogger("scoreflow.ai_service")
+NUMERIC_EVALUATION_PATTERN = re.compile(
+    r"\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b"
+    r"|\b(?:placed|finished|came\s+in)\s+(?:first|second|third|last)\b"
+    r"|\b(?:first|second|third|last)\s+place\b"
+    r"|\btop\s+(?:one|two|three|four|five|six|seven|eight|nine|ten)\b"
+    r"|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+out\s+of\s+"
+    r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+    re.IGNORECASE,
+)
 
 
 class StrictModel(BaseModel):
@@ -64,7 +73,7 @@ class ReportContent(StrictModel):
             for field in self.__class__.model_fields
             for item in (getattr(self, field) if isinstance(getattr(self, field), list) else [getattr(self, field)])
         )
-        if re.search(r"\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b", content, re.IGNORECASE):
+        if NUMERIC_EVALUATION_PATTERN.search(content):
             raise ValueError("Report content must not contain numeric evaluation results")
         return self
 

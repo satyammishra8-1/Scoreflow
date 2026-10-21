@@ -5,33 +5,15 @@ const Judge = require('../models/Judge');
 const Evaluation = require('../models/Evaluation');
 const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const ResultReport = require('../models/ResultReport');
+const { validReport, reportIsQualitative, hasNumericEvaluationContent } = require('../services/resultReportContent');
 
 const PROMPT_VERSION = 'result-report-v1';
 const EVALUATION_TYPES = new Set(['criteria-based', 'open-holistic', 'remote-async', 'live-demo', 'ranking-voting', 'custom']);
-const REPORT_FIELDS = [
-  'summary',
-  'strengths',
-  'weaknesses',
-  'improvementSuggestions',
-  'priorityAreas',
-  'judgeFeedbackSummary',
-  'finalRemarks',
-];
-
 function safeQualitativeText(value) {
   if (typeof value !== 'string') return '';
   return value.split(/(?<=[.!?])\s+/u)
-    .filter((sentence) => !/\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b/iu.test(sentence))
+    .filter((sentence) => !hasNumericEvaluationContent(sentence))
     .join(' ').trim().slice(0, 4000);
-}
-
-function hasNumericEvaluationContent(value) {
-  return /\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b/iu.test(value);
-}
-
-function reportIsQualitative(report) {
-  return REPORT_FIELDS.every((field) => (Array.isArray(report[field]) ? report[field] : [report[field]])
-    .every((value) => !hasNumericEvaluationContent(value)));
 }
 
 function textAnswersOf(evaluation) {
@@ -115,18 +97,6 @@ function buildReportEvidence({ event, team, config, judgeRows }) {
       };
     }),
   };
-}
-
-function validReport(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Object.keys(value).sort();
-  if (keys.join('|') !== [...REPORT_FIELDS].sort().join('|')) return false;
-  return REPORT_FIELDS.every((field) => field === 'strengths' || field === 'weaknesses'
-    || field === 'improvementSuggestions' || field === 'priorityAreas'
-    ? Array.isArray(value[field]) && value[field].length > 0
-      && value[field].length <= (field === 'priorityAreas' ? 5 : 8)
-      && value[field].every((item) => typeof item === 'string' && item.trim().length > 0 && item.length <= 1000)
-    : typeof value[field] === 'string' && value[field].trim().length > 0 && value[field].length <= 4000);
 }
 
 function objectIdValid(value) {

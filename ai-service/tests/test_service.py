@@ -76,6 +76,8 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
     def test_numeric_evaluation_content_fails_pydantic_validation(self):
         with self.assertRaises(ValidationError):
             main.ReportContent(**{**REPORT, "summary": "The team earned 92 percent."})
+        with self.assertRaises(ValidationError):
+            main.ReportContent(**{**REPORT, "summary": "The team finished first."})
 
     async def test_official_sdk_response_parser_is_used_and_validated(self):
         parsed = main.ReportContent(**REPORT)

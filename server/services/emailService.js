@@ -1,4 +1,4 @@
-const { buildJudgeInvitationEmail } = require('./emailTemplates');
+const { buildJudgeInvitationEmail, buildResultReportEmail } = require('./emailTemplates');
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (character) => ({
@@ -115,4 +115,46 @@ async function sendAnnouncementEmail({ recipientEmail, subject, message, eventNa
   }
 }
 
-module.exports = { sendJudgeInvitation, sendAnnouncementEmail };
+async function sendResultReportEmail({ recipientEmail, recipientName, teamName, eventName, report }) {
+  const { apiKey, senderEmail, senderName } = getBrevoConfig();
+  const safeEmail = String(recipientEmail || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail) || safeEmail.length > 254) {
+    return { sent: false, code: 'invalid_recipient', message: 'This team member does not have a valid email address.' };
+  }
+  if (isSmtpCredential(apiKey)) {
+    return { sent: false, code: 'invalid_configuration', message: 'Brevo email is not configured with an API v3 credential.' };
+  }
+  if (!apiKey || !senderEmail) {
+    return { sent: false, code: 'not_configured', message: 'Brevo email is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.' };
+  }
+  let email;
+  try {
+    email = buildResultReportEmail({ recipientName, teamName, eventName, report });
+  } catch {
+    return { sent: false, code: 'invalid_report', message: 'The saved report is not valid for email delivery.' };
+  }
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000),
+      headers: { accept: 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { email: senderEmail, name: senderName },
+        to: [{ email: safeEmail, name: recipientName || 'Team member' }],
+        subject: email.subject,
+        htmlContent: email.html,
+        textContent: email.text,
+      }),
+    });
+    if (!response.ok) {
+      await logBrevoRejection('result report', response, apiKey);
+      return { sent: false, code: 'delivery_failed', message: 'Brevo could not deliver this email. Please try again.' };
+    }
+    return { sent: true, code: 'sent' };
+  } catch (error) {
+    console.error('Brevo result report request failed:', error.message);
+    return { sent: false, code: 'service_unavailable', message: 'The email service is temporarily unavailable.' };
+  }
+}
+
+module.exports = { sendJudgeInvitation, sendAnnouncementEmail, sendResultReportEmail };

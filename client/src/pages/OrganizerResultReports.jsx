@@ -8,6 +8,8 @@ import './OrganizerResultReports.css';
 
 const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 const idOf = (value) => String(value?.teamId || value?._id || value?.id || '');
+const hasValidEmail = (team) => (team?.members || []).some(({ email }) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim()) && String(email).trim().length <= 254);
+const newRequestId = () => globalThis.crypto?.randomUUID?.() || `report-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function OrganizerResultReports() {
   const { eventId = '' } = useParams();
@@ -17,6 +19,10 @@ function OrganizerResultReports() {
   const [error, setError] = useState('');
   const [activeTeamId, setActiveTeamId] = useState('');
   const [workingTeamId, setWorkingTeamId] = useState('');
+  const [sendingTeamIds, setSendingTeamIds] = useState([]);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+  const [deliveryStatuses, setDeliveryStatuses] = useState({});
   const [actionError, setActionError] = useState('');
 
   useEffect(() => {
@@ -32,6 +38,7 @@ function OrganizerResultReports() {
           `/events/${encodeURIComponent(eventId)}/evaluations`,
           `/events/${encodeURIComponent(eventId)}/evaluation-config`,
           `/events/${encodeURIComponent(eventId)}/result-reports`,
+          `/events/${encodeURIComponent(eventId)}/result-reports/delivery-status`,
         ];
         const responses = await Promise.all(paths.map((path) => API.get(path)));
         if (cancelled) return;
@@ -43,6 +50,7 @@ function OrganizerResultReports() {
         const config = responses[4].data?.data || null;
         const result = buildEventResults({ eventId, teams, judges, evaluations, config });
         const reportMap = Object.fromEntries((responses[5].data?.data || []).map((report) => [String(report.teamId), report]));
+        setDeliveryStatuses(responses[6].data?.data || {});
         setData({ event, ...result });
         setReports(reportMap);
       } catch (loadError) {
@@ -73,6 +81,62 @@ function OrganizerResultReports() {
     }
   }
 
+  async function sendOne(teamId) {
+    setSendingTeamIds((current) => [...new Set([...current, teamId])]);
+    setActionError('');
+    setDeliveryStatuses((current) => ({ ...current, [teamId]: { ...current[teamId], status: 'Sending' } }));
+    try {
+      const response = await API.post(`/events/${encodeURIComponent(eventId)}/result-reports/${encodeURIComponent(teamId)}/send`, { requestId: newRequestId() });
+      if (!response.data?.success || !response.data?.data) throw new Error(response.data?.error || 'Report delivery failed.');
+      setDeliveryStatuses((current) => ({ ...current, [teamId]: response.data.data }));
+    } catch (requestError) {
+      setDeliveryStatuses((current) => ({ ...current, [teamId]: { ...current[teamId], status: 'Failed' } }));
+      setActionError(requestError.response?.data?.error || requestError.message || 'Unable to send this report.');
+    } finally {
+      setSendingTeamIds((current) => current.filter((id) => id !== teamId));
+    }
+  }
+
+  async function sendSelected() {
+    if (!selectedTeamIds.length || bulkSending) return;
+    const selected = [...selectedTeamIds];
+    setBulkSending(true);
+    setActionError('');
+    setDeliveryStatuses((current) => Object.fromEntries([
+      ...Object.entries(current),
+      ...selected.map((teamId) => [teamId, { ...current[teamId], status: 'Sending' }]),
+    ]));
+    try {
+      const response = await API.post(`/events/${encodeURIComponent(eventId)}/result-reports/send`, { teamIds: selected, requestId: newRequestId() });
+      if (!response.data?.success || !Array.isArray(response.data?.data)) throw new Error(response.data?.error || 'Bulk report delivery failed.');
+      setDeliveryStatuses((current) => {
+        const next = { ...current };
+        response.data.data.forEach((result) => {
+          if (result.data) next[result.teamId] = result.data;
+          else next[result.teamId] = { ...next[result.teamId], status: result.status || 'Failed', error: result.error };
+        });
+        return next;
+      });
+      const failures = response.data.data.filter((result) => result.status !== 'Sent').length;
+      if (failures) setActionError(`${failures} selected team${failures === 1 ? '' : 's'} could not be fully delivered. Review each team’s delivery status.`);
+      setSelectedTeamIds([]);
+    } catch (requestError) {
+      setDeliveryStatuses((current) => Object.fromEntries([
+        ...Object.entries(current),
+        ...selected.map((teamId) => [teamId, { ...current[teamId], status: 'Failed' }]),
+      ]));
+      setActionError(requestError.response?.data?.error || requestError.message || 'Unable to send the selected reports.');
+    } finally {
+      setBulkSending(false);
+    }
+  }
+
+  function toggleTeam(teamId, selected) {
+    setSelectedTeamIds((current) => selected
+      ? [...new Set([...current, teamId])]
+      : current.filter((id) => id !== teamId));
+  }
+
   return (
     <OrganizerLayout activeKey="reports" wrapperClassName="result-reports-page" contentClassName="result-reports-content" eventId={eventId}>
       <header className="rr-header">
@@ -88,28 +152,45 @@ function OrganizerResultReports() {
         : error ? <section className="rr-state" role="alert"><h2>Unable to load reports</h2><p>{error}</p></section>
           : data && <>
             {actionError && <p className="rr-action-error" role="alert">{actionError}</p>}
+            <div className="rr-bulk-actions">
+              <span>{selectedTeamIds.length} eligible team{selectedTeamIds.length === 1 ? '' : 's'} selected</span>
+              <button type="button" className="rr-primary-button" disabled={!selectedTeamIds.length || bulkSending} onClick={sendSelected}>
+                {bulkSending ? 'Sending selected reports…' : 'Send to Selected Teams'}
+              </button>
+            </div>
             <section className="rr-team-list" aria-label="Team result reports">
               {data.teams.map((row) => {
                 const teamId = idOf(row.team);
                 const savedReport = reports[teamId];
                 const report = reportIsQualitative(savedReport?.report) ? savedReport : null;
                 const completed = row.status === 'Completed' && row.assignedCount > 0;
+                const validEmail = hasValidEmail(row.team);
+                const eligible = completed && Boolean(report) && validEmail;
+                const delivery = deliveryStatuses[teamId];
+                const isSending = sendingTeamIds.includes(teamId) || bulkSending && selectedTeamIds.includes(teamId) && delivery?.status === 'Sending';
+                const recipientStatus = { Sent: 'Sent', 'Partially Sent': 'Partially Sent', Failed: 'Failed', Sending: 'Sending' }[delivery?.status] || 'Not Sent';
                 return <article className="rr-team-card" key={teamId}>
                   <div className="rr-team-topline">
-                    <div><span className="rr-team-number">Team {row.team.teamNumber || '—'}</span><h2>{row.team.teamName}</h2></div>
+                    <div className="rr-team-card-title"><label className="rr-team-select"><input type="checkbox" aria-label={`Select ${row.team.teamName} for report delivery`} checked={selectedTeamIds.includes(teamId)} disabled={!eligible || bulkSending || isSending} onChange={(event) => toggleTeam(teamId, event.target.checked)} />Select</label><span className="rr-team-number">Team {row.team.teamNumber || '—'}</span><h2>{row.team.teamName}</h2></div>
                     <span className={`rr-badge ${completed ? 'rr-badge-complete' : 'rr-badge-pending'}`}>{completed ? 'Completed' : 'Pending'}</span>
                   </div>
                   <div className="rr-team-facts">
                     <div><span>Evaluation status</span><strong>{completed ? 'All assigned evaluations complete' : 'Awaiting completed evaluations'}</strong></div>
                     <div><span>Report status</span><strong>{report ? 'Available' : savedReport ? 'Requires regeneration' : 'Not generated'}</strong></div>
+                    <div><span>Email delivery</span><strong aria-live="polite">{recipientStatus}</strong></div>
                   </div>
                   {!completed && <p className="rr-pending-note">Report generation is available after every assigned judge submits a complete evaluation.</p>}
+                  {completed && !validEmail && <p className="rr-pending-note">No valid team member email address is available for delivery.</p>}
                   <div className="rr-actions">
                     <button type="button" className="rr-primary-button" disabled={!completed || workingTeamId === teamId} onClick={() => generate(teamId)}>
                       {workingTeamId === teamId ? 'Generating…' : report ? 'Regenerate Report' : 'Generate Report'}
                     </button>
-                    {report && <button type="button" className="rr-secondary-button" onClick={() => { setActiveTeamId(teamId); setActionError(''); }}>View Report</button>}
+                    {report && <button type="button" className="rr-secondary-button" onClick={() => { setActiveTeamId(teamId); setActionError(''); }}>Preview</button>}
+                    <button type="button" className="rr-secondary-button" disabled={!eligible || isSending || workingTeamId === teamId} onClick={() => sendOne(teamId)}>{isSending ? 'Sending…' : 'Send Report'}</button>
                   </div>
+                  {delivery?.members?.length > 0 && <ul className="rr-member-delivery" aria-label={`${row.team.teamName} member delivery results`}>
+                    {delivery.members.map((member) => <li key={`${member.memberIndex}-${member.memberName}`}><strong>{member.memberName}:</strong> {member.status}{member.reason ? ` · ${member.reason}` : ''}</li>)}
+                  </ul>}
                 </article>;
               })}
             </section>
