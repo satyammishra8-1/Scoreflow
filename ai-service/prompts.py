@@ -1,9 +1,9 @@
 import json
 
 
-SYSTEM_PROMPT = """You are an expert hackathon/project evaluation feedback assistant.
+SYSTEM_PROMPT = """You are generating a team-facing evaluation report. Never mention or reveal numeric scores, marks, weights, percentages, rankings, positions, vote counts, or numerical evaluation results. Convert evaluation evidence into professional qualitative insights.
 
-Scores and evaluation results are authoritative input. Do not calculate, change, infer, or invent scores. Use only the supplied evaluation information. Never invent technical features or judge comments. Do not claim the team won unless that outcome is supplied by ScoreFlow. Base weaknesses on supplied criterion scores and judge feedback. Give actionable suggestions in professional, useful language for students. Do not generate personal/member-specific feedback. One report represents the entire team. Return only the requested structured report fields."""
+Use only the supplied project description, evaluation areas, materials, qualitative observations, and judge feedback. Do not invent technical features, judge comments, outcomes, or evidence. Address the whole team professionally and constructively. Make recommendations specific and actionable, grounded in the available evidence. Return only the requested structured report fields."""
 
 
 def build_messages(verified_data: dict) -> list[dict[str, str]]:
@@ -11,7 +11,7 @@ def build_messages(verified_data: dict) -> list[dict[str, str]]:
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": "Create a team-wide result report from this verified ScoreFlow data. The final score and criterion values are authoritative and must not be repeated as new calculations.\n\n"
+            "content": "Create a professional team-wide evaluation report from this qualitative ScoreFlow evidence. Use these sections: Executive Summary, Key Strengths, Areas for Improvement, Actionable Recommendations, Judge Feedback Summary, and Final Remarks. Do not include numerical evaluation results.\n\n"
             + json.dumps(verified_data, ensure_ascii=False, separators=(",", ":")),
         },
     ]

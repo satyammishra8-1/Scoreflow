@@ -11,15 +11,14 @@ from prompts import SYSTEM_PROMPT, build_messages
 
 
 SAMPLE = {
-    "eventName": "TechNova Hackathon 2026",
+    "eventName": "TechNova Hackathon",
     "eventType": "Hackathon",
     "teamName": "NovaTech",
-    "teamNumber": "1",
-    "finalScore": 60.25,
-    "scoreMaximum": 100,
-    "criteria": [{"name": "Innovation", "maximumMarks": 30, "weight": 30, "judgeScores": [27, 25], "averageScore": 26}],
-    "evaluations": [{"judgeName": "Judge One", "status": "COMPLETED", "criteriaScores": [], "feedback": "Strong concept."}],
-    "evaluationStatus": "Completed",
+    "evaluationType": "criteria-based",
+    "projectDescription": "A clear project description.",
+    "projectMaterials": [],
+    "evaluationAreas": ["Innovation"],
+    "evaluations": [{"observations": [], "feedback": "Strong concept."}],
 }
 
 REPORT = {
@@ -53,16 +52,30 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
                 response = await client.post("/reports/generate", json=SAMPLE)
         self.assertEqual(response.status_code, 503)
 
-    async def test_invalid_verified_input_is_rejected_by_request_schema(self):
-        invalid = {**SAMPLE, "finalScore": 101}
+    async def test_numeric_score_fields_are_rejected_by_request_schema(self):
+        invalid = {**SAMPLE, "finalScore": 92}
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post("/reports/generate", json=invalid)
         self.assertEqual(response.status_code, 422)
 
+    async def test_all_six_evaluation_types_are_supported(self):
+        transport = httpx.ASGITransport(app=main.app)
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(
+            main, "generate_report", new=AsyncMock(return_value=(main.ReportContent(**REPORT), "test-model"))
+        ):
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                for evaluation_type in ["criteria-based", "open-holistic", "remote-async", "live-demo", "ranking-voting", "custom"]:
+                    response = await client.post("/reports/generate", json={**SAMPLE, "evaluationType": evaluation_type})
+                    self.assertEqual(response.status_code, 200, evaluation_type)
+
     def test_bad_report_fields_fail_pydantic_validation(self):
         with self.assertRaises(ValidationError):
             main.ReportContent(**{**REPORT, "strengths": []})
+
+    def test_numeric_evaluation_content_fails_pydantic_validation(self):
+        with self.assertRaises(ValidationError):
+            main.ReportContent(**{**REPORT, "summary": "The team earned 92 percent."})
 
     async def test_official_sdk_response_parser_is_used_and_validated(self):
         parsed = main.ReportContent(**REPORT)
@@ -75,7 +88,8 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report, parsed)
         self.assertEqual(model, "test-model")
         self.assertIs(parse.call_args.kwargs["text_format"], main.ReportContent)
-        self.assertIn('"finalScore":60.25', parse.call_args.kwargs["input"][1]["content"])
+        self.assertNotIn("finalScore", parse.call_args.kwargs["input"][1]["content"])
+        self.assertIn("Never mention or reveal numeric scores", parse.call_args.kwargs["input"][0]["content"])
 
     async def test_gemini_uses_official_sdk_pydantic_schema_and_validates_response(self):
         parsed = main.ReportContent(**REPORT)
@@ -104,7 +118,8 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         original_schema["title"] = main.GeminiReportSchema.__name__
         self.assertEqual(main.GeminiReportSchema.model_json_schema(), original_schema)
         self.assertEqual(main.ReportContent.model_config["extra"], "forbid")
-        self.assertIn('"finalScore":60.25', kwargs["contents"])
+        self.assertNotIn("finalScore", kwargs["contents"])
+        self.assertNotIn("92", kwargs["contents"])
         close.assert_awaited_once()
 
     async def test_gemini_missing_key_fails_without_request(self):
@@ -172,10 +187,12 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
             "status": "ok", "provider": "gemini", "model": "gemini-3.5-flash-lite", "configured": True
         })
 
-    def test_prompt_preserves_score_authority_and_uses_only_supplied_input(self):
+    def test_prompt_explicitly_requires_qualitative_team_facing_report(self):
         messages = build_messages(SAMPLE)
-        self.assertIn("Do not calculate, change, infer, or invent scores", SYSTEM_PROMPT)
-        self.assertIn('"finalScore":60.25', messages[1]["content"])
+        self.assertIn("You are generating a team-facing evaluation report", SYSTEM_PROMPT)
+        self.assertIn("Never mention or reveal numeric scores, marks, weights, percentages, rankings, positions, vote counts", SYSTEM_PROMPT)
+        self.assertIn("Actionable Recommendations", messages[1]["content"])
+        self.assertNotIn("finalScore", messages[1]["content"])
 
 
 if __name__ == "__main__":

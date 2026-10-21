@@ -7,6 +7,7 @@ const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const ResultReport = require('../models/ResultReport');
 
 const PROMPT_VERSION = 'result-report-v1';
+const EVALUATION_TYPES = new Set(['criteria-based', 'open-holistic', 'remote-async', 'live-demo', 'ranking-voting', 'custom']);
 const REPORT_FIELDS = [
   'summary',
   'strengths',
@@ -16,6 +17,105 @@ const REPORT_FIELDS = [
   'judgeFeedbackSummary',
   'finalRemarks',
 ];
+
+function safeQualitativeText(value) {
+  if (typeof value !== 'string') return '';
+  return value.split(/(?<=[.!?])\s+/u)
+    .filter((sentence) => !/\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b/iu.test(sentence))
+    .join(' ').trim().slice(0, 4000);
+}
+
+function hasNumericEvaluationContent(value) {
+  return /\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b/iu.test(value);
+}
+
+function reportIsQualitative(report) {
+  return REPORT_FIELDS.every((field) => (Array.isArray(report[field]) ? report[field] : [report[field]])
+    .every((value) => !hasNumericEvaluationContent(value)));
+}
+
+function textAnswersOf(evaluation) {
+  const source = evaluation.textAnswers instanceof Map ? Object.fromEntries(evaluation.textAnswers) : evaluation.textAnswers;
+  return source && typeof source === 'object' ? source : {};
+}
+
+function buildReportEvidence({ event, team, config, judgeRows }) {
+  config ||= {};
+  const evaluationType = EVALUATION_TYPES.has(config?.model) ? config.model : 'custom';
+  const evaluationAreas = [];
+  const projectMaterials = [];
+  if (evaluationType === 'criteria-based') {
+    (config.criteriaBased?.criteria || []).forEach(({ name }) => evaluationAreas.push(safeQualitativeText(name)));
+  } else if (evaluationType === 'open-holistic') {
+    if (config.openHolistic?.projectReview !== false) evaluationAreas.push('Project review');
+    if (config.openHolistic?.githubReview !== false && team.githubUrl) projectMaterials.push('GitHub project material submitted');
+    evaluationAreas.push('Overall qualitative feedback');
+  } else if (evaluationType === 'remote-async') {
+    (config.remoteAsync?.materials || []).forEach(({ label }) => {
+      if (label) projectMaterials.push(safeQualitativeText(label));
+    });
+    if (team.githubUrl) projectMaterials.push('GitHub project material submitted');
+    if (team.demoUrl) projectMaterials.push('Demo material submitted');
+    evaluationAreas.push('Remote project and documentation review');
+  } else if (evaluationType === 'live-demo') {
+    if (config.liveDemo?.demoEvaluation !== false) evaluationAreas.push('Live demonstration');
+    if (config.liveDemo?.presentationEvaluation !== false) evaluationAreas.push('Presentation');
+    if (config.liveDemo?.judgeQuestions !== false) evaluationAreas.push('Responses to judge questions');
+    (config.liveDemo?.criteria || []).forEach(({ name }) => evaluationAreas.push(safeQualitativeText(name)));
+  } else if (evaluationType === 'ranking-voting') {
+    evaluationAreas.push('Qualitative judge observations');
+  } else {
+    (config.custom?.fields || []).forEach(({ type, label }, index) => {
+      if (label && type) evaluationAreas.push(safeQualitativeText(label) || 'Custom evaluation area');
+    });
+  }
+
+  return {
+    eventName: String(event.name || '').trim().slice(0, 200),
+    eventType: String(event.type || '').trim().slice(0, 100),
+    teamName: String(team.teamName || '').trim().slice(0, 200),
+    evaluationType,
+    projectDescription: safeQualitativeText(team.project),
+    projectMaterials: [...new Set(projectMaterials.filter(Boolean))],
+    evaluationAreas: [...new Set(evaluationAreas.filter(Boolean))],
+    evaluations: judgeRows.map(({ evaluation }) => {
+      const answers = textAnswersOf(evaluation);
+      const flags = evaluation?.flags instanceof Map ? Object.fromEntries(evaluation.flags) : evaluation?.flags || {};
+      const observations = [];
+      if (evaluationType === 'custom') {
+        (config.custom?.fields || []).forEach(({ type, label }, index) => {
+          if (['question', 'feedback'].includes(type)) {
+            const response = safeQualitativeText(answers[`field-${index}`]);
+            if (response) observations.push({ area: safeQualitativeText(label) || 'Custom evaluation', response });
+          } else if (type === 'material' && typeof flags[`field-${index}`] === 'boolean') {
+            observations.push({ area: safeQualitativeText(label) || 'Custom project material', response: flags[`field-${index}`] ? 'Reviewed' : 'Not reviewed' });
+          }
+        });
+      } else {
+        Object.entries(answers).forEach(([area, response]) => {
+          const text = safeQualitativeText(response);
+          if (text) observations.push({ area: safeQualitativeText(area), response: text });
+        });
+      }
+      if (evaluationType === 'open-holistic') {
+        if (typeof flags.githubReviewed === 'boolean') observations.push({ area: 'GitHub review', response: flags.githubReviewed ? 'Reviewed' : 'Not reviewed' });
+        if (typeof flags.projectReviewed === 'boolean') observations.push({ area: 'Project review', response: flags.projectReviewed ? 'Reviewed' : 'Not reviewed' });
+      }
+      if (evaluationType === 'remote-async') {
+        (config.remoteAsync?.materials || []).forEach(({ label }, index) => {
+          if (typeof flags[`material-${index}`] === 'boolean') observations.push({
+            area: safeQualitativeText(label) || 'Submitted project material',
+            response: flags[`material-${index}`] ? 'Reviewed' : 'Not reviewed',
+          });
+        });
+      }
+      return {
+        feedback: safeQualitativeText(evaluation?.feedback),
+        observations,
+      };
+    }),
+  };
+}
 
 function validReport(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -71,49 +171,20 @@ function createResultReportController({
       ...evaluation,
       scores: evaluation.scores instanceof Map ? Object.fromEntries(evaluation.scores) : evaluation.scores,
       textAnswers: evaluation.textAnswers instanceof Map ? Object.fromEntries(evaluation.textAnswers) : evaluation.textAnswers,
+      flags: evaluation.flags instanceof Map ? Object.fromEntries(evaluation.flags) : evaluation.flags,
     }));
     const { buildEventResults } = await import('../../shared/resultsUtils.mjs');
     const result = buildEventResults({ eventId, teams: [team], judges, evaluations, config });
     const teamResult = result.teams[0];
     if (!teamResult || teamResult.status !== 'Completed' || teamResult.assignedCount < 1
-        || teamResult.submittedCount !== teamResult.assignedCount || !Number.isFinite(teamResult.averageWeighted)) {
-      return { error: 'A report requires completed evaluations from every assigned judge and a verified final score.', status: 409 };
+        || teamResult.submittedCount !== teamResult.assignedCount) {
+      return { error: 'A report requires completed evaluations from every assigned judge.', status: 409 };
     }
-
-    const criteria = result.criteria.map((criterion) => {
-      const scoreValues = teamResult.judgeRows.map(({ scores }) => scores?.criteria?.find((item) => item.id === criterion.id)?.score);
-      const validScores = scoreValues.filter(Number.isFinite);
-      return {
-        name: criterion.name,
-        maximumMarks: criterion.maxMarks,
-        weight: criterion.weight,
-        judgeScores: validScores,
-        averageScore: validScores.length === scoreValues.length
-          ? Number((validScores.reduce((sum, value) => sum + value, 0) / validScores.length).toFixed(2))
-          : null,
-      };
-    });
-    const evaluationsForPrompt = teamResult.judgeRows.map(({ judge, evaluation, scores }) => ({
-      judgeName: judge.name,
-      status: evaluation?.status || 'PENDING',
-      criteriaScores: scores?.criteria?.map(({ name, score, maxMarks, weight }) => ({ name, score, maximumMarks: maxMarks, weight })) || [],
-      feedback: evaluation?.feedback || '',
-    }));
 
     return {
       event,
       team,
-      verifiedResult: {
-        eventName: event.name,
-        eventType: event.type,
-        teamName: team.teamName,
-        teamNumber: team.teamNumber,
-        finalScore: teamResult.averageWeighted,
-        scoreMaximum: 100,
-        criteria,
-        evaluations: evaluationsForPrompt,
-        evaluationStatus: teamResult.status,
-      },
+      verifiedResult: buildReportEvidence({ event, team, config, judgeRows: teamResult.judgeRows }),
     };
   }
 
@@ -168,7 +239,7 @@ function createResultReportController({
       } catch {
         return res.status(502).json({ success: false, error: 'AI report service returned malformed JSON.', code: 'AI_INVALID_RESPONSE' });
       }
-      if (!validReport(payload?.report) || typeof payload.model !== 'string' || !payload.model.trim()) {
+      if (!validReport(payload?.report) || !reportIsQualitative(payload.report) || typeof payload.model !== 'string' || !payload.model.trim()) {
         return res.status(502).json({ success: false, error: 'AI report service returned an invalid report structure.', code: 'AI_INVALID_RESPONSE' });
       }
 
@@ -177,7 +248,7 @@ function createResultReportController({
         { $set: { report: payload.report, model: payload.model, promptVersion: payload.promptVersion || PROMPT_VERSION, generatedAt: new Date() } },
         { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
       );
-      return res.status(200).json({ success: true, data: { ...toReportResponse(saved), finalScore: loaded.verifiedResult.finalScore, scoreMaximum: loaded.verifiedResult.scoreMaximum } });
+      return res.status(200).json({ success: true, data: toReportResponse(saved) });
     } catch (error) {
       if (error?.code === 11000) {
         return res.status(409).json({ success: false, error: 'A report for this team is already being generated. Reload and try again.', code: 'REPORT_GENERATION_CONFLICT' });
@@ -222,4 +293,4 @@ function createResultReportController({
 }
 
 const controller = createResultReportController();
-module.exports = { ...controller, createResultReportController, validReport };
+module.exports = { ...controller, createResultReportController, validReport, reportIsQualitative, buildReportEvidence, safeQualitativeText };

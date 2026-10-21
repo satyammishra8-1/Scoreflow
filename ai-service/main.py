@@ -1,14 +1,14 @@
 import os
 import logging
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from openai import AsyncOpenAI
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from prompts import build_messages
 
@@ -22,18 +22,18 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-class CriterionInput(StrictModel):
-    name: str = Field(min_length=1, max_length=200)
-    maximumMarks: float = Field(gt=0)
-    weight: float = Field(ge=0)
-    judgeScores: list[float] = Field(max_length=20)
-    averageScore: float | None
+EvaluationType = Literal[
+    "criteria-based", "open-holistic", "remote-async", "live-demo", "ranking-voting", "custom"
+]
+
+
+class ObservationInput(StrictModel):
+    area: str = Field(min_length=1, max_length=200)
+    response: str = Field(min_length=1, max_length=4000)
 
 
 class EvaluationInput(StrictModel):
-    judgeName: str = Field(min_length=1, max_length=100)
-    status: str = Field(min_length=1, max_length=30)
-    criteriaScores: list[dict[str, str | float | None]] = Field(max_length=100)
+    observations: list[ObservationInput] = Field(max_length=100)
     feedback: str = Field(max_length=4000)
 
 
@@ -41,12 +41,11 @@ class ReportRequest(StrictModel):
     eventName: str = Field(min_length=1, max_length=200)
     eventType: str = Field(min_length=1, max_length=100)
     teamName: str = Field(min_length=1, max_length=200)
-    teamNumber: str = Field(min_length=1, max_length=40)
-    finalScore: float = Field(ge=0, le=100)
-    scoreMaximum: float = Field(gt=0, le=1000)
-    criteria: list[CriterionInput] = Field(max_length=100)
+    evaluationType: EvaluationType
+    projectDescription: str = Field(max_length=4000)
+    projectMaterials: list[str] = Field(max_length=100)
+    evaluationAreas: list[str] = Field(max_length=100)
     evaluations: list[EvaluationInput] = Field(min_length=1, max_length=20)
-    evaluationStatus: str = Field(min_length=1, max_length=30)
 
 
 class ReportContent(StrictModel):
@@ -57,6 +56,17 @@ class ReportContent(StrictModel):
     priorityAreas: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=5)
     judgeFeedbackSummary: str = Field(min_length=1, max_length=4000)
     finalRemarks: str = Field(min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def _validate_qualitative_only(self) -> "ReportContent":
+        content = " ".join(
+            item
+            for field in self.__class__.model_fields
+            for item in (getattr(self, field) if isinstance(getattr(self, field), list) else [getattr(self, field)])
+        )
+        if re.search(r"\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b", content, re.IGNORECASE):
+            raise ValueError("Report content must not contain numeric evaluation results")
+        return self
 
 
 class GeminiReportSchema(ReportContent):
