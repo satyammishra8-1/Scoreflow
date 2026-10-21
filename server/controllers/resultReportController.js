@@ -135,6 +135,26 @@ function createResultReportController({
         return res.status(503).json({ success: false, error: 'AI report service is unavailable.', code: 'AI_SERVICE_UNAVAILABLE' });
       }
       if (!serviceResponse.ok) {
+        let providerError;
+        try {
+          const body = await serviceResponse.json();
+          const detail = body?.detail;
+          if (detail && typeof detail === 'object' && detail.provider === 'gemini'
+              && typeof detail.code === 'string' && typeof detail.reason === 'string') {
+            providerError = { provider: detail.provider, type: detail.code, reason: detail.reason };
+          }
+        } catch {
+          // Keep the established generic response when the AI service error is not structured.
+        }
+        if (providerError) {
+          return res.status(serviceResponse.status === 503 ? 503 : 502).json({
+            success: false,
+            error: providerError.reason,
+            code: `AI_${providerError.type.toUpperCase()}`,
+            provider: providerError.provider,
+            providerError,
+          });
+        }
         const status = serviceResponse.status === 503 ? 503 : 502;
         const detail = serviceResponse.status === 503
           ? 'AI report generation is not configured. Configure the selected AI provider for the AI service.'

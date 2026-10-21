@@ -13,7 +13,7 @@ python -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
-The development provider is Gemini. Set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY` in `ai-service/.env`. `GEMINI_MODEL` defaults to `gemini-3.8-flash`. The service requests JSON matching the existing Pydantic report schema and validates the returned content before responding.
+The development provider is Gemini. Set `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, and `GEMINI_MODEL=gemini-3.5-flash-lite` in `ai-service/.env`. The service requests JSON matching the existing Pydantic report schema and validates the returned content before responding. `/health` reports the selected provider, model, and whether its key is configured without calling the provider.
 
 The existing OpenAI implementation remains available by setting `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_MODEL` (default `gpt-4o-mini`). Start the service with:
 

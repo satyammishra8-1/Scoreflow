@@ -59,6 +59,14 @@ class ReportContent(StrictModel):
     finalRemarks: str = Field(min_length=1, max_length=4000)
 
 
+class GeminiReportSchema(ReportContent):
+    # google-genai 1.75.0's response_schema converter sends additionalProperties
+    # as additional_properties, which Gemini rejects. Keep the same fields and
+    # constraints while omitting that unsupported schema keyword; generated
+    # output is still validated strictly against ReportContent below.
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+
+
 class GenerateResponse(StrictModel):
     report: ReportContent
     model: str
@@ -66,11 +74,17 @@ class GenerateResponse(StrictModel):
 
 
 class ProviderConfigurationError(Exception):
-    pass
+    def __init__(self, code: str, reason: str):
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
 
 
 class ProviderResponseError(Exception):
-    pass
+    def __init__(self, code: str, reason: str):
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
 
 
 def _safe_provider_error(error: Exception) -> None:
@@ -90,7 +104,7 @@ def _safe_provider_error(error: Exception) -> None:
 async def _generate_with_openai(data: ReportRequest) -> tuple[ReportContent, str]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        raise ProviderConfigurationError("OPENAI_API_KEY is not configured")
+        raise ProviderConfigurationError("missing_api_key", "OPENAI_API_KEY is not configured")
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
     try:
         client = AsyncOpenAI(api_key=api_key, timeout=45.0, max_retries=1)
@@ -101,17 +115,17 @@ async def _generate_with_openai(data: ReportRequest) -> tuple[ReportContent, str
         )
     except Exception as error:
         _safe_provider_error(error)
-        raise ProviderResponseError("The language model request failed") from error
+        raise ProviderResponseError("provider_error", "The language model request failed") from error
     if response.output_parsed is None:
-        raise ProviderResponseError("The language model returned no structured report")
+        raise ProviderResponseError("malformed_response", "The language model returned no structured report")
     return response.output_parsed, model
 
 
 async def _generate_with_gemini(data: ReportRequest) -> tuple[ReportContent, str]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        raise ProviderConfigurationError("GEMINI_API_KEY is not configured")
-    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+        raise ProviderConfigurationError("missing_api_key", "GEMINI_API_KEY is not configured")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
     messages = build_messages(data.model_dump())
     client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
     try:
@@ -121,12 +135,13 @@ async def _generate_with_gemini(data: ReportRequest) -> tuple[ReportContent, str
             config=types.GenerateContentConfig(
                 system_instruction=messages[0]["content"],
                 response_mime_type="application/json",
-                response_schema=_gemini_report_schema(),
+                response_schema=GeminiReportSchema,
             ),
         )
     except Exception as error:
         _safe_provider_error(error)
-        raise ProviderResponseError("The language model request failed") from error
+        code, reason = _classify_gemini_error(error)
+        raise ProviderResponseError(code, reason) from error
     finally:
         await client.aio.aclose()
     try:
@@ -134,14 +149,26 @@ async def _generate_with_gemini(data: ReportRequest) -> tuple[ReportContent, str
             raise ValueError("Empty structured response")
         return ReportContent.model_validate_json(response.text), model
     except (ValidationError, ValueError, TypeError) as error:
-        raise ProviderResponseError("The language model returned no valid structured report") from error
+        raise ProviderResponseError("malformed_response", "Gemini returned a malformed structured report") from error
 
 
-def _gemini_report_schema() -> dict:
-    # Gemini's response schema does not accept JSON Schema's additionalProperties.
-    schema = ReportContent.model_json_schema()
-    schema.pop("additionalProperties", None)
-    return schema
+def _classify_gemini_error(error: Exception) -> tuple[str, str]:
+    status = getattr(error, "status_code", None) or getattr(error, "code", None)
+    code = getattr(error, "code", None)
+    message = str(error).lower()
+    if status == 401 or status == 403 or "api key" in message or "unauthenticated" in message or "permission denied" in message:
+        return "invalid_api_key", "Gemini rejected the configured API key"
+    if status == 429 or "quota" in message or "rate limit" in message or "resource_exhausted" in message:
+        return "quota_exhausted", "Gemini quota exhausted or rate limit reached"
+    if status == 404 or "model" in message and ("not found" in message or "unavailable" in message):
+        return "model_unavailable", "The configured Gemini model is unavailable"
+    if isinstance(error, TimeoutError) or "timeout" in message or "timed out" in message:
+        return "timeout", "The Gemini request timed out"
+    if isinstance(error, (ConnectionError, OSError)) or "network" in message or "connection" in message:
+        return "network_error", "Could not connect to Gemini"
+    if isinstance(code, int) and code == 429:
+        return "quota_exhausted", "Gemini quota exhausted or rate limit reached"
+    return "provider_error", "Gemini could not complete the report request"
 
 
 async def generate_report(data: ReportRequest) -> tuple[ReportContent, str]:
@@ -158,7 +185,15 @@ app = FastAPI(title="ScoreFlow AI Result Reports", version="1.0.0")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+    if provider == "gemini":
+        return {
+            "status": "ok",
+            "provider": "gemini",
+            "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite",
+            "configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        }
+    return {"status": "ok", "provider": provider, "configured": bool(os.getenv("OPENAI_API_KEY", "").strip())}
 
 
 @app.post("/reports/generate", response_model=GenerateResponse)
@@ -166,7 +201,9 @@ async def create_report(request: ReportRequest):
     try:
         report, model = await generate_report(request)
     except ProviderConfigurationError as error:
-        raise HTTPException(status_code=503, detail="AI provider is not configured") from error
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        raise HTTPException(status_code=503, detail={"provider": provider, "code": error.code, "reason": error.reason}) from error
     except ProviderResponseError as error:
-        raise HTTPException(status_code=502, detail="AI report generation failed") from error
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        raise HTTPException(status_code=502, detail={"provider": provider, "code": error.code, "reason": error.reason}) from error
     return GenerateResponse(report=report, model=model, promptVersion=PROMPT_VERSION)

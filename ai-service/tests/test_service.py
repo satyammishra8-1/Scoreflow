@@ -77,7 +77,7 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(parse.call_args.kwargs["text_format"], main.ReportContent)
         self.assertIn('"finalScore":60.25', parse.call_args.kwargs["input"][1]["content"])
 
-    async def test_gemini_uses_official_sdk_json_schema_and_validates_response(self):
+    async def test_gemini_uses_official_sdk_pydantic_schema_and_validates_response(self):
         parsed = main.ReportContent(**REPORT)
         generate_content = AsyncMock(return_value=SimpleNamespace(text=parsed.model_dump_json()))
         close = AsyncMock()
@@ -97,15 +97,25 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         kwargs = generate_content.call_args.kwargs
         self.assertEqual(kwargs["model"], "gemini-test")
         self.assertEqual(kwargs["config"].response_mime_type, "application/json")
-        self.assertEqual(kwargs["config"].response_schema, main._gemini_report_schema())
-        self.assertNotIn("additionalProperties", kwargs["config"].response_schema)
+        self.assertIs(kwargs["config"].response_schema, main.GeminiReportSchema)
+        self.assertEqual(list(main.GeminiReportSchema.model_fields), list(main.ReportContent.model_fields))
+        original_schema = main.ReportContent.model_json_schema()
+        original_schema.pop("additionalProperties")
+        original_schema["title"] = main.GeminiReportSchema.__name__
+        self.assertEqual(main.GeminiReportSchema.model_json_schema(), original_schema)
+        self.assertEqual(main.ReportContent.model_config["extra"], "forbid")
         self.assertIn('"finalScore":60.25', kwargs["contents"])
         close.assert_awaited_once()
 
     async def test_gemini_missing_key_fails_without_request(self):
         with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}, clear=True):
-            with self.assertRaises(main.ProviderConfigurationError):
-                await main.generate_report(main.ReportRequest(**SAMPLE))
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/reports/generate", json=SAMPLE)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], {
+            "provider": "gemini", "code": "missing_api_key", "reason": "GEMINI_API_KEY is not configured"
+        })
 
     async def test_invalid_gemini_structured_response_is_rejected(self):
         generate_content = AsyncMock(return_value=SimpleNamespace(text='{"summary":"incomplete"}'))
@@ -122,6 +132,45 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(main.ProviderResponseError):
                 await main.generate_report(main.ReportRequest(**SAMPLE))
         close.assert_awaited_once()
+
+    async def test_gemini_default_model_and_provider_errors_are_classified(self):
+        for error, expected in [
+            (RuntimeError("API key is invalid"), "invalid_api_key"),
+            (RuntimeError("RESOURCE_EXHAUSTED: quota exceeded"), "quota_exhausted"),
+            (RuntimeError("model not found"), "model_unavailable"),
+            (TimeoutError("timed out"), "timeout"),
+            (ConnectionError("network unavailable"), "network_error"),
+        ]:
+            generate_content = AsyncMock(side_effect=error)
+            close = AsyncMock()
+            fake_client = SimpleNamespace(aio=SimpleNamespace(
+                models=SimpleNamespace(generate_content=generate_content), aclose=close
+            ))
+            env = {"GEMINI_API_KEY": "unit-test-key"}
+            with patch.dict(os.environ, env, clear=True), patch.object(main.genai, "Client", return_value=fake_client):
+                with self.assertRaises(main.ProviderResponseError) as raised:
+                    await main.generate_report(main.ReportRequest(**SAMPLE))
+            self.assertEqual(raised.exception.code, expected)
+            self.assertNotIn("unit-test-key", str(raised.exception))
+            self.assertEqual(generate_content.call_args.kwargs["model"], "gemini-3.5-flash-lite")
+            close.assert_awaited_once()
+
+    def test_gemini_http_status_codes_are_classified(self):
+        class StatusError(RuntimeError):
+            def __init__(self, status):
+                super().__init__("Provider request failed")
+                self.code = status
+
+        self.assertEqual(main._classify_gemini_error(StatusError(401))[0], "invalid_api_key")
+        self.assertEqual(main._classify_gemini_error(StatusError(429))[0], "quota_exhausted")
+        self.assertEqual(main._classify_gemini_error(StatusError(404))[0], "model_unavailable")
+
+    async def test_health_reports_gemini_configuration_without_calling_provider(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}, clear=True):
+            result = await main.health()
+        self.assertEqual(result, {
+            "status": "ok", "provider": "gemini", "model": "gemini-3.5-flash-lite", "configured": True
+        })
 
     def test_prompt_preserves_score_authority_and_uses_only_supplied_input(self):
         messages = build_messages(SAMPLE)

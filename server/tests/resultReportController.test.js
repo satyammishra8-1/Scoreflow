@@ -155,6 +155,20 @@ test('AI service outage and malformed output are returned as errors without savi
     assert.equal(res.body.code, 'AI_PROVIDER_ERROR');
     assert.equal(fixture.writes, 0);
   });
+  await t.test('structured Gemini quota error is passed through safely', async () => {
+    const fixture = mockController({ fetchImpl: async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({ detail: { provider: 'gemini', code: 'quota_exhausted', reason: 'Gemini quota exhausted or rate limit reached' } }),
+    }) });
+    const res = await generate(fixture);
+    assert.equal(res.statusCode, 502);
+    assert.equal(res.body.code, 'AI_QUOTA_EXHAUSTED');
+    assert.deepEqual(res.body.providerError, {
+      provider: 'gemini', type: 'quota_exhausted', reason: 'Gemini quota exhausted or rate limit reached',
+    });
+    assert.equal(fixture.writes, 0);
+  });
 });
 
 test('unknown event fails validation and does not leak another event result', async () => {
