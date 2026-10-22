@@ -4,10 +4,12 @@ const Event = require('../models/Event');
 const Team = require('../models/Team');
 const Judge = require('../models/Judge');
 const Evaluation = require('../models/Evaluation');
+const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const ResultReport = require('../models/ResultReport');
 const ResultReportDelivery = require('../models/ResultReportDelivery');
 const { sendResultReportEmail } = require('../services/emailService');
 const { reportIsQualitative } = require('../services/resultReportContent');
+const { buildReportEvidence, evidenceFingerprint } = require('./resultReportController');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BULK_TEAMS = 100;
@@ -46,6 +48,7 @@ function createResultReportEmailController({
   TeamModel = Team,
   JudgeModel = Judge,
   EvaluationModel = Evaluation,
+  ConfigModel = EvaluationConfiguration,
   ReportModel = ResultReport,
   DeliveryModel = ResultReportDelivery,
   sendEmail = sendResultReportEmail,
@@ -57,10 +60,17 @@ function createResultReportEmailController({
     if (!event) return { error: 'Event not found.', status: 404 };
     const team = await TeamModel.findOne({ _id: teamId, eventId }).lean();
     if (!team) return { error: 'Team not found for this event.', status: 404 };
-    const [judges, evaluations] = await Promise.all([
+    const [judges, evaluationRows, config] = await Promise.all([
       JudgeModel.find({ eventId }).lean(),
       EvaluationModel.find({ eventId, teamId }).lean(),
+      ConfigModel.findOne({ eventId: String(eventId) }).lean(),
     ]);
+    const evaluations = evaluationRows.map((evaluation) => ({
+      ...evaluation,
+      scores: evaluation.scores instanceof Map ? Object.fromEntries(evaluation.scores) : evaluation.scores,
+      textAnswers: evaluation.textAnswers instanceof Map ? Object.fromEntries(evaluation.textAnswers) : evaluation.textAnswers,
+      flags: evaluation.flags instanceof Map ? Object.fromEntries(evaluation.flags) : evaluation.flags,
+    }));
     const teamKey = String(team._id);
     const assigned = judges.filter((judge) => Array.isArray(judge.assignedTeamIds)
       && judge.assignedTeamIds.map(String).includes(teamKey));
@@ -74,6 +84,18 @@ function createResultReportEmailController({
     const report = await ReportModel.findOne({ event: event._id, team: team._id }).lean();
     if (!report) return { error: 'Generate and save this team’s result report before sending it.', status: 404 };
     if (!reportIsQualitative(report.report)) return { error: 'This saved report is invalid and cannot be emailed. Regenerate it first.', status: 409 };
+    if (!report.evidenceHash) return { error: 'This saved report is stale. Regenerate it before sending.', status: 409 };
+    const { buildEventResults } = await import('../../shared/resultsUtils.mjs');
+    const result = buildEventResults({ eventId, teams: [team], judges, evaluations, config });
+    const teamResult = result.teams[0];
+    if (!teamResult || teamResult.status !== 'Completed' || teamResult.assignedCount < 1
+        || teamResult.submittedCount !== teamResult.assignedCount) {
+      return { error: 'A result report can only be sent after all assigned judges complete their evaluations.', status: 409 };
+    }
+    const currentEvidence = teamResult && buildReportEvidence({ event, team, config, judgeRows: teamResult.judgeRows });
+    if (!currentEvidence || report.evidenceHash !== evidenceFingerprint(currentEvidence)) {
+      return { error: 'This saved report is stale. Regenerate it before sending.', status: 409 };
+    }
     return { event, team, report };
   }
 
@@ -233,7 +255,7 @@ function createResultReportEmailController({
 
 function loadedErrorStatus(error) {
   if (/not found|belongs to this event|report before sending/i.test(error || '')) return 404;
-  if (/complete their evaluations|invalid and cannot be emailed/i.test(error || '')) return 409;
+  if (/complete their evaluations|invalid and cannot be emailed|report is stale/i.test(error || '')) return 409;
   return 422;
 }
 

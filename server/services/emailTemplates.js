@@ -59,10 +59,11 @@ function buildResultReportEmail({ recipientName, teamName, eventName, report }) 
   const subject = `Your Evaluation Report — ${display(teamName, 'Your Team')} | ${display(eventName, 'ScoreFlow Event')}`;
   const sections = [
     ['Executive Summary', report.summary],
-    ['Key Strengths', report.strengths],
-    ['Areas for Improvement', report.weaknesses],
+    ['What You Did Well', report.strengths],
+    ['Where You Can Improve', report.weaknesses],
+    ['Why This Matters', report.whyThisMatters],
     ['Actionable Recommendations', report.improvementSuggestions],
-    ['Recommended Focus', report.priorityAreas],
+    ['Priority Areas', report.priorityAreas],
     ['Judge Feedback Summary', report.judgeFeedbackSummary],
     ['Final Remarks', report.finalRemarks],
   ];

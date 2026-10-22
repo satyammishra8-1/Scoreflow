@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { createHash } = require('node:crypto');
 const Event = require('../models/Event');
 const Team = require('../models/Team');
 const Judge = require('../models/Judge');
@@ -7,7 +8,7 @@ const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const ResultReport = require('../models/ResultReport');
 const { validReport, reportIsQualitative, hasNumericEvaluationContent } = require('../services/resultReportContent');
 
-const PROMPT_VERSION = 'result-report-v1';
+const PROMPT_VERSION = 'result-report-v2';
 const EVALUATION_TYPES = new Set(['criteria-based', 'open-holistic', 'remote-async', 'live-demo', 'ranking-voting', 'custom']);
 function safeQualitativeText(value) {
   if (typeof value !== 'string') return '';
@@ -19,6 +20,55 @@ function safeQualitativeText(value) {
 function textAnswersOf(evaluation) {
   const source = evaluation.textAnswers instanceof Map ? Object.fromEntries(evaluation.textAnswers) : evaluation.textAnswers;
   return source && typeof source === 'object' ? source : {};
+}
+
+function performanceIndicatorsFor(evaluation, config, evaluationType) {
+  const scores = evaluation?.scores instanceof Map ? Object.fromEntries(evaluation.scores) : evaluation?.scores || {};
+  const indicators = [];
+  const add = (area, value, maxValue, weight, kind) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return;
+    const indicator = {
+      area: safeQualitativeText(area) || 'Evaluation area',
+      value: numericValue,
+      kind,
+      betterWhen: kind === 'rank' ? 'lower' : 'higher',
+    };
+    const numericMaximum = Number(maxValue);
+    const numericWeight = Number(weight);
+    if (Number.isFinite(numericMaximum) && numericMaximum > 0) indicator.maxValue = numericMaximum;
+    if (Number.isFinite(numericWeight) && numericWeight >= 0) indicator.weight = numericWeight;
+    indicators.push(indicator);
+  };
+  const criteria = evaluationType === 'criteria-based'
+    ? config?.criteriaBased?.criteria || []
+    : evaluationType === 'live-demo' ? config?.liveDemo?.criteria || [] : [];
+  criteria.forEach((criterion, index) => {
+    const key = criterion.id || `criterion-${index + 1}`;
+    if (Object.hasOwn(scores, key)) add(criterion.name, scores[key], criterion.maxMarks, criterion.weight, 'criterion');
+  });
+
+  if (['open-holistic', 'remote-async'].includes(evaluationType) && Object.hasOwn(scores, 'overall')) {
+    const maximum = evaluationType === 'open-holistic' ? config?.openHolistic?.scoreMax : undefined;
+    add('Overall assessment', scores.overall, maximum, undefined, 'overall');
+  }
+  if (evaluationType === 'live-demo') {
+    if (config?.liveDemo?.demoEvaluation !== false && Object.hasOwn(scores, 'demo')) add('Live demonstration', scores.demo, undefined, undefined, 'overall');
+    if (config?.liveDemo?.presentationEvaluation !== false && Object.hasOwn(scores, 'presentation')) add('Presentation', scores.presentation, undefined, undefined, 'overall');
+  }
+  if (evaluationType === 'ranking-voting' && Object.hasOwn(scores, 'rank')) {
+    add(`Competitive standing using ${config?.rankingVoting?.rankCalculation || 'configured'} calculation`, scores.rank, undefined, undefined, 'rank');
+  }
+  if (evaluationType === 'ranking-voting' && Object.hasOwn(scores, 'votes')) {
+    add('Competitive support', scores.votes, undefined, undefined, 'votes');
+  }
+  if (evaluationType === 'custom') {
+    (config?.custom?.fields || []).forEach(({ type, label }, index) => {
+      const key = `field-${index}`;
+      if (['criteria', 'marks', 'weight'].includes(type) && Object.hasOwn(scores, key)) add(label, scores[key], undefined, undefined, 'custom');
+    });
+  }
+  return indicators;
 }
 
 function buildReportEvidence({ event, team, config, judgeRows }) {
@@ -94,6 +144,7 @@ function buildReportEvidence({ event, team, config, judgeRows }) {
       return {
         feedback: safeQualitativeText(evaluation?.feedback),
         observations,
+        performance: performanceIndicatorsFor(evaluation, config, evaluationType),
       };
     }),
   };
@@ -112,6 +163,10 @@ function toReportResponse(document) {
     eventId: String(value.event?._id || value.event),
     teamId: String(value.team?._id || value.team),
   };
+}
+
+function evidenceFingerprint(evidence) {
+  return createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
 }
 
 function createResultReportController({
@@ -156,6 +211,18 @@ function createResultReportController({
       team,
       verifiedResult: buildReportEvidence({ event, team, config, judgeRows: teamResult.judgeRows }),
     };
+  }
+
+  async function reportWithFreshness(report, eventId, teamId) {
+    const value = toReportResponse(report);
+    try {
+      const loaded = await loadVerifiedTeamResult(eventId, teamId);
+      value.isCurrent = !loaded.error && Boolean(report.evidenceHash)
+        && report.evidenceHash === evidenceFingerprint(loaded.verifiedResult);
+    } catch {
+      value.isCurrent = false;
+    }
+    return value;
   }
 
   async function generateReport(req, res) {
@@ -215,10 +282,10 @@ function createResultReportController({
 
       const saved = await ReportModel.findOneAndUpdate(
         { event: loaded.event._id, team: loaded.team._id },
-        { $set: { report: payload.report, model: payload.model, promptVersion: payload.promptVersion || PROMPT_VERSION, generatedAt: new Date() } },
+        { $set: { report: payload.report, model: payload.model, promptVersion: payload.promptVersion || PROMPT_VERSION, evidenceHash: evidenceFingerprint(loaded.verifiedResult), generatedAt: new Date() } },
         { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
       );
-      return res.status(200).json({ success: true, data: toReportResponse(saved) });
+      return res.status(200).json({ success: true, data: { ...toReportResponse(saved), isCurrent: true } });
     } catch (error) {
       if (error?.code === 11000) {
         return res.status(409).json({ success: false, error: 'A report for this team is already being generated. Reload and try again.', code: 'REPORT_GENERATION_CONFLICT' });
@@ -238,7 +305,7 @@ function createResultReportController({
       if (!team) return res.status(404).json({ success: false, error: 'Team not found for this event.' });
       const report = await ReportModel.findOne({ event: event._id, team: team._id }).lean();
       if (!report) return res.status(404).json({ success: false, error: 'No result report has been generated for this team.' });
-      return res.status(200).json({ success: true, data: toReportResponse(report) });
+      return res.status(200).json({ success: true, data: await reportWithFreshness(report, eventId, teamId) });
     } catch (error) {
       console.error('Failed to retrieve result report:', error.message);
       return res.status(500).json({ success: false, error: 'Failed to retrieve the result report.' });
@@ -252,7 +319,7 @@ function createResultReportController({
       const event = await EventModel.findById(eventId).select('_id').lean();
       if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
       const reports = await ReportModel.find({ event: event._id }).sort({ updatedAt: -1 }).lean();
-      return res.status(200).json({ success: true, data: reports.map(toReportResponse) });
+      return res.status(200).json({ success: true, data: await Promise.all(reports.map((report) => reportWithFreshness(report, eventId, report.team))) });
     } catch (error) {
       console.error('Failed to list result reports:', error.message);
       return res.status(500).json({ success: false, error: 'Failed to retrieve result reports.' });
@@ -263,4 +330,4 @@ function createResultReportController({
 }
 
 const controller = createResultReportController();
-module.exports = { ...controller, createResultReportController, validReport, reportIsQualitative, buildReportEvidence, safeQualitativeText };
+module.exports = { ...controller, createResultReportController, validReport, reportIsQualitative, buildReportEvidence, safeQualitativeText, evidenceFingerprint };

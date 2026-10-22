@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createResultReportEmailController } = require('../controllers/resultReportEmailController');
+const { evidenceFingerprint } = require('../controllers/resultReportController');
 const { buildResultReportEmail } = require('../services/emailTemplates');
 const emailService = require('../services/emailService');
 
@@ -13,21 +14,31 @@ const reportContent = {
   summary: 'The team delivered a thoughtful project with a clear purpose.',
   strengths: ['The project is clearly framed.'],
   weaknesses: ['Testing evidence could be more detailed.'],
+  whyThisMatters: 'Visible testing evidence helps reviewers judge reliability and reduces uncertainty about edge cases.',
   improvementSuggestions: ['Document the validation process.'],
-  priorityAreas: ['Technical validation'],
+  priorityAreas: ['High Priority: Document technical validation and edge-case testing.'],
   judgeFeedbackSummary: 'Judges valued the concept and encouraged more implementation detail.',
   finalRemarks: 'Continue refining the project using the feedback provided.',
 };
 
-function fixture({ teams, reportTeams, evaluationStatus = 'COMPLETED', failEmails = [], sendEmailImpl } = {}) {
+function fixture({ teams, reportTeams, evaluationStatus = 'COMPLETED', failEmails = [], sendEmailImpl, staleReport = false } = {}) {
   const storedTeams = teams || [
     { _id: teamOneId, eventId, teamName: 'NovaTech', members: [
       { name: 'Asha', email: 'asha@example.test' }, { name: 'Ben', email: 'ben@example.test' },
     ] },
   ];
-  const reports = new Map((reportTeams || storedTeams.map((team) => String(team._id))).map((id) => [String(id), {
-    _id: `report-${id}`, event: eventId, team: String(id), report: structuredClone(reportContent),
-  }]));
+  const reports = new Map((reportTeams || storedTeams.map((team) => String(team._id))).map((id) => {
+    const reportTeam = storedTeams.find((team) => String(team._id) === String(id));
+    const evidence = {
+      eventName: 'TechNova Showcase', eventType: '', teamName: reportTeam.teamName,
+      evaluationType: 'custom', projectDescription: '', projectMaterials: [], evaluationAreas: [],
+      evaluations: [{ feedback: '', observations: [], performance: [] }],
+    };
+    return [String(id), {
+      _id: `report-${id}`, event: eventId, team: String(id), report: structuredClone(reportContent),
+      evidenceHash: staleReport ? 'stale-evidence' : evidenceFingerprint(evidence),
+    }];
+  }));
   const deliveries = new Map();
   const sent = [];
   let deliveryNumber = 0;
@@ -37,6 +48,7 @@ function fixture({ teams, reportTeams, evaluationStatus = 'COMPLETED', failEmail
   const evaluationModel = { find: (query) => ({ lean: async () => storedTeams.filter((team) => String(team._id) === String(query.teamId)).map((team) => ({
     eventId, teamId: String(team._id), judgeId, status: evaluationStatus,
   })) }) };
+  const configModel = { findOne: () => ({ lean: async () => null }) };
   const reportModel = { findOne: (query) => ({ lean: async () => reports.get(String(query.team)) || null }) };
   const deliveryModel = {
     create: async (record) => {
@@ -68,7 +80,7 @@ function fixture({ teams, reportTeams, evaluationStatus = 'COMPLETED', failEmail
   };
   const controller = createResultReportEmailController({
     EventModel: eventModel, TeamModel: teamModel, JudgeModel: judgeModel,
-    EvaluationModel: evaluationModel, ReportModel: reportModel,
+    EvaluationModel: evaluationModel, ConfigModel: configModel, ReportModel: reportModel,
     DeliveryModel: deliveryModel, sendEmail,
   });
   return { controller, sent, deliveries, reports };
@@ -101,6 +113,14 @@ test('partial delivery failure does not prevent later member delivery', async ()
   assert.equal(res.body.data.status, 'Partially Sent');
   assert.equal(fx.sent.length, 2);
   assert.deepEqual(res.body.data.members.map((member) => member.status), ['Failed', 'Sent']);
+});
+
+test('stale reports are rejected before any team member receives email', async () => {
+  const fx = fixture({ staleReport: true });
+  const res = await post(fx);
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.error, /stale/i);
+  assert.equal(fx.sent.length, 0);
 });
 
 test('missing and invalid member addresses are preserved as individual failures', async () => {
@@ -204,7 +224,7 @@ test('delivery status endpoint is event-scoped and returns the latest member res
 test('email template includes the complete professional report and excludes score/AI disclosure', () => {
   const email = buildResultReportEmail({ recipientName: 'Asha', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
   assert.equal(email.subject, 'Your Evaluation Report — NovaTech | TechNova Showcase');
-  for (const section of ['Executive Summary', 'Key Strengths', 'Areas for Improvement', 'Actionable Recommendations', 'Recommended Focus', 'Judge Feedback Summary', 'Final Remarks']) {
+  for (const section of ['Executive Summary', 'What You Did Well', 'Where You Can Improve', 'Why This Matters', 'Actionable Recommendations', 'Priority Areas', 'Judge Feedback Summary', 'Final Remarks']) {
     assert.ok(email.html.includes(section));
     assert.ok(email.text.includes(section));
   }

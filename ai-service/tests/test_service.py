@@ -18,15 +18,16 @@ SAMPLE = {
     "projectDescription": "A clear project description.",
     "projectMaterials": [],
     "evaluationAreas": ["Innovation"],
-    "evaluations": [{"observations": [], "feedback": "Strong concept."}],
+    "evaluations": [{"observations": [], "feedback": "Strong concept.", "performance": []}],
 }
 
 REPORT = {
     "summary": "The team presented a promising project.",
     "strengths": ["The concept is clearly described."],
     "weaknesses": ["The submitted feedback requests clearer validation."],
+    "whyThisMatters": "Clear validation helps reviewers trust the project's reliability.",
     "improvementSuggestions": ["Add a documented validation plan."],
-    "priorityAreas": ["Validation"],
+    "priorityAreas": ["High Priority: Document validation and test edge cases."],
     "judgeFeedbackSummary": "The judge highlighted a strong concept.",
     "finalRemarks": "Continue refining the project with evidence from testing.",
 }
@@ -78,6 +79,8 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
             main.ReportContent(**{**REPORT, "summary": "The team earned 92 percent."})
         with self.assertRaises(ValidationError):
             main.ReportContent(**{**REPORT, "summary": "The team finished first."})
+        with self.assertRaises(ValidationError):
+            main.ReportContent(**{**REPORT, "finalRemarks": "AI Generated: keep iterating."})
 
     async def test_official_sdk_response_parser_is_used_and_validated(self):
         parsed = main.ReportContent(**REPORT)
@@ -89,7 +92,7 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
             report, model = await main.generate_report(main.ReportRequest(**SAMPLE))
         self.assertEqual(report, parsed)
         self.assertEqual(model, "test-model")
-        self.assertIs(parse.call_args.kwargs["text_format"], main.ReportContent)
+        self.assertIs(parse.call_args.kwargs["text_format"], main.RawReportContent)
         self.assertNotIn("finalScore", parse.call_args.kwargs["input"][1]["content"])
         self.assertIn("Never mention or reveal numeric scores", parse.call_args.kwargs["input"][0]["content"])
 
@@ -191,10 +194,44 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
 
     def test_prompt_explicitly_requires_qualitative_team_facing_report(self):
         messages = build_messages(SAMPLE)
-        self.assertIn("You are generating a team-facing evaluation report", SYSTEM_PROMPT)
-        self.assertIn("Never mention or reveal numeric scores, marks, weights, percentages, rankings, positions, vote counts", SYSTEM_PROMPT)
+        self.assertIn("experienced competition mentor", SYSTEM_PROMPT)
+        self.assertIn("Never mention or reveal numeric scores", SYSTEM_PROMPT)
+        self.assertIn("vote counts", SYSTEM_PROMPT)
         self.assertIn("Actionable Recommendations", messages[1]["content"])
+        self.assertIn("Why This Matters", SYSTEM_PROMPT)
+        self.assertIn("Priority Areas", SYSTEM_PROMPT)
+        self.assertIn("do not recalculate or aggregate scores", SYSTEM_PROMPT)
         self.assertNotIn("finalScore", messages[1]["content"])
+
+    def test_performance_indicators_are_private_reasoning_context_and_change_with_performance(self):
+        strong_technical = {**SAMPLE, "evaluations": [{
+            "observations": [{"area": "Presentation", "response": "The architecture was hard to follow."}],
+            "feedback": "Clarify the demonstration flow.",
+            "performance": [{"area": "Technical implementation", "value": 36, "maxValue": 40, "weight": 50, "kind": "criterion", "betterWhen": "higher"}],
+        }]}
+        weak_technical = {**strong_technical, "evaluations": [{
+            **strong_technical["evaluations"][0],
+            "performance": [{"area": "Technical implementation", "value": 12, "maxValue": 40, "weight": 50, "kind": "criterion", "betterWhen": "higher"}],
+        }]}
+        strong_message = build_messages(strong_technical)[1]["content"]
+        weak_message = build_messages(weak_technical)[1]["content"]
+        self.assertIn('"value":36', strong_message)
+        self.assertIn('"value":12', weak_message)
+        self.assertNotEqual(strong_message, weak_message)
+        self.assertIn("Do not include numeric evaluation results", strong_message)
+
+    def test_unsafe_numeric_and_ai_attribution_sentences_are_removed_before_response(self):
+        raw = main.RawReportContent(**{
+            **REPORT,
+            "summary": "Technical validation is a strength. The score was 92 percent. Presentation needs a clearer flow.",
+            "finalRemarks": "AI Generated: keep iterating. Use future feedback to guide the next revision.",
+        })
+        report = main._sanitize_report_content(raw)
+        content = report.model_dump_json()
+        self.assertIn("Technical validation is a strength", content)
+        self.assertIn("Presentation needs a clearer flow", content)
+        self.assertIn("Use future feedback", content)
+        self.assertNotRegex(content, r"\d|AI\s*(?:generated|powered)|Generated by AI")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@
 .rr-bulk-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid #e5e8f0; border-radius: 12px; background: #fff; color: #59647a; font-size: .9rem; }
 .rr-team-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); gap: 16px; }
 .rr-team-card { padding: 20px; border: 1px solid #e5e8f0; border-radius: 16px; background: #fff; box-shadow: 0 5px 18px #202a4408; }
+.rr-team-card-selected { border-color: #6672dc; box-shadow: 0 0 0 3px #6672dc20, 0 8px 24px #202a4410; }
 .rr-team-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .rr-team-number { color: #7b8498; font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .rr-team-card-title { min-width: 0; }

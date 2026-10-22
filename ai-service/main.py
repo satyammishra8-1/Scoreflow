@@ -14,7 +14,7 @@ from prompts import build_messages
 
 load_dotenv()
 
-PROMPT_VERSION = "result-report-v1"
+PROMPT_VERSION = "result-report-v2"
 logger = logging.getLogger("scoreflow.ai_service")
 NUMERIC_EVALUATION_PATTERN = re.compile(
     r"\d|\b(?:scores?|marks?|weights?|percentages?|rank(?:ed|ing)?|positions?|votes?|averages?|totals?)\b"
@@ -25,6 +25,7 @@ NUMERIC_EVALUATION_PATTERN = re.compile(
     r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)\b",
     re.IGNORECASE,
 )
+AI_ATTRIBUTION_PATTERN = re.compile(r"\bAI\s*(?:generated|powered)\b|\bgenerated\s+by\s+AI\b", re.IGNORECASE)
 
 
 class StrictModel(BaseModel):
@@ -41,9 +42,19 @@ class ObservationInput(StrictModel):
     response: str = Field(min_length=1, max_length=4000)
 
 
+class PerformanceIndicator(StrictModel):
+    area: str = Field(min_length=1, max_length=200)
+    value: float
+    maxValue: float | None = Field(default=None, gt=0)
+    weight: float | None = Field(default=None, ge=0)
+    kind: Literal["criterion", "overall", "rank", "votes", "custom"]
+    betterWhen: Literal["higher", "lower"]
+
+
 class EvaluationInput(StrictModel):
     observations: list[ObservationInput] = Field(max_length=100)
     feedback: str = Field(max_length=4000)
+    performance: list[PerformanceIndicator] = Field(max_length=100)
 
 
 class ReportRequest(StrictModel):
@@ -57,15 +68,22 @@ class ReportRequest(StrictModel):
     evaluations: list[EvaluationInput] = Field(min_length=1, max_length=20)
 
 
-class ReportContent(StrictModel):
+class ReportContentFields(StrictModel):
     summary: str = Field(min_length=1, max_length=4000)
     strengths: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=8)
     weaknesses: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=8)
+    whyThisMatters: str = Field(min_length=1, max_length=4000)
     improvementSuggestions: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=8)
     priorityAreas: list[Annotated[str, Field(min_length=1, max_length=1000)]] = Field(min_length=1, max_length=5)
     judgeFeedbackSummary: str = Field(min_length=1, max_length=4000)
     finalRemarks: str = Field(min_length=1, max_length=4000)
 
+
+class RawReportContent(ReportContentFields):
+    """Provider schema accepted before unsafe numeric or attribution text is removed."""
+
+
+class ReportContent(ReportContentFields):
     @model_validator(mode="after")
     def _validate_qualitative_only(self) -> "ReportContent":
         content = " ".join(
@@ -75,6 +93,10 @@ class ReportContent(StrictModel):
         )
         if NUMERIC_EVALUATION_PATTERN.search(content):
             raise ValueError("Report content must not contain numeric evaluation results")
+        if AI_ATTRIBUTION_PATTERN.search(content):
+            raise ValueError("Report content must not include AI attribution")
+        if any(not re.match(r"^(?:High Priority|Medium Priority|Good to Maintain):\s+\S", item, re.IGNORECASE) for item in self.priorityAreas):
+            raise ValueError("Each priority area must use a qualitative priority level")
         return self
 
 
@@ -130,14 +152,14 @@ async def _generate_with_openai(data: ReportRequest) -> tuple[ReportContent, str
         response = await client.responses.parse(
             model=model,
             input=build_messages(data.model_dump()),
-            text_format=ReportContent,
+            text_format=RawReportContent,
         )
     except Exception as error:
         _safe_provider_error(error)
         raise ProviderResponseError("provider_error", "The language model request failed") from error
     if response.output_parsed is None:
         raise ProviderResponseError("malformed_response", "The language model returned no structured report")
-    return response.output_parsed, model
+    return _sanitize_report_content(response.output_parsed), model
 
 
 async def _generate_with_gemini(data: ReportRequest) -> tuple[ReportContent, str]:
@@ -166,9 +188,40 @@ async def _generate_with_gemini(data: ReportRequest) -> tuple[ReportContent, str
     try:
         if not response.text:
             raise ValueError("Empty structured response")
-        return ReportContent.model_validate_json(response.text), model
-    except (ValidationError, ValueError, TypeError) as error:
+        return _sanitize_report_content(RawReportContent.model_validate_json(response.text)), model
+    except ValidationError as error:
+        issues = [
+            {"field": ".".join(str(part) for part in issue["loc"]), "type": issue["type"], "message": issue["msg"]}
+            for issue in error.errors(include_input=False, include_context=False, include_url=False)
+        ]
+        logger.warning("Gemini structured report failed validation (issues=%s)", issues)
         raise ProviderResponseError("malformed_response", "Gemini returned a malformed structured report") from error
+    except (ValueError, TypeError) as error:
+        raise ProviderResponseError("malformed_response", "Gemini returned a malformed structured report") from error
+
+
+def _sanitize_report_content(raw: ReportContentFields) -> ReportContent:
+    def clean_text(value: str) -> str:
+        safe_sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+|\n+", value)
+            if sentence.strip()
+            and not NUMERIC_EVALUATION_PATTERN.search(sentence)
+            and not AI_ATTRIBUTION_PATTERN.search(sentence)
+        ]
+        return " ".join(safe_sentences).strip()
+
+    cleaned: dict[str, object] = {}
+    for field in ReportContent.model_fields:
+        value = getattr(raw, field)
+        if isinstance(value, list):
+            cleaned[field] = [clean_text(item) for item in value if clean_text(item)]
+        else:
+            cleaned[field] = clean_text(value)
+    try:
+        return ReportContent.model_validate(cleaned)
+    except ValidationError as error:
+        raise ProviderResponseError("malformed_response", "The language model report could not be made safely qualitative") from error
 
 
 def _classify_gemini_error(error: Exception) -> tuple[str, str]:
