@@ -23,4 +23,18 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 Configure the Node backend with `AI_SERVICE_URL=http://localhost:8000`. The organizer UI only calls the Node API.
 
+Keep the FastAPI process running while using AI features. If the organizer sees `AI evaluation schema service is unavailable`, first check the service from a second terminal:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+The response should report `status: ok`, `provider: gemini`, and `configured: true`. If the request cannot connect, start the service from `ai-service` and leave that terminal running:
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+`/health` confirms that FastAPI is running and has provider configuration; it does not call Gemini. A schema generation request is the check for Gemini network access, credentials, model availability, and quota. When Node and FastAPI run in separate containers or hosts, set `AI_SERVICE_URL` to an address reachable from the Node process instead of `localhost`.
+
 Run its mocked provider tests with `python -m unittest discover -s tests -v`.

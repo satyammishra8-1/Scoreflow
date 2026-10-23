@@ -66,15 +66,18 @@ test('rejects invalid event ids and unknown events before calling the AI service
   assert.equal(missing.statusCode, 404);
 });
 
-test('rejects invalid prompt payloads and handles AI service failures safely', async () => {
-  const fx = fixture({ fetchImpl: async () => { throw new Error('private provider error'); } });
+test('rejects invalid prompts and safely reports a stopped AI service connection', async () => {
+  const connectionError = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8000'), { code: 'ECONNREFUSED' });
+  const fx = fixture({ fetchImpl: async () => { throw connectionError; } });
   const invalid = responseRecorder();
   await fx.handler({ params: { eventId }, body: { prompt: 'short' } }, invalid);
   assert.equal(invalid.statusCode, 400);
   const failed = responseRecorder();
   await fx.handler({ params: { eventId }, body: { prompt: 'Design additional project evaluation fields.' } }, failed);
   assert.equal(failed.statusCode, 503);
-  assert.doesNotMatch(failed.body.error, /private provider error/);
+  assert.equal(failed.body.code, 'AI_SERVICE_UNAVAILABLE');
+  assert.equal(failed.body.error, 'AI evaluation schema service is unavailable.');
+  assert.doesNotMatch(failed.body.error, /ECONNREFUSED|127\.0\.0\.1|8000/);
 });
 
 test('rejects invalid or duplicate AI output before returning it', async () => {
