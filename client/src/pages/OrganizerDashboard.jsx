@@ -81,15 +81,19 @@ function OrganizerDashboard() {
   ], [events.length, totals]);
 
   return (
-    <OrganizerLayout activeKey="dashboard">
+    <OrganizerLayout activeKey="dashboard" wrapperClassName="dashboard-home">
       <section className="dashboard-welcome">
-        <div><h1>Organizer Dashboard</h1><p>Manage your events, teams, judges and evaluations in one place.</p></div>
+        <div className="dashboard-welcome-copy">
+          <span className="dashboard-eyebrow">EVENT OPERATIONS</span>
+          <h1>Good to see you, Organizer</h1>
+          <p>Here’s your competition workspace at a glance.</p>
+        </div>
         <Link className="dashboard-button dashboard-button-primary create-event-button" to="/organizer/events">+ Create Event</Link>
       </section>
       <section className="overview-grid" aria-label="Dashboard overview">
         {overview.map((item) => (
           <article className="overview-card" key={item.label}>
-            <div className={`overview-icon ${item.tone}`} aria-hidden="true">{item.label.slice(6, 7)}</div>
+            <div className={`overview-icon ${item.tone}`} aria-hidden="true"><span /></div>
             <div className="overview-copy"><span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></div>
           </article>
         ))}

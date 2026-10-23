@@ -1,0 +1,156 @@
+/* Shared visual refinement for the organizer and judge workspaces. */
+.sf-dashboard .teams-page-heading,
+.sf-dashboard .judges-page-heading,
+.sf-dashboard.event-management .event-page-heading,
+.sf-dashboard.organizer-results .results-page-header {
+  padding: 25px 28px;
+  border: 1px solid #dfe7fb;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at 90% 10%, #dce6ff 0, transparent 34%), linear-gradient(115deg, #fff, #f4f6ff);
+  box-shadow: 0 10px 28px rgba(43, 67, 124, .05);
+}
+
+.sf-dashboard .teams-page-heading h1,
+.sf-dashboard .judges-page-heading h1,
+.sf-dashboard.event-management .event-page-heading h1,
+.sf-dashboard.organizer-results .results-page-header h1 {
+  font-size: clamp(25px, 3vw, 32px);
+  letter-spacing: -.04em;
+}
+
+.sf-dashboard .teams-summary-card,
+.sf-dashboard .judges-summary-card,
+.sf-dashboard .teams-table-card,
+.sf-dashboard .judges-table-card,
+.sf-dashboard.organizer-results .results-event-summary,
+.sf-dashboard.organizer-results .team-result-card,
+.sf-dashboard.organizer-results .judge-summary-table-wrap,
+.sf-dashboard.event-management .event-information-card,
+.sf-dashboard.event-management .event-workspace-card {
+  border-color: #e2e8f2;
+  border-radius: 14px;
+  box-shadow: 0 7px 22px rgba(31, 45, 76, .045);
+}
+
+.sf-dashboard .teams-summary-card,
+.sf-dashboard .judges-summary-card,
+.sf-dashboard.event-management .event-workspace-card,
+.sf-dashboard.organizer-results .team-result-card {
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.sf-dashboard .teams-summary-card:hover,
+.sf-dashboard .judges-summary-card:hover,
+.sf-dashboard.event-management .event-workspace-card:hover,
+.sf-dashboard.organizer-results .team-result-card:hover {
+  transform: translateY(-2px);
+  border-color: #d2dcf5;
+  box-shadow: 0 12px 26px rgba(31, 45, 76, .08);
+}
+
+.sf-dashboard .teams-primary-button,
+.sf-dashboard .judges-primary-button,
+.sf-dashboard.event-management .event-primary-button,
+.sf-dashboard .evaluation-save-button {
+  border-radius: 9px;
+  background: linear-gradient(135deg, #5278eb, #3c5fd0);
+  box-shadow: 0 5px 12px rgba(60, 95, 208, .16);
+}
+
+.sf-dashboard .teams-table th,
+.sf-dashboard .judges-table th {
+  padding-top: 13px;
+  padding-bottom: 13px;
+  background: #f7f9fd;
+}
+
+.sf-dashboard .teams-table tbody tr,
+.sf-dashboard .judges-table tbody tr {
+  transition: background-color .15s ease;
+}
+
+.sf-dashboard .teams-table tbody tr:hover,
+.sf-dashboard .judges-table tbody tr:hover { background: #f8faff; }
+
+.sf-dashboard.event-management .event-content { padding-top: 42px; }
+.sf-dashboard.event-management .event-workspace-grid { gap: 18px; }
+.sf-dashboard.event-management .event-workspace-card { min-height: 220px; padding: 22px; }
+.sf-dashboard.event-management .workspace-event-details > div:not(.workspace-description) {
+  padding: 14px 16px;
+  border: 1px solid #edf0f6;
+  border-radius: 10px;
+  background: #fafbfe;
+}
+
+.sf-dashboard.organizer-results .results-page-header { padding: 25px 28px; }
+.sf-dashboard.organizer-results .results-event-summary { padding: 23px; }
+.sf-dashboard.organizer-results .results-section-heading h2 { font-size: 21px; letter-spacing: -.025em; }
+
+.sf-dashboard .evaluation-wizard-header {
+  padding: 23px 26px;
+  border: 1px solid #dfe7fb;
+  border-radius: 15px;
+  background: radial-gradient(ellipse at 90% 10%, #dce6ff 0, transparent 34%), linear-gradient(115deg, #fff, #f4f6ff);
+}
+.sf-dashboard .evaluation-wizard-header h1 { font-size: clamp(25px, 3vw, 32px); letter-spacing: -.04em; }
+.sf-dashboard .evaluation-wizard-card { border-color: #e2e8f2; border-radius: 14px; box-shadow: 0 8px 24px rgba(31, 45, 76, .045); }
+.sf-dashboard .evaluation-simple-list-item { border-color: #e5eaf2; transition: border-color .16s ease, background .16s ease; }
+.sf-dashboard .evaluation-simple-list-item:hover { border-color: #d2dcf5; background: #fbfcff; }
+
+.sf-dashboard.announcements-page .announcement-panel,
+.sf-dashboard.announcements-page .announcement-side-note,
+.sf-dashboard.result-reports-page .rr-team-card {
+  border-color: #e2e8f2;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(31, 45, 76, .045);
+}
+.sf-dashboard.announcements-page .announcements-header h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.04em; }
+.sf-dashboard.result-reports-page .rr-header h1 { letter-spacing: -.04em; }
+
+.judge-dashboard-page .judge-dashboard-header,
+.judge-dashboard-page .judge-team-card {
+  border-color: #e2e8f2;
+  border-radius: 15px;
+  box-shadow: 0 8px 24px rgba(31, 45, 76, .045);
+}
+.judge-dashboard-page .judge-team-card { transition: transform .18s ease, box-shadow .18s ease; }
+.judge-dashboard-page .judge-team-card:hover { transform: translateY(-3px); box-shadow: 0 14px 28px rgba(31, 45, 76, .09); }
+
+.evaluation-session-page .evaluation-session-heading h1 { letter-spacing: -.04em; }
+.evaluation-session-page .evaluation-card,
+.evaluation-session-page .evaluation-panel,
+.evaluation-session-page .member-attendance-panel { border-radius: 15px; }
+.evaluation-session-page .evaluation-card { border-color: #e2e8f2; box-shadow: 0 8px 24px rgba(31,45,76,.045); }
+.evaluation-session-page .model-textarea { border-radius: 9px; }
+.evaluation-session-page .evaluation-timer-button { border-radius: 9px; }
+
+.judge-invitation-card { border-color: #dfe7fb; border-radius: 18px; box-shadow: 0 20px 56px rgba(25,40,65,.12); }
+.judge-invitation-card h1 { letter-spacing: -.035em; }
+.judge-invitation-button { border-radius: 9px; background: linear-gradient(135deg,#5278eb,#3c5fd0); box-shadow: 0 6px 14px rgba(60,95,208,.18); }
+
+.hero-section { position: relative; overflow: hidden; background: radial-gradient(ellipse at 82% 42%, rgba(105,139,255,.12), transparent 35%); }
+.hero-visual { filter: drop-shadow(0 20px 32px rgba(35,55,100,.12)); }
+.feature-card { border-radius: 16px; transition: transform .18s ease, box-shadow .18s ease; }
+.feature-card:hover { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(30,50,90,.09); }
+.trust-strip { border-top: 1px solid rgba(90,110,160,.08); border-bottom: 1px solid rgba(90,110,160,.08); }
+
+@media (max-width: 700px) {
+  .sf-dashboard .teams-page-heading,
+  .sf-dashboard .judges-page-heading,
+  .sf-dashboard.event-management .event-page-heading,
+  .sf-dashboard.organizer-results .results-page-header { padding: 20px; border-radius: 13px; }
+  .sf-dashboard.event-management .event-page-heading,
+  .sf-dashboard .judges-page-heading { align-items: stretch; flex-direction: column; }
+  .sf-dashboard .judges-page-heading .judges-primary-button { width: 100%; }
+  .sf-dashboard.event-management .event-heading-actions { display: grid; grid-template-columns: 1fr; }
+  .judge-invitation-card { padding: 25px 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-dashboard .teams-summary-card,
+  .sf-dashboard .judges-summary-card,
+  .sf-dashboard.event-management .event-workspace-card,
+  .sf-dashboard.organizer-results .team-result-card,
+  .judge-dashboard-page .judge-team-card { transition: none; }
+  .feature-card { transition: none; }
+}

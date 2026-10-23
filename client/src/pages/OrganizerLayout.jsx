@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import './OrganizerDashboard.css';
 
-const STORAGE_KEY = 'scoreflow.sidebar.collapsed';
+const STORAGE_KEY = 'scoreflow.sidebar.hoverCollapsed';
 
 function readInitialCollapsed() {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    const savedPreference = window.localStorage.getItem(STORAGE_KEY);
+    return savedPreference == null ? true : savedPreference === 'true';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -24,7 +25,7 @@ function buildNavigation(activeKey, eventId) {
   ].map((item) => ({ ...item, active: item.key === activeKey }));
 }
 
-function OrganizerSidebar({ navigation, isOpen, closeMenu }) {
+function OrganizerSidebar({ navigation, isOpen, closeMenu, isRevealed, isCollapsed, onRevealChange }) {
   return (
     <>
       <button
@@ -33,7 +34,12 @@ function OrganizerSidebar({ navigation, isOpen, closeMenu }) {
         aria-label="Close navigation"
         onClick={closeMenu}
       />
-      <aside className={`dashboard-sidebar ${isOpen ? 'sidebar-open' : ''}`}>
+      <aside
+        className={`dashboard-sidebar ${isOpen ? 'sidebar-open' : ''} ${isRevealed ? 'sidebar-revealed' : ''}`}
+        inert={isCollapsed && !isOpen && !isRevealed}
+        onMouseEnter={() => isCollapsed && onRevealChange(true)}
+        onMouseLeave={() => isCollapsed && onRevealChange(false)}
+      >
         <Link to="/" className="dashboard-brand" onClick={closeMenu}>
           <span className="dashboard-brand-mark">S</span>
           <span>ScoreFlow</span>
@@ -81,6 +87,7 @@ function OrganizerLayout({
   const eventId = eventIdProp || params.eventId || 'default';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialCollapsed);
+  const [sidebarRevealed, setSidebarRevealed] = useState(false);
 
   useEffect(() => {
     try {
@@ -97,12 +104,31 @@ function OrganizerLayout({
       : {};
 
   return (
-    <div className={`sf-dashboard ${wrapperClassName} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`.trim()}>
-      <OrganizerSidebar
-        navigation={navigation}
-        isOpen={isMenuOpen}
-        closeMenu={() => setIsMenuOpen(false)}
-      />
+    <div className={`sf-dashboard ${wrapperClassName} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarCollapsed && sidebarRevealed ? 'sidebar-peek-open' : ''}`.trim()}>
+      {sidebarCollapsed && <button
+        className="sidebar-edge-trigger"
+        type="button"
+        aria-label="Reveal organizer sidebar"
+        aria-expanded={sidebarRevealed}
+        onMouseEnter={() => setSidebarRevealed(true)}
+        onFocus={() => setSidebarRevealed(true)}
+        onClick={() => setSidebarRevealed((visible) => !visible)}
+      ><span /></button>}
+      <div
+        onFocusCapture={() => sidebarCollapsed && setSidebarRevealed(true)}
+        onBlurCapture={(event) => {
+          if (sidebarCollapsed && !event.currentTarget.contains(event.relatedTarget)) setSidebarRevealed(false);
+        }}
+      >
+        <OrganizerSidebar
+          navigation={navigation}
+          isOpen={isMenuOpen}
+          closeMenu={() => setIsMenuOpen(false)}
+          isRevealed={sidebarRevealed}
+          isCollapsed={sidebarCollapsed}
+          onRevealChange={setSidebarRevealed}
+        />
+      </div>
       <div className="dashboard-main">
         <header className="dashboard-topbar">
           <button
