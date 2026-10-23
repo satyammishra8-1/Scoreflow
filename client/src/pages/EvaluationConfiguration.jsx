@@ -117,8 +117,11 @@ function validateCriteria(criteria, required = true) {
   return '';
 }
 
-function getConfigurationError(model, config, liveCriteriaEnabled) {
+function getConfigurationError(model, config, liveCriteriaEnabled, criteriaCreationMode = 'manual') {
   if (model === 'criteria-based') {
+    if (criteriaCreationMode === 'ai') {
+      return config.dynamicSchema ? '' : 'Generate and add an AI evaluation schema before saving.';
+    }
     return validateCriteria(config['criteria-based'].criteriaBased.criteria);
   }
   if (model === 'open-holistic') {
@@ -256,6 +259,7 @@ function EvaluationConfiguration() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [selectedModel, setSelectedModel] = useState('criteria-based');
+  const [criteriaCreationMode, setCriteriaCreationMode] = useState('manual');
   const [configuration, setConfiguration] = useState(() => structuredClone(EMPTY_CONFIG));
   const [liveCriteriaEnabled, setLiveCriteriaEnabled] = useState(false);
   const [materialType, setMaterialType] = useState(MATERIAL_TYPES[0]);
@@ -283,6 +287,7 @@ function EvaluationConfiguration() {
         if (savedConfig?.model && EMPTY_CONFIG[savedConfig.model]) {
           setSelectedModel(savedConfig.model);
           setConfiguration(normalizeConfiguration(savedConfig));
+          setCriteriaCreationMode(savedConfig.dynamicSchema ? 'ai' : 'manual');
           setLiveCriteriaEnabled(savedConfig.model === 'live-demo' && (savedConfig.liveDemo?.criteria?.length || 0) > 0);
           setSaved(true);
         }
@@ -341,7 +346,7 @@ function EvaluationConfiguration() {
     const validationConfig = structuredClone(configuration);
     validationConfig['criteria-based'].criteriaBased.criteria = criteriaForApi(criteriaBased);
     validationConfig['live-demo'].liveDemo.criteria = liveCriteriaEnabled ? criteriaForApi(liveCriteria) : [];
-    return getConfigurationError(selectedModel, validationConfig, liveCriteriaEnabled);
+    return getConfigurationError(selectedModel, validationConfig, liveCriteriaEnabled, criteriaCreationMode);
   }
 
   async function saveConfiguration() {
@@ -381,6 +386,12 @@ function EvaluationConfiguration() {
     setSaveError('');
   }
 
+  function selectCriteriaCreationMode(mode) {
+    setCriteriaCreationMode(mode);
+    setSaved(false);
+    setSaveError('');
+  }
+
   if (loading) {
     return <OrganizerLayout activeKey="criteria" eventId={eventId}><div className="evaluation-wizard"><p role="status">Loading event evaluation…</p></div></OrganizerLayout>;
   }
@@ -406,8 +417,25 @@ function EvaluationConfiguration() {
               </select>
             </label>
 
+            {selectedModel === 'criteria-based' && (
+              <fieldset className="evaluation-creation-mode">
+                <legend>Choose how to create evaluation criteria</legend>
+                <div className="evaluation-creation-mode-options">
+                  <label className={criteriaCreationMode === 'manual' ? 'selected' : ''}>
+                    <input type="radio" name="criteria-creation-mode" value="manual" checked={criteriaCreationMode === 'manual'} onChange={() => selectCriteriaCreationMode('manual')} />
+                    <span><strong>Manual Criteria</strong><small>Add and edit each criterion yourself.</small></span>
+                  </label>
+                  <label className={criteriaCreationMode === 'ai' ? 'selected' : ''}>
+                    <input type="radio" name="criteria-creation-mode" value="ai" checked={criteriaCreationMode === 'ai'} onChange={() => selectCriteriaCreationMode('ai')} />
+                    <span><strong>✨ AI Evaluation Builder</strong><small>Describe your rubric, then review and edit the generated criteria.</small></span>
+                  </label>
+                </div>
+              </fieldset>
+            )}
+
+            {!(selectedModel === 'criteria-based' && criteriaCreationMode === 'ai') && (
             <section className="evaluation-wizard-card" aria-label={`${selectedLabel} configuration`}>
-              {selectedModel === 'criteria-based' && (
+              {selectedModel === 'criteria-based' && criteriaCreationMode === 'manual' && (
                 <CriterionEditor criteria={criteriaBased} onChange={(criteria) => updateCriteria('criteria-based', criteria)} />
               )}
 
@@ -487,8 +515,9 @@ function EvaluationConfiguration() {
                 </div>
               )}
             </section>
+            )}
 
-            <EvaluationAiBuilder
+            {(selectedModel !== 'criteria-based' || criteriaCreationMode === 'ai') && <EvaluationAiBuilder
               eventId={eventId}
               event={event}
               model={selectedModel}
@@ -503,7 +532,7 @@ function EvaluationConfiguration() {
                 setSaved(false);
                 setSaveError('');
               }}
-            />
+            />}
 
             {saveError && <p className="evaluation-wizard-error" role="alert">{saveError}</p>}
             {saved && <p className="evaluation-wizard-success" role="status">Evaluation settings saved for this event.</p>}

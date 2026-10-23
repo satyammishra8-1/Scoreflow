@@ -105,7 +105,7 @@ function validateModelConfig(model, payload = {}) {
   switch (model) {
     case 'criteria-based': {
       const criteria = normalizeCriteriaArray(payload.criteriaBased?.criteria);
-      const criteriaError = validateCriteria(criteria);
+      const criteriaError = validateCriteria(criteria, !payload.dynamicSchema);
       if (criteriaError) errors.criteriaBased = criteriaError;
       result.criteriaBased = criteria;
       break;
