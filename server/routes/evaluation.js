@@ -1,4 +1,5 @@
 const express = require('express');
+const { createEvaluationSchemaController } = require('../controllers/evaluationSchemaController');
 
 const {
   getEvaluationConfiguration,
@@ -12,6 +13,8 @@ const {
 } = require('../controllers/evaluationController');
 
 const router = express.Router();
+
+router.post('/events/:eventId/evaluation/ai-generate', createEvaluationSchemaController());
 
 // Evaluation configuration
 router

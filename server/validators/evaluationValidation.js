@@ -3,6 +3,7 @@ const Event = require('../models/Event');
 const Judge = require('../models/Judge');
 const Team = require('../models/Team');
 const EvaluationConfiguration = require('../models/EvaluationConfiguration');
+const { validateDynamicEvaluationSubmission } = require('./dynamicEvaluationSchema');
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
@@ -206,7 +207,7 @@ async function validateEvaluationSubmission(payload = {}) {
     Event.findById(eventId).lean(),
     Judge.findById(judgeId).lean(),
     Team.findById(teamId).lean(),
-    EvaluationConfiguration.findOne({ eventId }).select('eventId').lean(),
+    EvaluationConfiguration.findOne({ eventId }).select('eventId dynamicSchema').lean(),
   ]);
 
   if (!event) errors.eventId = 'Event not found.';
@@ -233,6 +234,11 @@ async function validateEvaluationSubmission(payload = {}) {
     if (!isAssignedByJudge) {
       errors.teamId = 'This team is not assigned to the judge.';
     }
+  }
+
+  if (payload.status === 'COMPLETED' && evaluationConfiguration?.dynamicSchema) {
+    const schemaErrors = validateDynamicEvaluationSubmission(evaluationConfiguration.dynamicSchema, payload);
+    if (schemaErrors.length) errors.dynamicSchema = schemaErrors;
   }
 
   return { errors, normalized };

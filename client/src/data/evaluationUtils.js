@@ -34,3 +34,23 @@ export function calculateWeightedScore(scores = {}, criteria = []) {
   }, 0);
   return Number(Math.min(rawTotal, totalWeight).toFixed(2));
 }
+
+export function dynamicScoreFields(schema) {
+  const fields = [];
+  function visit(nodes, path = []) {
+    for (const field of nodes || []) {
+      if (field.type === 'group') visit(field.children, [...path, field.label]);
+      else if (field.type === 'score') fields.push({ ...field, label: [...path, field.label].join(' / ') });
+    }
+  }
+  for (const section of schema?.sections || []) visit(section.fields, [section.name]);
+  return fields;
+}
+
+export function calculateDynamicWeightedScore(scores = {}, schema = null) {
+  return Number(dynamicScoreFields(schema).reduce((sum, field) => {
+    const value = Number(scores[`ai_${field.id}`]);
+    const score = Number.isFinite(value) ? Math.min(Math.max(value, 0), Number(field.maxMarks || 0)) : 0;
+    return sum + (score / Number(field.maxMarks || 1)) * Number(field.weight || 0);
+  }, 0).toFixed(2));
+}

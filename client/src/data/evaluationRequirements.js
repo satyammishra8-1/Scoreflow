@@ -45,6 +45,7 @@ export function buildModelRequirements({
   textAnswers = {},
   flags = {},
   feedback = '',
+  dynamicSchema = null,
 }) {
   const requirements = [];
   const feedbackDone = Boolean(typeof feedback === 'string' && feedback.trim());
@@ -136,6 +137,30 @@ export function buildModelRequirements({
       break;
     }
   }
+
+  function addDynamicRequirements(fields, sectionPath = []) {
+    for (const field of fields || []) {
+      const key = `ai_${field.id}`;
+      if (field.type === 'group') {
+        addDynamicRequirements(field.children, [...sectionPath, field.label]);
+        continue;
+      }
+      if (field.required === false) continue;
+      let done = false;
+      if (field.type === 'score') {
+        const value = scores[key];
+        done = value !== '' && value != null && numericScoreDone(value, field.maxMarks);
+      } else if (field.type === 'boolean') {
+        done = typeof flags[key] === 'boolean';
+      } else if (field.type === 'single_select' || field.type === 'text' || field.type === 'question' || field.type === 'feedback') {
+        done = Boolean(String(textAnswers[key] || '').trim());
+      } else if (field.type === 'multi_select') {
+        try { done = Array.isArray(JSON.parse(textAnswers[key] || '[]')) && JSON.parse(textAnswers[key] || '[]').length > 0; } catch { done = false; }
+      }
+      requirements.push({ id: key, label: [...sectionPath, field.label].join(' / '), done });
+    }
+  }
+  for (const section of dynamicSchema?.sections || []) addDynamicRequirements(section.fields, [section.name]);
 
   return requirements;
 }

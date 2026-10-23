@@ -21,3 +21,21 @@ def build_messages(verified_data: dict) -> list[dict[str, str]]:
             + json.dumps(verified_data, ensure_ascii=False, separators=(",", ":")),
         },
     ]
+
+
+EVALUATION_SCHEMA_SYSTEM_PROMPT = """You design judge-friendly evaluation forms for ScoreFlow. You are helping organizers define an evaluation structure; you are not a judge. Never assign scores to teams and never invent team performance.
+
+Use the supplied event context, organizer request, current evaluation model, and existing criteria. Avoid repeating existing criterion names; suggest only useful additions. Prefer clear, practical fields and avoid unnecessary complexity.
+
+Return only JSON matching the supplied schema. Use only these field types: score, boolean, text, question, feedback, single_select, multi_select, group. Groups contain child fields. Numeric score fields require maxMarks and a weight, and all score field weights in the generated schema must total exactly 100. Use required=true only where completion is genuinely necessary. Select fields need two or more concise options. Put a short reason for each field in rationale. Do not emit code, HTML, JSX, formulas, or arbitrary field types."""
+
+
+def build_evaluation_schema_messages(data: dict) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": EVALUATION_SCHEMA_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": "Design a structured, editable judge evaluation schema from this context. Preserve useful existing criteria by avoiding duplicates. Use score fields only when a numeric rating is useful. Each score field weight is relative to the generated score fields and all generated score weights must total 100. Numeric fields belong to a separate supplemental rubric and must not change the event's existing weighted score. Return only the schema fields title, description, and sections. Each section has id, name, description, and fields. Fields have id, type, label, description, rationale, required, and type-specific maxMarks/weight/options/children.\n\n"
+            + json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+        },
+    ]

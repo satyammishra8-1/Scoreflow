@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import axios from 'axios';
 import OrganizerLayout from './OrganizerLayout';
+import EvaluationAiBuilder from './EvaluationAiBuilder';
 import './EvaluationConfiguration.css';
 
 const API = axios.create({
@@ -56,7 +57,7 @@ function toEditorCriteria(criteria, prefix) {
 
 function normalizeConfiguration(data) {
   const defaults = structuredClone(EMPTY_CONFIG);
-  if (!data || !defaults[data.model]) return defaults;
+  if (!data || !defaults[data.model]) return { ...defaults, dynamicSchema: data?.dynamicSchema || null };
   const config = { ...defaults, [data.model]: { ...defaults[data.model] } };
   if (data.model === 'criteria-based') {
     config[data.model].criteriaBased = {
@@ -84,7 +85,7 @@ function normalizeConfiguration(data) {
         : [],
     };
   }
-  return config;
+  return { ...config, dynamicSchema: data.dynamicSchema || null };
 }
 
 function criteriaForApi(criteria) {
@@ -362,6 +363,7 @@ function EvaluationConfiguration() {
       const response = await API.put(`/events/${encodeURIComponent(eventId)}/evaluation-config`, {
         model: selectedModel,
         ...modelConfig,
+        dynamicSchema: configuration.dynamicSchema || null,
       });
       if (!response.data?.success) throw new Error(response.data?.error || 'Unable to save evaluation configuration.');
       setSaved(true);
@@ -485,6 +487,23 @@ function EvaluationConfiguration() {
                 </div>
               )}
             </section>
+
+            <EvaluationAiBuilder
+              eventId={eventId}
+              event={event}
+              model={selectedModel}
+              existingCriteria={[
+                ...criteriaBased.map((criterion) => criterion.name),
+                ...liveCriteria.map((criterion) => criterion.name),
+                ...configuration.custom.custom.fields.map((field) => field.label),
+              ].filter(Boolean)}
+              value={configuration.dynamicSchema}
+              onApply={(schema) => {
+                setConfiguration((current) => ({ ...current, dynamicSchema: schema }));
+                setSaved(false);
+                setSaveError('');
+              }}
+            />
 
             {saveError && <p className="evaluation-wizard-error" role="alert">{saveError}</p>}
             {saved && <p className="evaluation-wizard-success" role="status">Evaluation settings saved for this event.</p>}

@@ -10,6 +10,10 @@ import {
 
   calculateWeightedScore,
 
+  calculateDynamicWeightedScore,
+
+  dynamicScoreFields,
+
   normalizeCriterion,
 
 } from '../data/evaluationUtils';
@@ -25,6 +29,7 @@ import {
 } from '../data/evaluationRequirements';
 
 import ModelEvaluationFields from '../components/ModelEvaluationFields';
+import DynamicEvaluationFields from '../components/DynamicEvaluationFields';
 
 import './EvaluationSession.css';
 
@@ -462,6 +467,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
         flags: session.flags || {},
 
         feedback: session.feedback || '',
+        dynamicSchema: evalConfig?.dynamicSchema,
 
       }),
 
@@ -480,7 +486,6 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
       session.flags,
 
       session.feedback,
-
     ],
 
   );
@@ -494,6 +499,10 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   const rawTotal = calculateRawTotal(session.scores || {}, criteria);
 
   const weightedScore = calculateWeightedScore(session.scores || {}, criteria);
+
+  const dynamicFields = dynamicScoreFields(evalConfig?.dynamicSchema);
+
+  const dynamicWeightedScore = calculateDynamicWeightedScore(session.scores || {}, evalConfig?.dynamicSchema);
 
   const showFeedbackCard = isFeedbackRequired(evalModel, evalConfig);
 
@@ -1238,6 +1247,8 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
               )}
 
+              {dynamicFields.length > 0 && <div className="summary-stat"><span>AI Rubric Score</span><strong>{dynamicWeightedScore} / 100</strong></div>}
+
               <div className="summary-stat"><span>Attendance</span><strong>{presentMemberCount} / {teamMembers.length} Present</strong></div>
 
               <div className="summary-stat"><span>Time</span><strong>{formatDuration(displayDuration)}</strong></div>
@@ -1314,6 +1325,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           ) : (
 
+            <>
             <ModelEvaluationFields
 
               model={evalModel}
@@ -1342,6 +1354,18 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
               onCriterionScoreChange={updateScore}
 
             />
+
+            <DynamicEvaluationFields
+              schema={evalConfig?.dynamicSchema}
+              scores={session.scores || {}}
+              textAnswers={session.textAnswers || {}}
+              flags={session.flags || {}}
+              readOnly={isReadOnly}
+              onScoreChange={updateNumericField}
+              onTextChange={updateTextAnswer}
+              onFlagChange={updateFlag}
+            />
+            </>
 
           )}
 

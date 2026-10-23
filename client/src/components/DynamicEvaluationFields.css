@@ -1,0 +1,20 @@
+.dynamic-evaluation-schema { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e8edf4; }
+.dynamic-evaluation-schema > header { display: grid; gap: 5px; }
+.dynamic-evaluation-schema > header > span { color: #5d70c5; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.dynamic-evaluation-schema > header h3 { color: #25334a; font-size: 17px; }
+.dynamic-evaluation-schema > header p,.dynamic-evaluation-schema > header small { color: #78849a; font-size: 11px; line-height: 1.5; }
+.dynamic-evaluation-section { display: grid; gap: 8px; padding: 14px; border: 1px solid #e6eaf2; border-radius: 11px; background: #fbfcfe; }
+.dynamic-evaluation-section h4 { color: #334158; font-size: 13px; }
+.dynamic-evaluation-section > p { color: #748097; font-size: 11px; }
+.dynamic-evaluation-field { min-width: 0; }
+.dynamic-field-required,.dynamic-field-optional { margin-left: 5px; color: #a86b19; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.dynamic-field-optional { color: #8792a5; }
+.dynamic-field-help { display: block; margin-top: 4px; color: #7e899d; font-size: 10px; font-weight: 400; line-height: 1.45; }
+.dynamic-field-label { display: grid; gap: 7px; color: #344158; font-size: 12px; }
+.dynamic-field-label select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid #d4dae8; border-radius: 8px; background: #fff; color: #26344b; font: inherit; }
+.dynamic-evaluation-group,.dynamic-select-options { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid #dfe5f0; border-radius: 10px; }
+.dynamic-evaluation-group legend,.dynamic-select-options legend { padding: 0 5px; color: #344158; font-size: 12px; font-weight: 700; }
+.dynamic-evaluation-group > p { color: #7b879b; font-size: 11px; }
+.dynamic-select-options > label { display: flex; align-items: center; gap: 8px; color: #4c5970; font-size: 12px; }
+.dynamic-select-options input { accent-color: #4c6ddd; }
+@media (max-width: 640px) { .dynamic-evaluation-section { padding: 10px; } .dynamic-evaluation-field.score-row { align-items: flex-start; flex-direction: column; } }

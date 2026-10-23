@@ -80,6 +80,10 @@ const evaluationConfigurationSchema = new mongoose.Schema(
     custom: {
       fields: [customFieldSchema],
     },
+    dynamicSchema: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     updatedAt: { type: Date, default: Date.now },
   },
   {

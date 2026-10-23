@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const Event = require('../models/Event');
 const Evaluation = require('../models/Evaluation');
+const { validateDynamicEvaluationSchema } = require('../validators/dynamicEvaluationSchema');
 const {
   MODEL_FIELDS,
   validateModelConfig,
@@ -75,6 +76,23 @@ function buildConfigurationPayload(model, payload) {
   return payloadPresence;
 }
 
+function attachDynamicSchema(normalized, payload) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'dynamicSchema')) return [];
+  if (payload.dynamicSchema === null) {
+    normalized.dynamicSchema = null;
+    return [];
+  }
+  const existingNames = [
+    ...(payload.criteriaBased?.criteria || []).map((item) => item?.name),
+    ...(payload.liveDemo?.criteria || []).map((item) => item?.name),
+    ...(payload.custom?.fields || []).map((item) => item?.label),
+  ].filter((name) => typeof name === 'string');
+  const checked = validateDynamicEvaluationSchema(payload.dynamicSchema, { existingNames });
+  if (checked.errors.length) return checked.errors;
+  normalized.dynamicSchema = checked.value;
+  return [];
+}
+
 async function validateEventReference(eventId) {
   if (!isValidObjectId(eventId)) return { status: 400 };
   const event = await Event.findById(eventId).select('_id').lean();
@@ -142,6 +160,8 @@ exports.createOrUpdateEvaluationConfiguration = async (req, res) => {
       updatedAt: new Date(),
       ...buildConfigurationPayload(model, payload),
     };
+    const schemaErrors = attachDynamicSchema(normalized, payload);
+    if (schemaErrors.length) return res.status(400).json({ success: false, error: 'The AI-assisted evaluation schema did not pass validation.', details: schemaErrors });
 
     switch (model) {
       case 'criteria-based':
@@ -281,6 +301,8 @@ exports.createEvaluationConfig = async (req, res) => {
       updatedAt: new Date(),
       ...buildConfigurationPayload(model, payload),
     };
+    const schemaErrors = attachDynamicSchema(normalized, payload);
+    if (schemaErrors.length) return res.status(400).json({ success: false, error: 'The AI-assisted evaluation schema did not pass validation.', details: schemaErrors });
 
     const configuration = await EvaluationConfiguration.findOneAndUpdate(
       { eventId: normalizedEventId },
@@ -362,6 +384,8 @@ exports.updateEvaluationConfig = async (req, res) => {
       updatedAt: new Date(),
       ...buildConfigurationPayload(model, payload),
     };
+    const schemaErrors = attachDynamicSchema(normalized, payload);
+    if (schemaErrors.length) return res.status(400).json({ success: false, error: 'The AI-assisted evaluation schema did not pass validation.', details: schemaErrors });
 
     const updated = await EvaluationConfiguration.findOneAndUpdate(
       { eventId: normalizedEventId },
