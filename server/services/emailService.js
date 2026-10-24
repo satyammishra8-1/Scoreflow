@@ -34,7 +34,7 @@ async function logBrevoRejection(label, response, apiKey) {
   console.error(`Brevo ${label} rejected email. HTTP status: ${response.status}. Response body: ${safeResponseBody || '(empty)'}`);
 }
 
-async function sendJudgeInvitation({ judge, event, token }) {
+async function sendJudgeInvitation({ judge, event, token, emailDraft }) {
   const { apiKey, senderEmail, senderName, clientUrl } = getBrevoConfig();
   if (isSmtpCredential(apiKey)) {
     return { sent: false, message: 'The configured Brevo credential is an SMTP key. Set BREVO_API_KEY to a Brevo API v3 key.' };
@@ -49,6 +49,7 @@ async function sendJudgeInvitation({ judge, event, token }) {
     eventName: event.name,
     eventDate: event.date,
     invitationUrl,
+    emailDraft,
   });
 
   try {

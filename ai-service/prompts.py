@@ -39,3 +39,30 @@ def build_evaluation_schema_messages(data: dict) -> list[dict[str, str]]:
             + json.dumps(data, ensure_ascii=False, separators=(",", ":")),
         },
     ]
+
+
+ANNOUNCEMENT_EMAIL_SYSTEM_PROMPT = """You write clear, professional event announcement emails for ScoreFlow organizers. Return only the requested structured subject and body. Write for the supplied audience. Use only facts supplied by the organizer and event context; do not invent dates, locations, deadlines, links, policies, or promises. Do not include HTML, markdown fences, or an automatic-send instruction. Keep the body ready for the organizer to review and edit."""
+
+JUDGE_INVITATION_EMAIL_SYSTEM_PROMPT = """You write polished, professional judge invitation email copy for ScoreFlow. Return only the requested structured subject and body. The application will add each judge's personal greeting, event name and date, their individual secure invitation URL, acceptance button, and expiration notice. Do not invent or include names, dates, event details not supplied, dashboard URLs, access codes, or shared links. Write the body as concise invitation copy that fits between the app's greeting and secure acceptance link. Do not include HTML or markdown fences. The organizer will review and edit the draft before sending."""
+
+
+def build_announcement_email_messages(data: dict) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": ANNOUNCEMENT_EMAIL_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": "Write an announcement email for this event and audience. Return a subject and a plain-text body.\n\n"
+            + json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+        },
+    ]
+
+
+def build_judge_invitation_email_messages(data: dict) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": JUDGE_INVITATION_EMAIL_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": "Write concise invitation copy for a judge to serve at this event. The app supplies the judge's name, event date, and personal secure invitation link separately. Return a subject and plain-text body only.\n\n"
+            + json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+        },
+    ]

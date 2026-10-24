@@ -10,7 +10,12 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from prompts import build_messages, build_evaluation_schema_messages
+from prompts import (
+    build_messages,
+    build_evaluation_schema_messages,
+    build_announcement_email_messages,
+    build_judge_invitation_email_messages,
+)
 
 load_dotenv()
 
@@ -199,6 +204,34 @@ class EvaluationSchemaRequest(StrictModel):
     evaluationModel: EvaluationType | None = None
     existingCriteria: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(default_factory=list, max_length=100)
     existingConfiguration: dict[str, object] = Field(default_factory=dict)
+
+
+class EmailDraftRequest(StrictModel):
+    prompt: str = Field(min_length=5, max_length=2000)
+    eventName: str = Field(min_length=1, max_length=200)
+    eventType: str = Field(min_length=1, max_length=100)
+    eventDescription: str = Field(default="", max_length=5000)
+
+
+class AnnouncementEmailDraftRequest(EmailDraftRequest):
+    audienceType: Literal["judges", "teams"]
+
+
+class EmailDraft(StrictModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=8000)
+
+
+class GeminiEmailDraft(BaseModel):
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    subject: str
+    body: str
+
+
+class EmailDraftGenerateResponse(StrictModel):
+    emailDraft: EmailDraft
+    model: str
+    promptVersion: str
 
 
 class GeminiEvaluationSchemaField(BaseModel):
@@ -504,6 +537,69 @@ async def generate_evaluation_schema(data: EvaluationSchemaRequest) -> tuple[Eva
     return _remove_existing_schema_criteria(schema, data), model
 
 
+async def generate_email_draft(messages: list[dict[str, str]]) -> tuple[EmailDraft, str]:
+    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise ProviderConfigurationError("missing_api_key", "OPENAI_API_KEY is not configured")
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+        try:
+            client = AsyncOpenAI(api_key=api_key, timeout=45.0, max_retries=1)
+            response = await client.responses.parse(model=model, input=messages, text_format=EmailDraft)
+        except Exception as error:
+            _safe_provider_error(error)
+            raise ProviderResponseError("provider_error", "The language model request failed") from error
+        if response.output_parsed is None:
+            raise ProviderResponseError("malformed_response", "The language model returned no email draft")
+        try:
+            return EmailDraft.model_validate(response.output_parsed.model_dump()), model
+        except ValidationError as error:
+            raise ProviderResponseError("malformed_response", "The language model returned an invalid email draft") from error
+
+    if provider != "gemini":
+        raise ProviderConfigurationError("invalid_provider", "LLM_PROVIDER must be gemini or openai")
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ProviderConfigurationError("missing_api_key", "GEMINI_API_KEY is not configured")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
+    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
+    try:
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=messages[1]["content"],
+            config=types.GenerateContentConfig(
+                system_instruction=messages[0]["content"],
+                response_mime_type="application/json",
+                response_schema=GeminiEmailDraft,
+            ),
+        )
+    except Exception as error:
+        _safe_provider_error(error)
+        code, reason = _classify_gemini_error(error)
+        raise ProviderResponseError(code, reason) from error
+    finally:
+        await client.aio.aclose()
+    try:
+        if not response.text:
+            raise ValueError("Empty structured response")
+        return EmailDraft.model_validate_json(response.text), model
+    except ValidationError as error:
+        raise ProviderResponseError("malformed_response", "Gemini returned an invalid email draft") from error
+    except (ValueError, TypeError) as error:
+        raise ProviderResponseError("malformed_response", "Gemini returned an invalid email draft") from error
+
+
+async def generate_announcement_email_draft(data: AnnouncementEmailDraftRequest) -> tuple[EmailDraft, str]:
+    messages = build_announcement_email_messages(data.model_dump())
+    return await generate_email_draft(messages)
+
+
+async def generate_judge_invitation_email_draft(data: EmailDraftRequest) -> tuple[EmailDraft, str]:
+    messages = build_judge_invitation_email_messages(data.model_dump())
+    return await generate_email_draft(messages)
+
+
 app = FastAPI(title="ScoreFlow AI Result Reports", version="1.0.0")
 
 
@@ -544,3 +640,25 @@ async def create_evaluation_schema(request: EvaluationSchemaRequest):
         provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
         raise HTTPException(status_code=502, detail={"provider": provider, "code": error.code, "reason": error.reason}) from error
     return EvaluationSchemaGenerateResponse(evaluationSchema=schema, model=model, promptVersion="evaluation-schema-v1")
+
+
+async def _email_draft_response(generator, request, prompt_version: str) -> EmailDraftGenerateResponse:
+    try:
+        draft, model = await generator(request)
+    except ProviderConfigurationError as error:
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        raise HTTPException(status_code=503, detail={"provider": provider, "code": error.code, "reason": error.reason}) from error
+    except ProviderResponseError as error:
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        raise HTTPException(status_code=502, detail={"provider": provider, "code": error.code, "reason": error.reason}) from error
+    return EmailDraftGenerateResponse(emailDraft=draft, model=model, promptVersion=prompt_version)
+
+
+@app.post("/emails/announcements/generate", response_model=EmailDraftGenerateResponse)
+async def create_announcement_email_draft(request: AnnouncementEmailDraftRequest):
+    return await _email_draft_response(generate_announcement_email_draft, request, "announcement-email-v1")
+
+
+@app.post("/emails/judge-invitations/generate", response_model=EmailDraftGenerateResponse)
+async def create_judge_invitation_email_draft(request: EmailDraftRequest):
+    return await _email_draft_response(generate_judge_invitation_email_draft, request, "judge-invitation-email-v1")

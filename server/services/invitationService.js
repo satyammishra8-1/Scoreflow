@@ -13,7 +13,7 @@ function createInvitationCredentials(now = Date.now()) {
   };
 }
 
-async function issueJudgeInvitation(judge, event) {
+async function issueJudgeInvitation(judge, event, emailDraft) {
   const { token, tokenHash, expiresAt } = createInvitationCredentials();
   const updatedJudge = await Judge.findOneAndUpdate(
     { _id: judge._id, eventId: judge.eventId, invitationStatus: { $ne: 'accepted' } },
@@ -28,7 +28,7 @@ async function issueJudgeInvitation(judge, event) {
     { new: true, runValidators: true },
   );
   if (!updatedJudge) return { sent: false, message: 'This judge can no longer receive an invitation.' };
-  return sendJudgeInvitation({ judge: updatedJudge, event, token });
+  return sendJudgeInvitation({ judge: updatedJudge, event, token, emailDraft });
 }
 
 function hashInvitationToken(token) {

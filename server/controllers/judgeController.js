@@ -421,6 +421,17 @@ exports.sendJudgeInvitations = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Choose all judges or specific judges.' });
     }
 
+    let emailDraft;
+    if (req.body?.emailDraft !== undefined) {
+      const draft = req.body.emailDraft;
+      const subject = typeof draft?.subject === 'string' ? draft.subject.trim() : '';
+      const body = typeof draft?.body === 'string' ? draft.body.trim() : '';
+      if (!draft || typeof draft !== 'object' || Array.isArray(draft) || !subject || subject.length > 200 || !body || body.length > 8000) {
+        return res.status(400).json({ success: false, error: 'The invitation email draft needs a subject and message under the allowed length.' });
+      }
+      emailDraft = { subject, body };
+    }
+
     let selectedIds = [];
     if (recipientMode === 'specific') {
       if (!Array.isArray(req.body?.judgeIds) || req.body.judgeIds.length === 0) {
@@ -448,7 +459,7 @@ exports.sendJudgeInvitations = async (req, res) => {
     for (let index = 0; index < judges.length; index += 5) {
       const batch = await Promise.all(judges.slice(index, index + 5).map(async (judge) => {
         try {
-          return await issueJudgeInvitation(judge, event);
+          return await issueJudgeInvitation(judge, event, emailDraft);
         } catch (error) {
           console.error('Failed to issue a judge invitation:', error.message);
           return { sent: false, message: 'Unable to prepare this invitation.' };

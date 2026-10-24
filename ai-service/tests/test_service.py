@@ -7,7 +7,16 @@ import httpx
 from pydantic import ValidationError
 
 import main
-from prompts import SYSTEM_PROMPT, build_messages, EVALUATION_SCHEMA_SYSTEM_PROMPT, build_evaluation_schema_messages
+from prompts import (
+    SYSTEM_PROMPT,
+    build_messages,
+    EVALUATION_SCHEMA_SYSTEM_PROMPT,
+    build_evaluation_schema_messages,
+    ANNOUNCEMENT_EMAIL_SYSTEM_PROMPT,
+    JUDGE_INVITATION_EMAIL_SYSTEM_PROMPT,
+    build_announcement_email_messages,
+    build_judge_invitation_email_messages,
+)
 
 
 SAMPLE = {
@@ -58,6 +67,21 @@ SCHEMA_REQUEST = {
     "evaluationModel": "criteria-based",
     "existingCriteria": ["Innovation", "Technical Implementation"],
     "existingConfiguration": {"criteriaBased": {"criteria": [{"name": "Innovation", "weight": 60}]}},
+}
+
+EMAIL_DRAFT = {"subject": "Important event update", "body": "We are pleased to share this update with you."}
+ANNOUNCEMENT_DRAFT_REQUEST = {
+    "prompt": "Share the event schedule update in a warm, concise tone.",
+    "eventName": "TechNova Hackathon",
+    "eventType": "Hackathon",
+    "eventDescription": "A student innovation event.",
+    "audienceType": "judges",
+}
+INVITATION_DRAFT_REQUEST = {
+    "prompt": "Invite experienced mentors to join the judging panel.",
+    "eventName": "TechNova Hackathon",
+    "eventType": "Hackathon",
+    "eventDescription": "A student innovation event.",
 }
 
 
@@ -352,6 +376,60 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(schema.sections[0].fields[0].type, "group")
         self.assertEqual(generate_content.call_args.kwargs["config"].response_mime_type, "application/json")
         self.assertIs(generate_content.call_args.kwargs["config"].response_schema, main.GeminiEvaluationSchema)
+        close.assert_awaited_once()
+
+
+class EmailDraftServiceTests(unittest.IsolatedAsyncioTestCase):
+    def test_announcement_and_invitation_use_separate_safety_prompts(self):
+        announcement = build_announcement_email_messages(ANNOUNCEMENT_DRAFT_REQUEST)
+        invitation = build_judge_invitation_email_messages(INVITATION_DRAFT_REQUEST)
+        self.assertIn("do not invent", announcement[0]["content"].lower())
+        self.assertIn("judges", announcement[1]["content"])
+        self.assertIn("individual secure invitation URL", invitation[0]["content"])
+        self.assertIn("do not invent or include names", invitation[0]["content"].lower())
+        self.assertNotEqual(announcement[0]["content"], invitation[0]["content"])
+
+    async def test_announcement_endpoint_returns_structured_draft_without_sending(self):
+        parsed = main.EmailDraft(**EMAIL_DRAFT)
+        with patch.object(main, "generate_announcement_email_draft", new=AsyncMock(return_value=(parsed, "test-model"))) as generate:
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/emails/announcements/generate", json=ANNOUNCEMENT_DRAFT_REQUEST)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["emailDraft"], EMAIL_DRAFT)
+        self.assertEqual(response.json()["promptVersion"], "announcement-email-v1")
+        generate.assert_awaited_once()
+
+    async def test_invitation_endpoint_returns_structured_draft_without_a_dashboard_url(self):
+        parsed = main.EmailDraft(**EMAIL_DRAFT)
+        with patch.object(main, "generate_judge_invitation_email_draft", new=AsyncMock(return_value=(parsed, "test-model"))) as generate:
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/emails/judge-invitations/generate", json=INVITATION_DRAFT_REQUEST)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["emailDraft"], EMAIL_DRAFT)
+        self.assertEqual(response.json()["promptVersion"], "judge-invitation-email-v1")
+        generate.assert_awaited_once()
+
+    async def test_email_draft_routes_reject_invalid_audience_and_extra_fields(self):
+        generate = AsyncMock()
+        with patch.object(main, "generate_announcement_email_draft", new=generate):
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/emails/announcements/generate", json={**ANNOUNCEMENT_DRAFT_REQUEST, "audienceType": "everyone"})
+        self.assertEqual(response.status_code, 422)
+        generate.assert_not_awaited()
+
+    async def test_gemini_structured_email_draft_uses_existing_provider_configuration(self):
+        generate_content = AsyncMock(return_value=SimpleNamespace(text=main.EmailDraft(**EMAIL_DRAFT).model_dump_json()))
+        close = AsyncMock()
+        fake_client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate_content), aclose=close))
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "unit-test-key", "GEMINI_MODEL": "email-test"}), patch.object(main.genai, "Client", return_value=fake_client):
+            draft, model = await main.generate_judge_invitation_email_draft(main.EmailDraftRequest(**INVITATION_DRAFT_REQUEST))
+        self.assertEqual(draft, main.EmailDraft(**EMAIL_DRAFT))
+        self.assertEqual(model, "email-test")
+        self.assertIs(generate_content.call_args.kwargs["config"].response_schema, main.GeminiEmailDraft)
+        self.assertIn("dashboard URL", generate_content.call_args.kwargs["config"].system_instruction)
         close.assert_awaited_once()
 
 
