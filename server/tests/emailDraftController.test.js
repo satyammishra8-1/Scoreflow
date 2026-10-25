@@ -65,4 +65,35 @@ test('email draft controller requests content only from the configured AI capabi
     await invalid.handler({ params: { eventId }, body: { prompt: 'Invite judges warmly to evaluate projects.', audienceType: 'judges' } }, invalidResponse);
     assert.equal(invalidResponse.statusCode, 502);
   });
+
+  await t.test('explains AI service connectivity and missing provider configuration safely', async () => {
+    const unavailable = setup({ fetchImpl: async () => { throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8000'), { code: 'ECONNREFUSED' }); } });
+    const unavailableResponse = response();
+    await unavailable.handler({ params: { eventId }, body: { prompt: 'Send a useful event schedule update.', audienceType: 'judges' } }, unavailableResponse);
+    assert.equal(unavailableResponse.statusCode, 503);
+    assert.match(unavailableResponse.body.error, /not running or cannot be reached/i);
+    assert.doesNotMatch(unavailableResponse.body.error, /ECONNREFUSED|127\.0\.0\.1/);
+
+    const unconfigured = setup({ fetchImpl: async () => ({
+      ok: false, status: 503,
+      json: async () => ({ detail: { code: 'missing_api_key', reason: 'GEMINI_API_KEY is not configured' } }),
+    }) });
+    const unconfiguredResponse = response();
+    await unconfigured.handler({ params: { eventId }, body: { prompt: 'Send a useful event schedule update.', audienceType: 'judges' } }, unconfiguredResponse);
+    assert.equal(unconfiguredResponse.statusCode, 503);
+    assert.match(unconfiguredResponse.body.error, /not configured/i);
+    assert.doesNotMatch(unconfiguredResponse.body.error, /GEMINI_API_KEY/);
+  });
+
+  await t.test('reports rejected AI requests without exposing provider internals', async () => {
+    const invalid = setup({ fetchImpl: async () => ({
+      ok: false, status: 422,
+      json: async () => ({ detail: [{ loc: ['body', 'audienceType'], msg: 'Input should be judges or teams' }] }),
+    }) });
+    const invalidResponse = response();
+    await invalid.handler({ params: { eventId }, body: { prompt: 'Send a useful event schedule update.', audienceType: 'judges' } }, invalidResponse);
+    assert.equal(invalidResponse.statusCode, 400);
+    assert.match(invalidResponse.body.error, /rejected this email request/i);
+    assert.doesNotMatch(invalidResponse.body.error, /loc|input should be/i);
+  });
 });

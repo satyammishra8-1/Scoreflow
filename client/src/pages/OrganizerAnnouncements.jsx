@@ -16,11 +16,11 @@ const formatEventDate = (value) => {
   return Number.isNaN(date.getTime()) ? 'To be announced' : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
-function WritingModeSelector({ mode, onChange, manualLabel = 'Manual Write' }) {
+function WritingModeSelector({ mode, onChange, manualLabel = 'Manual' }) {
   return (
     <div className="announcement-writing-mode" role="group" aria-label="Email writing mode">
       <button type="button" aria-pressed={mode === 'manual'} className={mode === 'manual' ? 'active' : ''} onClick={() => onChange('manual')}>{manualLabel}</button>
-      <button type="button" aria-pressed={mode === 'ai'} className={mode === 'ai' ? 'active' : ''} onClick={() => onChange('ai')}>✨ Generate with AI</button>
+      <button type="button" aria-pressed={mode === 'ai'} className={mode === 'ai' ? 'active' : ''} onClick={() => onChange('ai')}>✨ AI</button>
     </div>
   );
 }
@@ -39,7 +39,6 @@ function OrganizerAnnouncements() {
   const [message, setMessage] = useState('');
   const [announcementMode, setAnnouncementMode] = useState('manual');
   const [announcementPrompt, setAnnouncementPrompt] = useState('');
-  const [announcementAiDraft, setAnnouncementAiDraft] = useState(null);
   const [hasGeneratedAnnouncementDraft, setHasGeneratedAnnouncementDraft] = useState(false);
   const [generatingAnnouncement, setGeneratingAnnouncement] = useState(false);
   const [invitationMode, setInvitationMode] = useState('manual');
@@ -112,8 +111,8 @@ function OrganizerAnnouncements() {
     if (value === 'judge-invitation') setInvitationMode('manual');
     else {
       setAnnouncementMode('manual');
-      setAnnouncementAiDraft(null);
       setHasGeneratedAnnouncementDraft(false);
+      setSubject(''); setMessage('');
       setShowEmailPreview(false);
     }
   }
@@ -124,8 +123,8 @@ function OrganizerAnnouncements() {
     setRecipientMode('all');
     setError('');
     setNotice('');
-    setAnnouncementAiDraft(null);
     setHasGeneratedAnnouncementDraft(false);
+    setSubject(''); setMessage('');
     setShowEmailPreview(false);
   }
   function toggleRecipient(id) {
@@ -136,7 +135,6 @@ function OrganizerAnnouncements() {
     setGeneratingAnnouncement(true);
     setError('');
     setNotice('');
-    setAnnouncementAiDraft(null);
     setHasGeneratedAnnouncementDraft(false);
     setShowEmailPreview(false);
     try {
@@ -145,7 +143,8 @@ function OrganizerAnnouncements() {
       });
       const draft = response.data?.data?.emailDraft;
       if (!draft?.subject || !draft?.body) throw new Error(response.data?.error || 'AI returned an incomplete email draft.');
-      setAnnouncementAiDraft({ subject: draft.subject, body: draft.body });
+      setSubject(draft.subject);
+      setMessage(draft.body);
       setHasGeneratedAnnouncementDraft(true);
     } catch (generationError) {
       setError(getError(generationError, generationError.message || 'Unable to generate an announcement draft.'));
@@ -172,15 +171,12 @@ function OrganizerAnnouncements() {
     }
   }
 
-  const announcementSubject = announcementMode === 'ai' && hasGeneratedAnnouncementDraft ? announcementAiDraft?.subject || '' : subject;
-  const announcementMessage = announcementMode === 'ai' && hasGeneratedAnnouncementDraft ? announcementAiDraft?.body || '' : message;
+  const announcementSubject = subject;
+  const announcementMessage = message;
   const hasValidAnnouncementRecipients = recipientCount > 0 && (recipientMode !== 'specific' || selectedCount > 0);
-  const canPreviewAnnouncement = announcementMode === 'manual'
-    ? Boolean(subject.trim() && message.trim())
-    : hasGeneratedAnnouncementDraft && Boolean(announcementAiDraft?.subject?.trim() && announcementAiDraft?.body?.trim());
-  const canSendAnnouncement = hasValidAnnouncementRecipients && (announcementMode === 'manual'
-    ? Boolean(subject.trim() && message.trim())
-    : hasGeneratedAnnouncementDraft && Boolean(announcementAiDraft?.subject?.trim() && announcementAiDraft?.body?.trim()));
+  const hasValidAnnouncementContent = Boolean(subject.trim() && message.trim());
+  const canPreviewAnnouncement = hasValidAnnouncementContent && (announcementMode !== 'ai' || hasGeneratedAnnouncementDraft);
+  const canSendAnnouncement = hasValidAnnouncementRecipients && canPreviewAnnouncement;
   const invitationEmailDraft = invitationMode === 'ai' ? invitationAiDraft : null;
 
   async function sendAnnouncement() {
@@ -211,9 +207,11 @@ function OrganizerAnnouncements() {
       });
       const delivery = response.data?.data;
       const deliveryNotice = `${response.data?.deliveryMessage || 'Announcement processing finished.'} ${delivery?.sentCount ?? 0} sent, ${delivery?.failedCount ?? 0} failed.`;
-      if (delivery?.status === 'failed') setError(deliveryNotice);
+      if (delivery?.status === 'failed' || delivery?.status === 'partial') setError(deliveryNotice);
       else setNotice(deliveryNotice);
-      setSubject(''); setMessage(''); setAnnouncementAiDraft(null); setHasGeneratedAnnouncementDraft(false); setSelectedIds([]); setRecipientMode('all');
+      if (delivery?.status === 'sent') {
+        setSubject(''); setMessage(''); setHasGeneratedAnnouncementDraft(false); setSelectedIds([]); setRecipientMode('all');
+      }
       await loadHistory();
     } catch (sendError) {
       setError(getError(sendError, 'Unable to send this announcement.'));
@@ -241,7 +239,7 @@ function OrganizerAnnouncements() {
                 <span>SECURE TEMPLATE</span><strong>Judge Invitation</strong><small>Send a personalized, single-use invitation link.</small>
               </button>
             </section>
-            <div className="announcement-layout">
+            <div className={`announcement-layout ${communicationType === 'announcement' ? 'announcement-layout-simple' : ''}`}>
               <section className="announcement-panel announcement-composer" aria-labelledby="announcement-compose-title">
                 <div className="announcement-panel-heading"><div><span>{communicationType === 'judge-invitation' ? 'SECURE INVITATION' : 'COMPOSE'}</span><h2 id="announcement-compose-title">{communicationType === 'judge-invitation' ? 'Invite judges' : 'New announcement'}</h2></div></div>
                 {communicationType === 'announcement' && <div className="announcement-field"><span className="announcement-label">Audience</span>
@@ -249,9 +247,10 @@ function OrganizerAnnouncements() {
                     <button type="button" className={audienceType === 'teams' ? 'active' : ''} onClick={() => changeAudience('teams')}>Teams <small>{teams.length}</small></button></div>
                 </div>}
                 <div className="announcement-field"><span className="announcement-label">Recipients</span>
-                  <div className="announcement-radio-row"><label><input type="radio" name="recipientMode" checked={recipientMode === 'all'} onChange={() => { setRecipientMode('all'); setSelectedIds([]); }} /> {communicationType === 'judge-invitation' ? `All Judges (${eligibleJudges.length} eligible)` : `All ${audienceType}`}</label>
-                    <label><input type="radio" name="recipientMode" checked={recipientMode === 'specific'} onChange={() => setRecipientMode('specific')} /> Specific {communicationType === 'judge-invitation' ? 'Judges' : ''}</label></div>
+                  <div className="announcement-radio-row"><label><input type="radio" name="recipientMode" checked={recipientMode === 'all'} onChange={() => { setRecipientMode('all'); setSelectedIds([]); }} /> All</label>
+                    <label><input type="radio" name="recipientMode" checked={recipientMode === 'specific'} onChange={() => setRecipientMode('specific')} /> Specific</label></div>
                 </div>
+                {communicationType === 'announcement' && <p className="announcement-selection-count">{recipientCount} recipient email{recipientCount === 1 ? '' : 's'}</p>}
                 {recipientMode === 'specific' && communicationType === 'announcement' && <div className="announcement-recipient-list" aria-label={`Select ${audienceType}`}>
                   {audienceType === 'teams' && <p className="announcement-help">Every member with an email on a selected team will receive the message. Duplicate email addresses are sent once.</p>}
                   {audience.map((item) => {
@@ -282,31 +281,28 @@ function OrganizerAnnouncements() {
                   ? <WritingModeSelector mode={announcementMode} onChange={(mode) => {
                     if (mode === announcementMode) return;
                     setAnnouncementMode(mode);
-                    setAnnouncementAiDraft(null);
                     setHasGeneratedAnnouncementDraft(false);
+                    setSubject(''); setMessage('');
                     setShowEmailPreview(false);
                   }} />
                   : <WritingModeSelector mode={invitationMode} onChange={setInvitationMode} manualLabel="Manual Invitation" />}
                 {communicationType === 'announcement' ? <>
                   {announcementMode === 'ai' && <>
-                    <label className="announcement-field"><span className="announcement-label">Describe what you want to communicate</span><textarea maxLength={2000} minLength={10} rows={4} value={announcementPrompt} onChange={(eventValue) => {
+                    <label className="announcement-field"><span className="announcement-label">Tell AI what you want to communicate</span><textarea maxLength={2000} minLength={10} rows={4} value={announcementPrompt} onChange={(eventValue) => {
                       setAnnouncementPrompt(eventValue.target.value);
-                      setAnnouncementAiDraft(null);
                       setHasGeneratedAnnouncementDraft(false);
+                      setSubject(''); setMessage('');
                       setShowEmailPreview(false);
-                    }} placeholder="Share the key update, tone, and details recipients need to know." /><small className="announcement-help">This is an instruction for AI. It will generate a separate editable subject and email body.</small></label>
+                    }} placeholder="Share the key update, tone, and details recipients need to know." /></label>
                     <button className="announcement-ai-button" type="button" onClick={generateAnnouncementDraft} disabled={generatingAnnouncement || announcementPrompt.trim().length < 10}>{generatingAnnouncement ? 'Generating email draft…' : hasGeneratedAnnouncementDraft ? 'Regenerate Email Draft' : 'Generate Email Draft'}</button>
-                    {hasGeneratedAnnouncementDraft && announcementAiDraft && <div className="announcement-ai-review"><p className="announcement-ai-review-label">Review and edit your generated draft</p>
-                      <label className="announcement-field"><span className="announcement-label">Subject</span><input maxLength={200} value={announcementAiDraft.subject} onChange={(eventValue) => setAnnouncementAiDraft((draft) => ({ ...draft, subject: eventValue.target.value }))} /></label>
-                      <label className="announcement-field"><span className="announcement-label">Email Body</span><textarea maxLength={10000} rows={7} value={announcementAiDraft.body} onChange={(eventValue) => setAnnouncementAiDraft((draft) => ({ ...draft, body: eventValue.target.value }))} /><small className="announcement-character-count">{announcementAiDraft.body.length} / 10000</small></label>
+                    {hasGeneratedAnnouncementDraft && <div className="announcement-ai-review">
+                      <label className="announcement-field"><span className="announcement-label">Subject</span><input maxLength={200} value={subject} onChange={(eventValue) => setSubject(eventValue.target.value)} /></label>
+                      <label className="announcement-field"><span className="announcement-label">Message</span><textarea maxLength={10000} rows={7} value={message} onChange={(eventValue) => setMessage(eventValue.target.value)} /><small className="announcement-character-count">{message.length} / 10000</small></label>
                     </div>}
                   </>}
                   {announcementMode === 'manual' && <label className="announcement-field"><span className="announcement-label">Subject</span><input maxLength={200} value={subject} onChange={(eventValue) => setSubject(eventValue.target.value)} placeholder="Event update" /></label>}
                   {announcementMode === 'manual' && <label className="announcement-field"><span className="announcement-label">Message</span><textarea maxLength={10000} rows={7} value={message} onChange={(eventValue) => setMessage(eventValue.target.value)} placeholder="Write your announcement…" /><small className="announcement-character-count">{message.length} / 10000</small></label>}
-                  <button className="announcement-preview-button" type="button" onClick={() => setShowEmailPreview(true)} disabled={!canPreviewAnnouncement}>Preview Email</button>
-                  {announcementMode === 'manual' && <div className="announcement-preview"><div className="announcement-panel-heading"><div><span>PREVIEW</span><h3>{announcementSubject.trim() || 'Subject preview'}</h3></div></div>
-                    <p className="announcement-preview-body">{announcementMessage.trim() || 'Your message preview will appear here.'}</p>
-                    <div className="announcement-preview-foot"><span>{recipientMode === 'all' ? `All ${audienceType}` : `${selectedCount} selected ${audienceType}`}</span><strong>{recipientCount} unique email{recipientCount === 1 ? '' : 's'}</strong></div></div>}
+                  {canPreviewAnnouncement && <button className="announcement-preview-button" type="button" onClick={() => setShowEmailPreview(true)}>Preview</button>}
                 </> : <>
                   {invitationMode === 'ai' && <>
                     <label className="announcement-field"><span className="announcement-label">Invitation context for AI</span><textarea maxLength={2000} minLength={10} rows={4} value={invitationPrompt} onChange={(eventValue) => setInvitationPrompt(eventValue.target.value)} placeholder="Share why you are inviting judges and any invitation tone or context." /></label>
@@ -336,7 +332,7 @@ function OrganizerAnnouncements() {
                   disabled={sending || (communicationType === 'announcement' && !canSendAnnouncement) || (communicationType === 'judge-invitation' && (invitationRecipients.length === 0 || (invitationMode === 'ai' && (!invitationEmailDraft?.subject?.trim() || !invitationEmailDraft?.body?.trim()))))}
                   onClick={() => setConfirming(true)}>{communicationType === 'judge-invitation' ? 'Review and Send Invitations' : 'Review and Send'}</button>
               </section>
-              <aside className="announcement-side-note"><span>{communicationType === 'judge-invitation' ? 'INVITATION SUMMARY' : 'RECIPIENT SUMMARY'}</span><strong>{communicationType === 'judge-invitation' ? invitationRecipients.length : recipientCount}</strong><p>{communicationType === 'judge-invitation' ? `eligible judge${invitationRecipients.length === 1 ? '' : 's'} will receive an individual secure invitation.` : `unique email address${recipientCount === 1 ? '' : 'es'} will receive this announcement.`}</p><small>{communicationType === 'judge-invitation' ? 'Accepted invitations are skipped. Each invitation gets its own expiring link.' : 'Email addresses are resolved from the saved event records.'}</small></aside>
+              {communicationType === 'judge-invitation' && <aside className="announcement-side-note"><span>INVITATION SUMMARY</span><strong>{invitationRecipients.length}</strong><p>eligible judge{invitationRecipients.length === 1 ? '' : 's'} will receive an individual secure invitation.</p><small>Accepted invitations are skipped. Each invitation gets its own expiring link.</small></aside>}
             </div>
             <section className="announcement-panel announcement-history" aria-labelledby="announcement-history-title">
               <div className="announcement-panel-heading"><div><span>EVENT RECORD</span><h2 id="announcement-history-title">Announcement history</h2></div><small>{history.length} {history.length === 1 ? 'announcement' : 'announcements'}</small></div>
@@ -359,8 +355,12 @@ function OrganizerAnnouncements() {
         <div className="announcement-confirm-actions"><button type="button" className="announcement-cancel-button" onClick={() => setShowEmailPreview(false)}>Back to editing</button></div>
       </section></div>}
       {confirming && <div className="announcement-confirm-backdrop" role="presentation"><section className="announcement-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <span>CONFIRM DELIVERY</span><h2 id="confirm-title">{communicationType === 'judge-invitation' ? 'Send judge invitations?' : 'Send this announcement?'}</h2><p><strong>{communicationType === 'judge-invitation' ? invitationRecipients.length : recipientCount}</strong> {communicationType === 'judge-invitation' ? 'eligible judges will receive personalized secure invitations.' : `unique email address${recipientCount === 1 ? '' : 'es'} will receive “${announcementSubject.trim()}”.`}</p>
-        <div className="announcement-confirm-actions"><button type="button" className="announcement-cancel-button" onClick={() => setConfirming(false)} disabled={sending}>Review message</button><button type="button" className="announcement-send-button" onClick={sendAnnouncement} disabled={sending}>{sending ? 'Sending…' : communicationType === 'judge-invitation' ? 'Confirm and Send' : 'Confirm and Send'}</button></div>
+        <span>{communicationType === 'judge-invitation' ? 'CONFIRM DELIVERY' : 'REVIEW'}</span><h2 id="confirm-title">{communicationType === 'judge-invitation' ? 'Send judge invitations?' : 'Review announcement'}</h2>
+        {communicationType === 'judge-invitation' ? <p><strong>{invitationRecipients.length}</strong> eligible judges will receive personalized secure invitations.</p> : <>
+          <p><strong>{recipientMode === 'all' ? `All ${audienceType}` : `${selectedCount} selected ${audienceType}`}</strong> · {recipientCount} email{recipientCount === 1 ? '' : 's'}</p>
+          <div className="announcement-review-email"><small>SUBJECT</small><strong>{subject}</strong><small>MESSAGE</small><p>{message}</p></div>
+        </>}
+        <div className="announcement-confirm-actions"><button type="button" className="announcement-cancel-button" onClick={() => setConfirming(false)} disabled={sending}>{communicationType === 'judge-invitation' ? 'Review message' : 'Edit'}</button><button type="button" className="announcement-send-button" onClick={sendAnnouncement} disabled={sending}>{sending ? 'Sending…' : 'Send'}</button></div>
       </section></div>}
     </OrganizerLayout>
   );
