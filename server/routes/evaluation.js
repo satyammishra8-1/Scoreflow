@@ -1,5 +1,5 @@
 const express = require('express');
-const { createEvaluationSchemaController } = require('../controllers/evaluationSchemaController');
+const { createEvaluationSchemaController, createEvaluationSchemaValidationController } = require('../controllers/evaluationSchemaController');
 
 const {
   getEvaluationConfiguration,
@@ -15,6 +15,7 @@ const {
 const router = express.Router();
 
 router.post('/events/:eventId/evaluation/ai-generate', createEvaluationSchemaController());
+router.post('/events/:eventId/evaluation/ai-validate', createEvaluationSchemaValidationController());
 
 // Evaluation configuration
 router

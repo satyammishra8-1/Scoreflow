@@ -145,6 +145,7 @@ class EvaluationSchemaField(StrictModel):
         elif self.type == "group":
             if not self.children:
                 raise ValueError("Groups need child fields")
+            self.required = False
             if self.maxMarks is not None or self.weight is not None or self.options is not None:
                 raise ValueError("Groups cannot have score values or options")
         elif self.maxMarks is not None or self.weight is not None or self.options is not None or self.children is not None:
@@ -167,6 +168,7 @@ class EvaluationSchema(StrictModel):
     @model_validator(mode="after")
     def validate_structure(self):
         ids: set[str] = set()
+        section_names: set[str] = set()
         score_weights: list[float] = []
         count = 0
 
@@ -185,10 +187,25 @@ class EvaluationSchema(StrictModel):
             for child in field.children or []:
                 visit(child, depth + 1)
 
+        def validate_sibling_names(fields: list[EvaluationSchemaField], path: str):
+            names: set[str] = set()
+            for field in fields:
+                name = field.label.casefold()
+                if name in names:
+                    raise ValueError(f"Duplicate field name at {path}")
+                names.add(name)
+                if field.type == "group":
+                    validate_sibling_names(field.children or [], f"{path} / {field.label}")
+
         for section in self.sections:
             if section.id in ids:
                 raise ValueError("Schema section and field ids must be unique")
             ids.add(section.id)
+            section_name = section.name.casefold()
+            if section_name in section_names:
+                raise ValueError("Schema section names must be unique")
+            section_names.add(section_name)
+            validate_sibling_names(section.fields, section.name)
             for field in section.fields:
                 visit(field, 1)
         if score_weights and abs(sum(score_weights) - 100) > 0.01:
@@ -413,7 +430,7 @@ async def generate_report(data: ReportRequest) -> tuple[ReportContent, str]:
     raise ProviderConfigurationError("LLM_PROVIDER must be gemini or openai")
 
 
-async def _generate_schema_with_openai(data: EvaluationSchemaRequest) -> tuple[EvaluationSchema, str]:
+async def _generate_schema_with_openai(data: EvaluationSchemaRequest, *, repair_attempt: bool = False) -> tuple[EvaluationSchema, str]:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise ProviderConfigurationError("missing_api_key", "OPENAI_API_KEY is not configured")
@@ -422,7 +439,7 @@ async def _generate_schema_with_openai(data: EvaluationSchemaRequest) -> tuple[E
         client = AsyncOpenAI(api_key=api_key, timeout=45.0, max_retries=1)
         response = await client.responses.parse(
             model=model,
-            input=build_evaluation_schema_messages(data.model_dump()),
+            input=build_evaluation_schema_messages(data.model_dump(), repair_attempt=repair_attempt),
             text_format=EvaluationSchema,
         )
     except Exception as error:
@@ -436,12 +453,12 @@ async def _generate_schema_with_openai(data: EvaluationSchemaRequest) -> tuple[E
         raise ProviderResponseError("malformed_response", "The language model returned an invalid evaluation schema") from error
 
 
-async def _generate_schema_with_gemini(data: EvaluationSchemaRequest) -> tuple[EvaluationSchema, str]:
+async def _generate_schema_with_gemini(data: EvaluationSchemaRequest, *, repair_attempt: bool = False) -> tuple[EvaluationSchema, str]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ProviderConfigurationError("missing_api_key", "GEMINI_API_KEY is not configured")
     model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
-    messages = build_evaluation_schema_messages(data.model_dump())
+    messages = build_evaluation_schema_messages(data.model_dump(), repair_attempt=repair_attempt)
     client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
     try:
         response = await client.aio.models.generate_content(
@@ -528,13 +545,21 @@ def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationS
 
 async def generate_evaluation_schema(data: EvaluationSchemaRequest) -> tuple[EvaluationSchema, str]:
     provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
-    if provider == "gemini":
-        schema, model = await _generate_schema_with_gemini(data)
-    elif provider == "openai":
-        schema, model = await _generate_schema_with_openai(data)
-    else:
-        raise ProviderConfigurationError("invalid_provider", "LLM_PROVIDER must be gemini or openai")
-    return _remove_existing_schema_criteria(schema, data), model
+    for repair_attempt in (False, True):
+        try:
+            if provider == "gemini":
+                schema, model = await _generate_schema_with_gemini(data, repair_attempt=repair_attempt)
+            elif provider == "openai":
+                schema, model = await _generate_schema_with_openai(data, repair_attempt=repair_attempt)
+            else:
+                raise ProviderConfigurationError("invalid_provider", "LLM_PROVIDER must be gemini or openai")
+            return _remove_existing_schema_criteria(schema, data), model
+        except ProviderResponseError as error:
+            if not repair_attempt and error.code == "malformed_response":
+                logger.info("Retrying malformed evaluation schema once with validation guidance")
+                continue
+            raise
+    raise ProviderResponseError("malformed_response", "The model returned an invalid evaluation schema")
 
 
 async def generate_email_draft(messages: list[dict[str, str]]) -> tuple[EmailDraft, str]:

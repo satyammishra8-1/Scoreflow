@@ -29,6 +29,7 @@ test('validates complex nested schemas and strips unknown properties', () => {
   assert.deepEqual(checked.errors, []);
   assert.equal(checked.value.arbitrary, undefined);
   assert.equal(checked.value.sections[0].fields[1].children.length, 4);
+  assert.equal(checked.value.sections[0].fields[1].required, false);
 });
 
 test('rejects unknown field types, duplicate ids, unsupported depth, and invalid weights', () => {
@@ -48,6 +49,56 @@ test('rejects unknown field types, duplicate ids, unsupported depth, and invalid
 test('rejects duplicate suggestions matching the existing event criteria', () => {
   const checked = validateDynamicEvaluationSchema(validSchema, { existingNames: ['Safety implementation'] });
   assert.ok(checked.errors.some((error) => /duplicates existing criterion/i.test(error)));
+});
+
+test('rejects duplicate section and sibling field names at every nesting level', () => {
+  const sibling = structuredClone(validSchema);
+  sibling.sections[0].fields.push({ ...sibling.sections[0].fields[0], id: 'second_score', label: 'safety implementation' });
+  assert.ok(validateDynamicEvaluationSchema(sibling).errors.some((error) => /duplicate field name/i.test(error)));
+
+  const nested = structuredClone(validSchema);
+  nested.sections[0].fields[1].children[1].label = 'Safety check passed';
+  assert.ok(validateDynamicEvaluationSchema(nested).errors.some((error) => /duplicate field name/i.test(error)));
+
+  const sections = structuredClone(validSchema);
+  sections.sections.push({ ...sections.sections[0], id: 'second_section', name: 'safety' });
+  assert.ok(validateDynamicEvaluationSchema(sections).errors.some((error) => /duplicate section name/i.test(error)));
+});
+
+test('validates neutral schemas for distinct event domains and simple through complex nesting', () => {
+  const domains = ['Hackathon', 'Startup Pitch', 'Debate Competition', 'Dance Competition', 'Poster Exhibition', 'Coding Competition', 'Sports Performance', 'Academic Presentation'];
+  for (const [index, domain] of domains.entries()) {
+    const candidate = {
+      title: `${domain} Rubric`, description: '', sections: [{
+        id: `section_${index}`, name: `${domain} Evaluation`, description: '', fields: [
+          { id: `criterion_${index}`, type: 'score', label: `${domain} Quality`, description: '', rationale: '', required: true, maxMarks: 10, weight: 100 },
+        ],
+      }],
+    };
+    assert.deepEqual(validateDynamicEvaluationSchema(candidate).errors, [], domain);
+  }
+
+  const simple = structuredClone(validSchema);
+  simple.sections[0].fields = [{ id: 'innovation_score', type: 'score', label: 'Innovation', description: '', rationale: '', required: true, maxMarks: 10, weight: 100 }];
+  assert.deepEqual(validateDynamicEvaluationSchema(simple).errors, []);
+
+  const complex = structuredClone(validSchema);
+  complex.sections[0].fields = [
+    { id: 'problem_score', type: 'score', label: 'Problem clarity', description: '', rationale: '', required: true, maxMarks: 10, weight: 20 },
+    { id: 'business_group', type: 'group', label: 'Business Model', description: '', rationale: '', required: false, children: [
+      { id: 'revenue_score', type: 'score', label: 'Revenue model', description: '', rationale: '', required: true, maxMarks: 10, weight: 20 },
+      { id: 'feasibility_score', type: 'score', label: 'Feasibility', description: '', rationale: '', required: true, maxMarks: 10, weight: 20 },
+    ] },
+    { id: 'market_group', type: 'group', label: 'Market', description: '', rationale: '', required: false, children: [
+      { id: 'audience_question', type: 'question', label: 'Target audience', description: '', rationale: '', required: true },
+      { id: 'scale_score', type: 'score', label: 'Scalability', description: '', rationale: '', required: true, maxMarks: 10, weight: 20 },
+    ] },
+    { id: 'presentation_score', type: 'score', label: 'Presentation', description: '', rationale: '', required: true, maxMarks: 10, weight: 20 },
+    { id: 'final_feedback', type: 'feedback', label: 'Final qualitative feedback', description: '', rationale: '', required: true },
+  ];
+  const checked = validateDynamicEvaluationSchema(complex);
+  assert.deepEqual(checked.errors, []);
+  assert.deepEqual(checked.value.sections[0].fields[1].children.map((field) => field.label), ['Revenue model', 'Feasibility']);
 });
 
 test('validates required answers for every dynamic field type', () => {

@@ -23,19 +23,27 @@ def build_messages(verified_data: dict) -> list[dict[str, str]]:
     ]
 
 
-EVALUATION_SCHEMA_SYSTEM_PROMPT = """You design judge-friendly evaluation forms for ScoreFlow. You are helping organizers define an evaluation structure; you are not a judge. Never assign scores to teams and never invent team performance.
+EVALUATION_SCHEMA_SYSTEM_PROMPT = """You design clear, judge-friendly evaluation forms for ScoreFlow. You help organizers turn their event brief into a form; you are not evaluating participants. Never assign participant scores or invent participant performance.
 
-Use the supplied event context, organizer request, current evaluation model, and existing criteria. Avoid repeating existing criterion names; suggest only useful additions. Prefer clear, practical fields and avoid unnecessary complexity.
+Derive evaluation dimensions from the organizer's request and supplied event context. Support any event domain; do not default to hackathon criteria. Keep the organizer's existing evaluation criteria and model intact. Propose only useful additional fields and do not duplicate existing or sibling section/field names. Preserve the requested dimensions and judge questions. Use a group only when the organizer describes meaningful subcriteria; otherwise keep criteria flat. Do not create empty sections or groups.
 
-Return only JSON matching the supplied schema. Use only these field types: score, boolean, text, question, feedback, single_select, multi_select, group. Groups contain child fields. Numeric score fields require maxMarks and a weight, and all score field weights in the generated schema must total exactly 100. Use required=true only where completion is genuinely necessary. Select fields need two or more concise options. Put a short reason for each field in rationale. Do not emit code, HTML, JSX, formulas, or arbitrary field types."""
+Choose only supported field types: score for numeric ratings, boolean for yes/no checks, single_select or multi_select for bounded choices, question for judge answers, text for concise evidence, feedback for qualitative comments, and group for structural nesting. Groups are structural and contain child fields. Score fields require a positive maxMarks and a nonnegative weight; all score weights across this additional rubric must total exactly 100. Non-scoring fields must not have score values. Use required=true only when the judge must answer the field. Select fields need at least two distinct, useful options. IDs must be unique and use letters, digits, underscores, or hyphens. Keep descriptions and rationale concise.
+
+Return only the requested schema fields in the supplied structured format. Never return frontend code, React/JSX, HTML, markdown, formulas, unsupported field types, or arbitrary JSON outside the schema."""
 
 
-def build_evaluation_schema_messages(data: dict) -> list[dict[str, str]]:
+def build_evaluation_schema_messages(data: dict, *, repair_attempt: bool = False) -> list[dict[str, str]]:
+    repair_instruction = (
+        " A previous draft failed schema validation. Recheck the full structure: unique sibling names and IDs, valid field-specific properties, nonempty sections/groups, supported nesting, and score weights totaling exactly 100. Correct the draft and return only the structured schema."
+        if repair_attempt else ""
+    )
     return [
         {"role": "system", "content": EVALUATION_SCHEMA_SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": "Design a structured, editable judge evaluation schema from this context. Preserve useful existing criteria by avoiding duplicates. Use score fields only when a numeric rating is useful. Each score field weight is relative to the generated score fields and all generated score weights must total 100. Numeric fields belong to a separate supplemental rubric and must not change the event's existing weighted score. Return only the schema fields title, description, and sections. Each section has id, name, description, and fields. Fields have id, type, label, description, rationale, required, and type-specific maxMarks/weight/options/children.\n\n"
+            "content": "Design an additional structured judge form that fits this event and the organizer's requested complexity. Preserve all existing configuration; never rewrite or replace existing evaluation criteria. Return only title, description, and sections. Each section has id, name, description, and fields. Each field has id, type, label, description, rationale, required, and only the type-specific maxMarks, weight, options, or children. If the request is simple, keep the result simple. If it explicitly defines subcriteria, represent them as nested group children rather than flattening them. Include question and feedback fields when requested. Score weights are relative only to the score fields in this additional rubric, total 100, and do not affect the event's existing score.\n\n"
+            + repair_instruction
+            + "\n\n"
             + json.dumps(data, ensure_ascii=False, separators=(",", ":")),
         },
     ]

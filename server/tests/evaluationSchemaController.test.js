@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createEvaluationSchemaController } = require('../controllers/evaluationSchemaController');
+const { createEvaluationSchemaController, createEvaluationSchemaValidationController } = require('../controllers/evaluationSchemaController');
 
 const eventId = '507f1f77bcf86cd799439011';
 const schema = {
@@ -35,7 +35,8 @@ function fixture({ event = { _id: eventId, name: 'Showcase', type: 'Project Comp
     findOneAndUpdate: async () => { saved = true; },
   };
   const handler = createEvaluationSchemaController({ EventModel, ConfigModel, fetchImpl, serviceUrl: 'http://ai.test', isValidId: (id) => id === eventId });
-  return { handler, wasSaved: () => saved, configLookup: () => configLookup };
+  const validationHandler = createEvaluationSchemaValidationController({ EventModel, ConfigModel, isValidId: (id) => id === eventId });
+  return { handler, validationHandler, wasSaved: () => saved, configLookup: () => configLookup };
 }
 
 test('generates an event-scoped schema using server event and existing criteria context without saving', async () => {
@@ -76,8 +77,29 @@ test('rejects invalid prompts and safely reports a stopped AI service connection
   await fx.handler({ params: { eventId }, body: { prompt: 'Design additional project evaluation fields.' } }, failed);
   assert.equal(failed.statusCode, 503);
   assert.equal(failed.body.code, 'AI_SERVICE_UNAVAILABLE');
-  assert.equal(failed.body.error, 'AI evaluation schema service is unavailable.');
+  assert.match(failed.body.error, /not running or cannot be reached/i);
   assert.doesNotMatch(failed.body.error, /ECONNREFUSED|127\.0\.0\.1|8000/);
+});
+
+test('differentiates evaluation AI timeout, configuration, and invalid request failures safely', async () => {
+  const timeout = fixture({ fetchImpl: async () => { throw Object.assign(new Error('deadline'), { name: 'TimeoutError' }); } });
+  const timedOut = responseRecorder();
+  await timeout.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, timedOut);
+  assert.equal(timedOut.statusCode, 503);
+  assert.equal(timedOut.body.code, 'AI_SERVICE_TIMEOUT');
+
+  const missingKey = fixture({ fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({ detail: { code: 'missing_api_key', reason: 'GEMINI_API_KEY is not configured' } }) }) });
+  const unconfigured = responseRecorder();
+  await missingKey.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, unconfigured);
+  assert.equal(unconfigured.statusCode, 503);
+  assert.match(unconfigured.body.error, /not configured/i);
+  assert.doesNotMatch(unconfigured.body.error, /GEMINI_API_KEY/);
+
+  const invalidRequest = fixture({ fetchImpl: async () => ({ ok: false, status: 422, json: async () => ({ detail: [{ loc: ['body'], msg: 'bad request' }] }) }) });
+  const rejected = responseRecorder();
+  await invalidRequest.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, rejected);
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(rejected.body.code, 'AI_SCHEMA_REQUEST_INVALID');
 });
 
 test('rejects invalid or duplicate AI output before returning it', async () => {
@@ -90,4 +112,23 @@ test('rejects invalid or duplicate AI output before returning it', async () => {
   const rejected = responseRecorder();
   await duplicate.handler({ params: { eventId }, body: { prompt: 'Design additional project evaluation fields.' } }, rejected);
   assert.equal(rejected.statusCode, 502);
+});
+
+test('validates organizer edits with the shared schema validator without saving configuration', async () => {
+  const fx = fixture();
+  const valid = responseRecorder();
+  await fx.validationHandler({ params: { eventId }, body: { schema: { ...schema, unknown: 'removed' } } }, valid);
+  assert.equal(valid.statusCode, 200);
+  assert.equal(valid.body.data.schema.unknown, undefined);
+  assert.deepEqual(valid.body.data.schema.sections[0].fields[0], schema.sections[0].fields[0]);
+  assert.equal(fx.wasSaved(), false);
+
+  const invalidSchema = structuredClone(schema);
+  invalidSchema.sections[0].fields.push({ ...invalidSchema.sections[0].fields[0], id: 'second_score', label: 'community impact' });
+  const invalid = responseRecorder();
+  await fx.validationHandler({ params: { eventId }, body: { schema: invalidSchema } }, invalid);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.code, 'AI_SCHEMA_INVALID');
+  assert.ok(invalid.body.details.some((error) => /duplicate field name/i.test(error)));
+  assert.equal(fx.wasSaved(), false);
 });

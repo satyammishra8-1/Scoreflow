@@ -291,6 +291,7 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         schema = main.EvaluationSchema.model_validate(SCHEMA)
         self.assertEqual(schema.sections[0].fields[1].children[0].type, "boolean")
         self.assertEqual(schema.sections[0].fields[1].children[2].options, ["Low", "Medium", "High"])
+        self.assertFalse(schema.sections[0].fields[1].required)
 
     def test_unsupported_field_type_is_rejected(self):
         invalid = {**SCHEMA, "sections": [{**SCHEMA["sections"][0], "fields": [{**SCHEMA["sections"][0]["fields"][0], "type": "javascript"}]}]}
@@ -302,6 +303,17 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
             main.EvaluationSchema.model_validate({**SCHEMA, "sections": []})
         with self.assertRaises(ValidationError):
             main.EvaluationSchema.model_validate({**SCHEMA, "script": "<script>alert(1)</script>"})
+
+    def test_duplicate_sibling_names_and_section_names_are_rejected(self):
+        duplicate_field = {**SCHEMA, "sections": [{**SCHEMA["sections"][0], "fields": [
+            SCHEMA["sections"][0]["fields"][0],
+            {**SCHEMA["sections"][0]["fields"][0], "id": "second_score", "label": "reliability"},
+        ]}]}
+        with self.assertRaises(ValidationError):
+            main.EvaluationSchema.model_validate(duplicate_field)
+        duplicate_section = {**SCHEMA, "sections": [SCHEMA["sections"][0], {**SCHEMA["sections"][0], "id": "second_section", "name": "implementation"}]}
+        with self.assertRaises(ValidationError):
+            main.EvaluationSchema.model_validate(duplicate_section)
 
     def test_score_weights_must_total_one_hundred(self):
         invalid = {**SCHEMA, "sections": [{**SCHEMA["sections"][0], "fields": [{**SCHEMA["sections"][0]["fields"][0], "weight": 80}, SCHEMA["sections"][0]["fields"][1]]}]}
@@ -326,11 +338,99 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
 
     def test_prompt_includes_event_context_duplicate_guidance_and_schema_safety(self):
         messages = build_evaluation_schema_messages(SCHEMA_REQUEST)
-        self.assertIn("avoid repeating existing criterion names", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("do not duplicate existing or sibling section/field names", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("do not default to hackathon criteria", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("subcriteria", messages[1]["content"].lower())
         self.assertIn("Innovation", messages[1]["content"])
         self.assertIn("Project Showcase", messages[1]["content"])
-        self.assertIn("not a judge", messages[0]["content"])
+        self.assertIn("not evaluating participants", messages[0]["content"])
         self.assertNotIn("JSX", messages[1]["content"])
+
+    def test_repair_prompt_has_specific_validation_guidance(self):
+        messages = build_evaluation_schema_messages(SCHEMA_REQUEST, repair_attempt=True)
+        self.assertIn("previous draft failed schema validation", messages[1]["content"])
+        self.assertIn("score weights totaling exactly 100", messages[1]["content"])
+
+    async def test_malformed_schema_gets_exactly_one_controlled_repair_attempt(self):
+        parsed = main.EvaluationSchema.model_validate(SCHEMA)
+        failure = main.ProviderResponseError("malformed_response", "Invalid output")
+        generate = AsyncMock(side_effect=[failure, (parsed, "test-model")])
+        request = main.EvaluationSchemaRequest(**SCHEMA_REQUEST)
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(main, "_generate_schema_with_gemini", new=generate):
+            schema, model = await main.generate_evaluation_schema(request)
+        self.assertEqual(schema.title, "Project Review")
+        self.assertEqual(model, "test-model")
+        self.assertEqual(generate.await_count, 2)
+        self.assertEqual(generate.await_args_list[0].kwargs["repair_attempt"], False)
+        self.assertEqual(generate.await_args_list[1].kwargs["repair_attempt"], True)
+
+    async def test_provider_connectivity_failure_does_not_trigger_repair_retry(self):
+        failure = main.ProviderResponseError("network_error", "Could not connect to provider")
+        generate = AsyncMock(side_effect=failure)
+        request = main.EvaluationSchemaRequest(**SCHEMA_REQUEST)
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(main, "_generate_schema_with_gemini", new=generate):
+            with self.assertRaises(main.ProviderResponseError):
+                await main.generate_evaluation_schema(request)
+        self.assertEqual(generate.await_count, 1)
+
+    async def test_generation_supports_varied_domains_and_simple_medium_complex_requests(self):
+        def score_field(field_id, label, weight):
+            return {"id": field_id, "type": "score", "label": label, "description": "", "rationale": "", "required": True, "maxMarks": 10, "weight": weight}
+
+        domains = ["Hackathon", "Startup Pitch", "Debate Competition", "Dance Competition", "Poster Exhibition", "Coding Competition", "Sports Performance", "Academic Presentation"]
+        domain_outputs = []
+        for index, domain in enumerate(domains):
+            output = {"title": f"{domain} review", "description": "", "sections": [{
+                "id": f"domain_{index}", "name": f"{domain} evaluation", "description": "",
+                "fields": [score_field(f"score_{index}", f"{domain} quality", 100)],
+            }]}
+            domain_outputs.append(main.EvaluationSchema.model_validate(output))
+
+        simple = main.EvaluationSchema.model_validate({"title": "Simple review", "description": "", "sections": [{
+            "id": "simple", "name": "Core dimensions", "description": "", "fields": [
+                score_field("simple_innovation", "Innovation", 34),
+                score_field("simple_technical", "Technical quality", 33),
+                score_field("simple_presentation", "Presentation", 33),
+            ],
+        }]})
+        medium = main.EvaluationSchema.model_validate({"title": "Pitch review", "description": "", "sections": [{
+            "id": "medium", "name": "Pitch dimensions", "description": "", "fields": [
+                score_field("medium_problem", "Problem", 20), score_field("medium_solution", "Solution", 20),
+                score_field("medium_innovation", "Innovation", 20), score_field("medium_business", "Business model", 20),
+                score_field("medium_presentation", "Presentation", 20),
+            ],
+        }]})
+        complex_schema = main.EvaluationSchema.model_validate({"title": "Startup pitch review", "description": "", "sections": [
+            {"id": "problem_section", "name": "Problem", "description": "", "fields": [score_field("problem", "Problem clarity", 15)]},
+            {"id": "solution_section", "name": "Solution", "description": "", "fields": [score_field("solution", "Solution quality", 15)]},
+            {"id": "innovation_section", "name": "Innovation", "description": "", "fields": [score_field("innovation", "Innovation", 15)]},
+            {"id": "business_section", "name": "Business Model", "description": "", "fields": [{"id": "business_group", "type": "group", "label": "Business Model", "description": "", "rationale": "", "required": False, "children": [score_field("revenue", "Revenue model", 10), score_field("feasibility", "Feasibility", 10)]}]},
+            {"id": "market_section", "name": "Market", "description": "", "fields": [{"id": "market_group", "type": "group", "label": "Market", "description": "", "rationale": "", "required": False, "children": [{"id": "audience", "type": "question", "label": "Target audience", "description": "", "rationale": "", "required": True}, score_field("scalability", "Scalability", 10)]}]},
+            {"id": "presentation_section", "name": "Presentation", "description": "", "fields": [score_field("presentation", "Presentation", 15)]},
+            {"id": "qa_section", "name": "Questions", "description": "", "fields": [score_field("qa_score", "Q&A", 10), {"id": "judge_question", "type": "question", "label": "Judge question", "description": "", "rationale": "", "required": True}, {"id": "final_feedback", "type": "feedback", "label": "Final qualitative feedback", "description": "", "rationale": "", "required": True}]},
+        ]})
+
+        request_base = {**SCHEMA_REQUEST, "existingCriteria": []}
+        requests = [
+            main.EvaluationSchemaRequest(**{**request_base, "prompt": "Evaluate innovation, technical quality and presentation."}),
+            main.EvaluationSchemaRequest(**{**request_base, "prompt": "Evaluate a startup pitch with problem, solution, innovation, business model and presentation."}),
+            main.EvaluationSchemaRequest(**{**request_base, "prompt": "Evaluate a startup pitch using sections for Problem, Solution, Innovation, Business Model, Market and Presentation. Business Model should contain revenue model and feasibility. Market should contain target audience and scalability. Include numeric scoring, weights, required judge questions and final qualitative feedback."}),
+        ]
+        results = [*domain_outputs, simple, medium, complex_schema]
+        generator = AsyncMock(side_effect=[(result, "schema-test") for result in results])
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(main, "_generate_schema_with_gemini", new=generator):
+            generated = []
+            for index, request in enumerate([*[
+                main.EvaluationSchemaRequest(**{**request_base, "prompt": f"Create a {domain} judge evaluation."}) for domain in domains
+            ], *requests]):
+                schema, _ = await main.generate_evaluation_schema(request)
+                generated.append(schema)
+        self.assertEqual([item.title for item in generated[:8]], [f"{domain} review" for domain in domains])
+        self.assertFalse(any(field.type == "group" for section in generated[8].sections for field in section.fields))
+        self.assertEqual(len(generated[10].sections[3].fields[0].children), 2)
+        self.assertEqual([child.label for child in generated[10].sections[3].fields[0].children], ["Revenue model", "Feasibility"])
+        self.assertEqual(generated[10].sections[4].fields[0].children[0].label, "Target audience")
+        self.assertTrue(any(field.type == "question" for section in generated[10].sections for field in section.fields))
 
     async def test_endpoint_returns_a_validated_nested_schema(self):
         parsed = main.EvaluationSchema.model_validate(SCHEMA)

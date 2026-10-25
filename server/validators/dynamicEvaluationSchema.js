@@ -48,7 +48,7 @@ function validateDynamicEvaluationSchema(value, { existingNames = [] } = {}) {
     if (type !== 'score' && (field.maxMarks != null || field.weight != null)) errors.push(path + ' cannot contain score values for this field type.');
     if (type !== 'group' && field.children != null) errors.push(path + ' cannot contain child fields for this field type.');
     if (!['single_select', 'multi_select'].includes(type) && field.options != null) errors.push(path + ' cannot contain options for this field type.');
-    const result = { id, type, label, description: fieldDescription, rationale, required: field.required === true };
+    const result = { id, type, label, description: fieldDescription, rationale, required: type !== 'group' && field.required === true };
     if (type === 'score') {
       const maxMarks = Number(field.maxMarks);
       if (!Number.isFinite(maxMarks) || maxMarks <= 0 || maxMarks > 10000) errors.push(path + ' needs maxMarks between 0 and 10000.');
@@ -89,6 +89,23 @@ function validateDynamicEvaluationSchema(value, { existingNames = [] } = {}) {
     const fields = Array.isArray(section.fields) ? section.fields.map((field, fieldIndex) => normalizeField(field, 1, path + ' field ' + (fieldIndex + 1))).filter(Boolean) : [];
     return { id, name, description: sectionDescription, fields };
   }).filter(Boolean) : [];
+  function checkSiblingNames(fields, path) {
+    const names = new Set();
+    for (const field of fields || []) {
+      if (!field) continue;
+      const key = field.label.toLocaleLowerCase();
+      if (names.has(key)) errors.push(path + ' contains duplicate field name "' + field.label + '".');
+      names.add(key);
+      if (field.type === 'group') checkSiblingNames(field.children, path + ' / ' + field.label);
+    }
+  }
+  const sectionNames = new Set();
+  for (const section of sections) {
+    const key = section.name.toLocaleLowerCase();
+    if (sectionNames.has(key)) errors.push('Schema contains duplicate section name "' + section.name + '".');
+    sectionNames.add(key);
+    checkSiblingNames(section.fields, 'Section "' + section.name + '"');
+  }
   const scoreFields = [];
   function collect(fields) {
     for (const field of fields || []) {
