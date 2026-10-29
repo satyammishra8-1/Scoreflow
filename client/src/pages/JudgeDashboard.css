@@ -1,10 +1,18 @@
 .judge-dashboard-page {
   min-height: 100vh;
   background: #f3f6fb;
+  overflow-x: clip;
+  color: #202b40;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
+
+.judge-dashboard-page *,
+.judge-dashboard-page *::before,
+.judge-dashboard-page *::after { box-sizing: border-box; }
 
 .judge-dashboard-main {
   width: min(100%, 1120px);
+  min-width: 0;
   margin: 0 auto;
   padding: 28px 28px 42px;
 }
@@ -20,16 +28,17 @@
   background: #fff;
 }
 
-.judge-dashboard-header-copy { display: grid; gap: 5px; }
-.judge-dashboard-header-copy h1 { margin: 0; color: #1b2538; font-size: 28px; }
+.judge-dashboard-header-copy { display: grid; min-width: 0; gap: 5px; }
+.judge-dashboard-header-copy h1 { margin: 0; color: #1b2538; font-size: 28px; overflow-wrap: anywhere; }
 .judge-dashboard-header-copy p:last-child { margin: 0; color: #68758b; font-size: 13px; }
-.judge-evaluation-type { display: grid; gap: 5px; color: #68758b; font-size: 12px; }
+.judge-evaluation-type { display: grid; min-width: 0; gap: 5px; color: #68758b; font-size: 12px; }
 .judge-evaluation-type strong { color: #2d3b54; font-size: 15px; }
 .judge-assigned-heading { margin: 25px 0 14px; color: #202b40; font-size: 20px; }
 
 .judge-dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
+  min-width: 0;
   gap: 16px;
 }
 
@@ -44,17 +53,22 @@
 }
 
 .judge-team-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.judge-team-header > div { min-width: 0; }
 .judge-team-number { color: #7a8497; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-.judge-team-header h3 { margin: 6px 0 0; color: #2c3a50; font-size: 19px; }
+.judge-team-header h3 { margin: 6px 0 0; color: #2c3a50; font-size: 19px; overflow-wrap: anywhere; }
 .judge-status { display: inline-flex; padding: 5px 9px; border-radius: 14px; font-size: 11px; font-weight: 700; }
 .judge-status-pending { color: #805c14; background: #fff4e2; }
 .judge-status-completed { color: #1d7a57; background: #eaf8f2; }
-.judge-project-name { margin: 0; color: #68758b; font-size: 13px; }
+.judge-project-name { margin: 0; color: #68758b; font-size: 13px; overflow-wrap: anywhere; }
 .judge-team-links { display: flex; flex-wrap: wrap; gap: 14px; }
-.judge-team-links a { color: #4169df; font-size: 13px; font-weight: 600; text-decoration: none; }
+.judge-team-links a { min-height: 44px; display: inline-flex; align-items: center; color: #4169df; font-size: 13px; font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
 .judge-team-members strong { color: #40516d; font-size: 12px; }
 .judge-team-members p { margin: 6px 0 0; color: #7a8497; font-size: 12px; }
 .judge-member-list { margin: 7px 0 0; padding-left: 18px; color: #4d596e; font-size: 13px; line-height: 1.7; }
+.judge-member-list li { padding-left: 2px; overflow-wrap: anywhere; }
+.judge-member-list a { display: block; color: #68758b; overflow-wrap: anywhere; }
+.judge-team-card > .judges-primary-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+.judge-dashboard-page a:focus-visible { outline: 3px solid #4169df; outline-offset: 2px; }
 .judge-empty-state, .judge-dashboard-empty { padding: 30px; border: 1px solid #e7ebf2; border-radius: 12px; background: #fff; color: #68758b; text-align: center; }
 .judge-dashboard-empty { display: grid; place-items: center; min-height: 240px; }
 .judge-dashboard-empty h1 { margin-top: 0; color: #1b2538; }
@@ -62,4 +76,13 @@
 @media (max-width: 700px) {
   .judge-dashboard-main { padding: 18px 16px 30px; }
   .judge-dashboard-header { align-items: flex-start; flex-direction: column; }
+  .judge-dashboard-header-copy h1 { font-size: 24px; }
+  .judge-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .judge-team-card { padding: 16px; }
+}
+
+@media (max-width: 360px) {
+  .judge-dashboard-main { padding-right: 12px; padding-left: 12px; }
+  .judge-team-header { flex-wrap: wrap; }
+  .judge-status { flex: 0 0 auto; }
 }

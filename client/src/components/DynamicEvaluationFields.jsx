@@ -17,7 +17,7 @@ function DynamicField({ field, scores, textAnswers, flags, readOnly, onScoreChan
   if (field.type === 'score') return (
     <div className="score-row dynamic-evaluation-field">
       <div className="score-row-copy"><div className="score-row-header"><strong>{field.label}</strong><span>{field.weight}% of AI rubric</span></div>{help}</div>
-      <div className="score-controls"><label><span>Score</span><input type="number" min="0" max={field.maxMarks} step="any" value={scores[key] ?? ''} disabled={readOnly} onChange={(event) => onScoreChange(key, event.target.value, field.maxMarks)} /></label><span className="score-max-text">/ {field.maxMarks}</span></div>
+      <div className="score-controls"><label><span>Score</span><input type="number" min="0" max={field.maxMarks} step="any" aria-label={`${field.label} score`} value={scores[key] ?? ''} disabled={readOnly} onChange={(event) => onScoreChange(key, event.target.value, field.maxMarks)} /></label><span className="score-max-text">/ {field.maxMarks}</span></div>
     </div>
   );
   if (field.type === 'boolean') return (

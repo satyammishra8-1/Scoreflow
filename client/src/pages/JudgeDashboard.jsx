@@ -148,7 +148,12 @@ function JudgeDashboard() {
                     <strong>Members</strong>
                     {team.members?.length ? (
                       <ul className="judge-member-list">
-                        {team.members.map((member, index) => <li key={`${teamIdValue}-${member.email || index}`}>{member.name || 'Member'}</li>)}
+                        {team.members.map((member, index) => (
+                          <li key={`${teamIdValue}-${member.email || index}`}>
+                            <span>{member.name || 'Member'}</span>
+                            {member.email && <a href={`mailto:${member.email}`}>{member.email}</a>}
+                          </li>
+                        ))}
                       </ul>
                     ) : <p>No members listed.</p>}
                   </div>

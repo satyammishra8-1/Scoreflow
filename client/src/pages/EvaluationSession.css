@@ -1549,3 +1549,260 @@
   background: #f4f6fb;
   cursor: not-allowed;
 }
+
+/* Keep the judge session usable on narrow screens, including nested rubrics. */
+.evaluation-session-page,
+.evaluation-session-page *,
+.evaluation-session-page *::before,
+.evaluation-session-page *::after {
+  box-sizing: border-box;
+}
+
+.evaluation-session-page {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.evaluation-session-main,
+.evaluation-panel,
+.evaluation-card,
+.score-grid,
+.score-row,
+.score-row-copy,
+.dynamic-evaluation-schema,
+.dynamic-evaluation-section,
+.dynamic-evaluation-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.evaluation-session-page :is(h1, h2, h3, h4, p, dd, dt, strong, span, small, a, legend) {
+  overflow-wrap: anywhere;
+}
+
+.evaluation-session-page :is(input, select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.evaluation-session-page :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid #4169df;
+  outline-offset: 2px;
+}
+
+.evaluation-session-page .attendance-option,
+.evaluation-session-page .evaluation-timer-button {
+  min-height: 44px;
+}
+
+.evaluation-session-page .score-controls input,
+.evaluation-session-page .dynamic-field-label select {
+  min-height: 44px;
+}
+
+.evaluation-session-page .feedback-card textarea {
+  width: 100%;
+  max-width: 100%;
+  min-height: 140px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .evaluation-session-page {
+    flex-direction: column;
+  }
+
+  .evaluation-session-page .event-sidebar,
+  .evaluation-session-page.sidebar-collapsed .event-sidebar {
+    position: static;
+    width: 100%;
+    min-height: 0;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+  }
+
+  .evaluation-session-page .event-brand {
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    font-size: 17px;
+  }
+
+  .evaluation-session-page .event-brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .evaluation-session-page .event-sidebar-toggle {
+    display: none;
+  }
+
+  .evaluation-session-page .event-navigation,
+  .evaluation-session-page.sidebar-collapsed .event-navigation {
+    display: flex;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .evaluation-session-page .event-navigation a,
+  .evaluation-session-page.sidebar-collapsed .event-navigation a {
+    width: auto;
+    min-height: 44px;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+
+  .evaluation-session-page .event-brand-text,
+  .evaluation-session-page .event-nav-label,
+  .evaluation-session-page.sidebar-collapsed .event-brand-text,
+  .evaluation-session-page.sidebar-collapsed .event-nav-label {
+    display: inline;
+  }
+
+  .evaluation-session-main {
+    width: 100%;
+    padding: 22px 24px 36px;
+  }
+
+  .evaluation-session-page .event-topbar {
+    position: static;
+    display: block;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+}
+
+@media (max-width: 640px) {
+  .evaluation-session-page .event-sidebar,
+  .evaluation-session-page.sidebar-collapsed .event-sidebar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+
+  .evaluation-session-page .event-navigation,
+  .evaluation-session-page.sidebar-collapsed .event-navigation {
+    width: 100%;
+  }
+
+  .evaluation-session-page .event-navigation a,
+  .evaluation-session-page.sidebar-collapsed .event-navigation a {
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .evaluation-session-main {
+    padding: 16px 12px 28px;
+  }
+
+  .evaluation-session-heading {
+    width: 100%;
+    gap: 12px;
+  }
+
+  .evaluation-session-heading h1 {
+    font-size: 22px;
+    line-height: 1.3;
+  }
+
+  .evaluation-session-timer {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .evaluation-timer-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .evaluation-session-page .evaluation-timer-button {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .evaluation-card {
+    padding: 14px;
+  }
+
+  .score-controls {
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .score-controls label {
+    width: min(150px, 65%);
+  }
+
+  .score-controls input {
+    width: 100%;
+  }
+
+  .member-attendance-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .member-info,
+  .team-member-list li {
+    min-width: 0;
+  }
+
+  .member-info small,
+  .team-member-list span,
+  .team-resource-link {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .evaluation-submit-panel,
+  .evaluation-actions {
+    width: 100%;
+  }
+
+  .evaluation-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .evaluation-actions :is(a, button) {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .dynamic-evaluation-group,
+  .dynamic-select-options {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .evaluation-session-main {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .evaluation-card {
+    padding: 12px;
+  }
+
+  .evaluation-timer-topline {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}

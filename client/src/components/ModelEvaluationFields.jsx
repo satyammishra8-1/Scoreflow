@@ -41,6 +41,7 @@ function CriteriaGrid({ criteria, scores, readOnly, onCriterionScoreChange }) {
                   max={criterion.maxMarks}
                   step="0.5"
                   value={current}
+                  aria-label={`${criterion.name} score`}
                   readOnly={readOnly}
                   onChange={(event) => onCriterionScoreChange(criterion.id, event.target.value)}
                 />
@@ -72,6 +73,7 @@ function NumberRow({ title, hint, value, max, step = '0.5', readOnly, onValueCha
             max={max}
             step={step}
             value={value === undefined ? '' : String(value)}
+            aria-label={`${title} score`}
             readOnly={readOnly}
             onChange={(event) => onValueChange(event.target.value)}
           />
