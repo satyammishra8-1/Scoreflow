@@ -305,6 +305,7 @@ function ModelEvaluationFields({
   if (model === 'custom') {
     const fields = config?.custom?.fields || [];
     if (fields.length === 0) {
+      if (config?.dynamicSchema?.sections?.length) return null;
       return <p className="judges-empty-message">No custom evaluation fields are configured for this event.</p>;
     }
     const typeLabels = {

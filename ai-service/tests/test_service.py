@@ -315,6 +315,22 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):
             main.EvaluationSchema.model_validate(duplicate_section)
 
+    def test_duplicate_field_names_across_sections_are_rejected_but_section_field_names_may_match(self):
+        first_section = SCHEMA["sections"][0]
+        duplicate = {**SCHEMA, "sections": [
+            first_section,
+            {"id": "second_section", "name": "Follow-up", "description": "", "fields": [
+                {**first_section["fields"][0], "id": "second_reliability"},
+            ]},
+        ]}
+        with self.assertRaises(ValidationError):
+            main.EvaluationSchema.model_validate(duplicate)
+
+        matching = {**SCHEMA, "sections": [{**first_section, "fields": [
+            {**first_section["fields"][0], "label": first_section["name"]},
+        ]}]}
+        main.EvaluationSchema.model_validate(matching)
+
     def test_score_weights_must_total_one_hundred(self):
         invalid = {**SCHEMA, "sections": [{**SCHEMA["sections"][0], "fields": [{**SCHEMA["sections"][0]["fields"][0], "weight": 80}, SCHEMA["sections"][0]["fields"][1]]}]}
         with self.assertRaises(ValidationError):
@@ -338,7 +354,7 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
 
     def test_prompt_includes_event_context_duplicate_guidance_and_schema_safety(self):
         messages = build_evaluation_schema_messages(SCHEMA_REQUEST)
-        self.assertIn("do not duplicate existing or sibling section/field names", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("do not duplicate existing criteria or any field name elsewhere", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
         self.assertIn("do not default to hackathon criteria", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
         self.assertIn("subcriteria", messages[1]["content"].lower())
         self.assertIn("Innovation", messages[1]["content"])

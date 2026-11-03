@@ -56,6 +56,26 @@ test('generates an event-scoped schema using server event and existing criteria 
   assert.deepEqual(res.body.data.schema, schema);
 });
 
+test('generation sends accepted AI field names but excludes section labels and full saved configuration', async () => {
+  let outbound;
+  const config = {
+    model: 'custom',
+    custom: { fields: [{ label: 'Existing manual question' }] },
+    dynamicSchema: { title: 'Accepted', sections: [{ name: 'Current section', fields: [
+      { id: 'accepted_field', type: 'feedback', label: 'Accepted AI field' },
+    ] }] },
+  };
+  const fx = fixture({ config, fetchImpl: async (_url, options) => {
+    outbound = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ evaluationSchema: schema, model: 'gemini-test', promptVersion: 'v1' }) };
+  } });
+  const res = responseRecorder();
+  await fx.handler({ params: { eventId }, body: { prompt: 'Add more structured criteria for judges.' } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(outbound.existingCriteria, ['Existing manual question', 'Accepted AI field']);
+  assert.equal(outbound.existingConfiguration, undefined);
+});
+
 test('rejects invalid event ids and unknown events before calling the AI service', async () => {
   const fx = fixture({ fetchImpl: async () => { throw new Error('should not call'); } });
   const invalid = responseRecorder();

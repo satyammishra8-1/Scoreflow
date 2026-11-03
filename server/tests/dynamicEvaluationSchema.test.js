@@ -51,7 +51,7 @@ test('rejects duplicate suggestions matching the existing event criteria', () =>
   assert.ok(checked.errors.some((error) => /duplicates existing criterion/i.test(error)));
 });
 
-test('rejects duplicate section and sibling field names at every nesting level', () => {
+test('rejects duplicate section names and duplicate field names across sections and nesting', () => {
   const sibling = structuredClone(validSchema);
   sibling.sections[0].fields.push({ ...sibling.sections[0].fields[0], id: 'second_score', label: 'safety implementation' });
   assert.ok(validateDynamicEvaluationSchema(sibling).errors.some((error) => /duplicate field name/i.test(error)));
@@ -63,6 +63,12 @@ test('rejects duplicate section and sibling field names at every nesting level',
   const sections = structuredClone(validSchema);
   sections.sections.push({ ...sections.sections[0], id: 'second_section', name: 'safety' });
   assert.ok(validateDynamicEvaluationSchema(sections).errors.some((error) => /duplicate section name/i.test(error)));
+
+  const acrossSections = structuredClone(validSchema);
+  acrossSections.sections.push({ id: 'second_section', name: 'Operations', description: '', fields: [
+    { ...acrossSections.sections[0].fields[0], id: 'second_score', label: 'Safety implementation' },
+  ] });
+  assert.ok(validateDynamicEvaluationSchema(acrossSections).errors.some((error) => /duplicate field name/i.test(error)));
 });
 
 test('validates neutral schemas for distinct event domains and simple through complex nesting', () => {
@@ -129,4 +135,40 @@ test('optional dynamic fields may be left blank', () => {
     textAnswers: { ai_risk_level: 'Low', ai_evidence: 'Observed.' },
   });
   assert.deepEqual(errors, []);
+});
+
+test('rejects malformed values supplied for optional fields and blank required scores', () => {
+  const schema = structuredClone(validSchema);
+  schema.sections[0].fields[0].required = true;
+  schema.sections[0].fields[1].children[0].required = false;
+  const errors = validateDynamicEvaluationSubmission(schema, {
+    scores: { ai_safety_score: ' ' },
+    flags: { ai_risk_yes: 'yes' },
+    textAnswers: { ai_risk_level: ['Low'], ai_evidence: 'Observed.' },
+  });
+  assert.ok(errors.some((error) => /Safety implementation is required/i.test(error)));
+  assert.ok(errors.some((error) => /valid Yes or No/i.test(error)));
+  assert.ok(errors.some((error) => /invalid option/i.test(error)));
+  const wrongScoreType = validateDynamicEvaluationSubmission(schema, {
+    scores: { ai_safety_score: true },
+  });
+  assert.ok(wrongScoreType.some((error) => /between 0 and 10/i.test(error)));
+});
+
+test('rejects duplicate multi-select answers', () => {
+  const errors = validateDynamicEvaluationSubmission(validSchema, {
+    scores: { ai_safety_score: 5 },
+    flags: { ai_risk_yes: true },
+    textAnswers: { ai_risk_level: 'Low', ai_followup: JSON.stringify(['Review', 'Review']), ai_evidence: 'Observed.' },
+  });
+  assert.ok(errors.some((error) => /invalid selection/i.test(error)));
+});
+
+test('partial drafts may omit required fields but still reject malformed values that are present', () => {
+  assert.deepEqual(validateDynamicEvaluationSubmission(validSchema, {}, { requireRequired: false }), []);
+  const errors = validateDynamicEvaluationSubmission(validSchema, {
+    flags: { ai_risk_yes: 'yes' },
+  }, { requireRequired: false });
+  assert.ok(errors.some((error) => /valid Yes or No/i.test(error)));
+  assert.ok(!errors.some((error) => /is required/i.test(error)));
 });

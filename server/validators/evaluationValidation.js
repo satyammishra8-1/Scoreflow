@@ -173,7 +173,7 @@ function validateModelConfig(model, payload = {}) {
     }
     case 'custom': {
       const fields = normalizeCustomFieldsArray(payload.custom?.fields);
-      if (fields.length === 0) {
+      if (fields.length === 0 && !payload.dynamicSchema) {
         errors.custom = 'Add at least one custom field.';
       } else if (fields.some((field) => !field.label)) {
         errors.custom = 'Every custom field needs a label.';
@@ -236,8 +236,8 @@ async function validateEvaluationSubmission(payload = {}) {
     }
   }
 
-  if (payload.status === 'COMPLETED' && evaluationConfiguration?.dynamicSchema) {
-    const schemaErrors = validateDynamicEvaluationSubmission(evaluationConfiguration.dynamicSchema, payload);
+  if (evaluationConfiguration?.dynamicSchema) {
+    const schemaErrors = validateDynamicEvaluationSubmission(evaluationConfiguration.dynamicSchema, payload, { requireRequired: payload.status === 'COMPLETED' });
     if (schemaErrors.length) errors.dynamicSchema = schemaErrors;
   }
 

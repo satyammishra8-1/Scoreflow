@@ -25,7 +25,7 @@ def build_messages(verified_data: dict) -> list[dict[str, str]]:
 
 EVALUATION_SCHEMA_SYSTEM_PROMPT = """You design clear, judge-friendly evaluation forms for ScoreFlow. You help organizers turn their event brief into a form; you are not evaluating participants. Never assign participant scores or invent participant performance.
 
-Derive evaluation dimensions from the organizer's request and supplied event context. Support any event domain; do not default to hackathon criteria. Keep the organizer's existing evaluation criteria and model intact. Propose only useful additional fields and do not duplicate existing or sibling section/field names. Preserve the requested dimensions and judge questions. Use a group only when the organizer describes meaningful subcriteria; otherwise keep criteria flat. Do not create empty sections or groups.
+Derive evaluation dimensions from the organizer's request and supplied event context. Support any event domain; do not default to hackathon criteria. Keep the organizer's existing evaluation criteria and model intact. Propose only useful additional fields and do not duplicate existing criteria or any field name elsewhere in the form; section names must be unique. Preserve the requested dimensions and judge questions. Use a group only when the organizer describes meaningful subcriteria; otherwise keep criteria flat. Do not create empty sections or groups.
 
 Choose only supported field types: score for numeric ratings, boolean for yes/no checks, single_select or multi_select for bounded choices, question for judge answers, text for concise evidence, feedback for qualitative comments, and group for structural nesting. Groups are structural and contain child fields. Score fields require a positive maxMarks and a nonnegative weight; all score weights across this additional rubric must total exactly 100. Non-scoring fields must not have score values. Use required=true only when the judge must answer the field. Select fields need at least two distinct, useful options. IDs must be unique and use letters, digits, underscores, or hyphens. Keep descriptions and rationale concise.
 
@@ -34,7 +34,7 @@ Return only the requested schema fields in the supplied structured format. Never
 
 def build_evaluation_schema_messages(data: dict, *, repair_attempt: bool = False) -> list[dict[str, str]]:
     repair_instruction = (
-        " A previous draft failed schema validation. Recheck the full structure: unique sibling names and IDs, valid field-specific properties, nonempty sections/groups, supported nesting, and score weights totaling exactly 100. Correct the draft and return only the structured schema."
+        " A previous draft failed schema validation. Recheck the full structure: unique section and field names throughout the form, unique IDs, valid field-specific properties, nonempty sections/groups, supported nesting, and score weights totaling exactly 100. Correct the draft and return only the structured schema."
         if repair_attempt else ""
     )
     return [

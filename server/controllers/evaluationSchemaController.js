@@ -17,7 +17,6 @@ function listExistingCriteria(config, { includeDynamicSchema = false } = {}) {
       }
     }
     for (const section of config?.dynamicSchema?.sections || []) {
-      if (typeof section.name === 'string' && section.name.trim()) names.push(section.name.trim());
       addFields(section.fields);
     }
   }
@@ -39,7 +38,7 @@ function createEvaluationSchemaController({ EventModel = Event, ConfigModel = Ev
       try {
         response = await fetchImpl(serviceUrl.replace(/\/$/, '') + '/evaluation-schema/generate', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ prompt, eventName: event.name, eventType: event.type, eventDescription: event.description || '', evaluationModel: config?.model || null, existingCriteria, existingConfiguration: config || {} }),
+          body: JSON.stringify({ prompt, eventName: event.name, eventType: event.type, eventDescription: event.description || '', evaluationModel: config?.model || null, existingCriteria }),
           signal: AbortSignal.timeout(210000),
         });
       } catch (error) {

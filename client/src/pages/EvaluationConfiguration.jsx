@@ -146,7 +146,7 @@ function getConfigurationError(model, config, liveCriteriaEnabled, criteriaCreat
   }
   if (model === 'custom') {
     const fields = config.custom.custom.fields;
-    if (fields.length === 0) return 'Add at least one evaluation field.';
+    if (fields.length === 0 && !config.dynamicSchema) return 'Add at least one evaluation field.';
     if (fields.some((field) => !field.label?.trim())) return 'Every custom field needs a label.';
   }
   return '';
@@ -521,6 +521,13 @@ function EvaluationConfiguration() {
               eventId={eventId}
               event={event}
               model={selectedModel}
+              retainedCriteria={selectedModel === 'criteria-based'
+                ? criteriaBased.map((criterion) => criterion.name).filter(Boolean)
+                : selectedModel === 'live-demo'
+                  ? liveCriteria.map((criterion) => criterion.name).filter(Boolean)
+                  : selectedModel === 'custom'
+                    ? configuration.custom.custom.fields.map((field) => field.label).filter(Boolean)
+                    : []}
               existingCriteria={[
                 ...criteriaBased.map((criterion) => criterion.name),
                 ...liveCriteria.map((criterion) => criterion.name),

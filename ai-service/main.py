@@ -138,7 +138,7 @@ class EvaluationSchemaField(StrictModel):
         elif self.type in ("single_select", "multi_select"):
             if self.options is None or len(self.options) < 2:
                 raise ValueError("Select fields need at least two options")
-            if len({option.casefold() for option in self.options}) != len(self.options):
+            if len({option.lower() for option in self.options}) != len(self.options):
                 raise ValueError("Select options must be unique")
             if self.maxMarks is not None or self.weight is not None or self.children is not None:
                 raise ValueError("Select fields cannot have score values or children")
@@ -169,6 +169,7 @@ class EvaluationSchema(StrictModel):
     def validate_structure(self):
         ids: set[str] = set()
         section_names: set[str] = set()
+        schema_names: set[str] = set()
         score_weights: list[float] = []
         count = 0
 
@@ -187,25 +188,24 @@ class EvaluationSchema(StrictModel):
             for child in field.children or []:
                 visit(child, depth + 1)
 
-        def validate_sibling_names(fields: list[EvaluationSchemaField], path: str):
-            names: set[str] = set()
+        def validate_field_names(fields: list[EvaluationSchemaField], path: str):
             for field in fields:
-                name = field.label.casefold()
-                if name in names:
+                name = field.label.lower()
+                if name in schema_names:
                     raise ValueError(f"Duplicate field name at {path}")
-                names.add(name)
+                schema_names.add(name)
                 if field.type == "group":
-                    validate_sibling_names(field.children or [], f"{path} / {field.label}")
+                    validate_field_names(field.children or [], f"{path} / {field.label}")
 
         for section in self.sections:
             if section.id in ids:
                 raise ValueError("Schema section and field ids must be unique")
             ids.add(section.id)
-            section_name = section.name.casefold()
+            section_name = section.name.lower()
             if section_name in section_names:
                 raise ValueError("Schema section names must be unique")
             section_names.add(section_name)
-            validate_sibling_names(section.fields, section.name)
+            validate_field_names(section.fields, section.name)
             for field in section.fields:
                 visit(field, 1)
         if score_weights and abs(sum(score_weights) - 100) > 0.01:
@@ -494,7 +494,7 @@ async def _generate_schema_with_gemini(data: EvaluationSchemaRequest, *, repair_
 
 
 def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationSchemaRequest) -> EvaluationSchema:
-    existing = {item.strip().casefold() for item in data.existingCriteria}
+    existing = {item.strip().lower() for item in data.existingCriteria}
     if not existing:
         return schema
     payload = schema.model_dump()
@@ -502,7 +502,7 @@ def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationS
     def remove_duplicates(fields):
         kept = []
         for field in fields:
-            if field["label"].strip().casefold() in existing:
+            if field["label"].strip().lower() in existing:
                 continue
             if field["type"] == "group":
                 field["children"] = remove_duplicates(field.get("children") or [])
@@ -515,7 +515,7 @@ def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationS
         section["fields"] = remove_duplicates(section["fields"])
     payload["sections"] = [
         section for section in payload["sections"]
-        if section["fields"] and section["name"].strip().casefold() not in existing
+        if section["fields"]
     ]
     score_fields = []
 

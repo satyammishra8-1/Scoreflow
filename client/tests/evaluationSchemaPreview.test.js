@@ -42,3 +42,16 @@ test('preview model preserves nested criteria and supported non-scoring field ki
   assert.equal(group.children[1].kind, 'Feedback');
   assert.equal(choices.kind, 'Select all that apply');
 });
+
+test('preview exposes descriptions, rationale and options for every supported judge field type', () => {
+  const types = ['score', 'boolean', 'text', 'question', 'feedback', 'single_select', 'multi_select'];
+  const preview = buildEvaluationSchemaPreview({ title: 'All fields', sections: [{ id: 'all_fields', name: 'Review', fields: types.map((type, index) => ({
+    id: `field_${index}`, type, label: `Field ${index}`, description: `Description ${index}`, rationale: `Reason ${index}`, required: true,
+    ...(type === 'score' ? { maxMarks: 10, weight: 100 } : {}),
+    ...(type === 'single_select' || type === 'multi_select' ? { options: ['A', 'B'] } : {}),
+  })) }] });
+  assert.deepEqual(preview.sections[0].fields.map((field) => field.type), types);
+  assert.equal(preview.sections[0].fields[2].description, 'Description 2');
+  assert.equal(preview.sections[0].fields[2].rationale, 'Reason 2');
+  assert.deepEqual(preview.sections[0].fields[5].options, ['A', 'B']);
+});

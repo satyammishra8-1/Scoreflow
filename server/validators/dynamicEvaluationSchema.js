@@ -26,6 +26,7 @@ function validateDynamicEvaluationSchema(value, { existingNames = [] } = {}) {
   }
   const ids = new Set();
   const existing = new Set(existingNames.map((name) => String(name || '').trim().toLocaleLowerCase()).filter(Boolean));
+  const schemaNames = new Set();
   let fieldCount = 0;
   function normalizeField(field, depth, path) {
     fieldCount += 1;
@@ -69,7 +70,12 @@ function validateDynamicEvaluationSchema(value, { existingNames = [] } = {}) {
       if (!Array.isArray(field.children) || field.children.length === 0) errors.push(path + ' groups need at least one child field.');
       result.children = Array.isArray(field.children) ? field.children.map((child, index) => normalizeField(child, depth + 1, path + ' child ' + (index + 1))).filter(Boolean) : [];
     }
-    if (label && existing.has(label.toLocaleLowerCase())) errors.push('Suggestion duplicates existing criterion "' + label + '".');
+    if (label) {
+      const key = label.toLocaleLowerCase();
+      if (existing.has(key)) errors.push('Suggestion duplicates existing criterion "' + label + '".');
+      if (schemaNames.has(key)) errors.push('Schema contains duplicate field name "' + label + '".');
+      schemaNames.add(key);
+    }
     return result;
   }
   const sections = Array.isArray(value.sections) ? value.sections.slice(0, MAX_SECTIONS).map((section, index) => {
@@ -83,28 +89,16 @@ function validateDynamicEvaluationSchema(value, { existingNames = [] } = {}) {
     if (id && ids.has(id)) errors.push('Duplicate field id: ' + id + '.');
     if (id) ids.add(id);
     const name = boundedText(section.name, path + ' name', 150, errors, { required: true });
-    if (name && existing.has(name.toLocaleLowerCase())) errors.push('Suggestion duplicates existing criterion "' + name + '".');
     const sectionDescription = boundedText(section.description || '', path + ' description', 1000, errors);
     if (!Array.isArray(section.fields) || section.fields.length === 0) errors.push(path + ' needs at least one field.');
     const fields = Array.isArray(section.fields) ? section.fields.map((field, fieldIndex) => normalizeField(field, 1, path + ' field ' + (fieldIndex + 1))).filter(Boolean) : [];
     return { id, name, description: sectionDescription, fields };
   }).filter(Boolean) : [];
-  function checkSiblingNames(fields, path) {
-    const names = new Set();
-    for (const field of fields || []) {
-      if (!field) continue;
-      const key = field.label.toLocaleLowerCase();
-      if (names.has(key)) errors.push(path + ' contains duplicate field name "' + field.label + '".');
-      names.add(key);
-      if (field.type === 'group') checkSiblingNames(field.children, path + ' / ' + field.label);
-    }
-  }
   const sectionNames = new Set();
   for (const section of sections) {
     const key = section.name.toLocaleLowerCase();
     if (sectionNames.has(key)) errors.push('Schema contains duplicate section name "' + section.name + '".');
     sectionNames.add(key);
-    checkSiblingNames(section.fields, 'Section "' + section.name + '"');
   }
   const scoreFields = [];
   function collect(fields) {
@@ -134,7 +128,7 @@ function listDynamicScoreFields(schema) {
   return fields;
 }
 
-function validateDynamicEvaluationSubmission(schema, answers = {}) {
+function validateDynamicEvaluationSubmission(schema, answers = {}, { requireRequired = true } = {}) {
   const errors = [];
   const scores = answers.scores && typeof answers.scores === 'object' ? answers.scores : {};
   const textAnswers = answers.textAnswers && typeof answers.textAnswers === 'object' ? answers.textAnswers : {};
@@ -147,22 +141,27 @@ function validateDynamicEvaluationSubmission(schema, answers = {}) {
       const hasFlag = Object.prototype.hasOwnProperty.call(flags, key);
       if (field.type === 'group') { visit(field.children); continue; }
       if (field.type === 'score') {
-        if (!hasScore && field.required) errors.push(field.label + ' is required.');
-        if (hasScore && (!Number.isFinite(Number(scores[key])) || Number(scores[key]) < 0 || Number(scores[key]) > field.maxMarks)) errors.push(field.label + ' must be between 0 and ' + field.maxMarks + '.');
+        const rawScore = scores[key];
+        const emptyScore = rawScore == null || (typeof rawScore === 'string' && !rawScore.trim());
+        const validScoreType = typeof rawScore === 'number' || typeof rawScore === 'string';
+        const score = validScoreType && !emptyScore ? Number(rawScore) : Number.NaN;
+        if ((!hasScore || emptyScore) && requireRequired && field.required) errors.push(field.label + ' is required.');
+        if (hasScore && (!Number.isFinite(score) || score < 0 || score > field.maxMarks)) errors.push(field.label + ' must be between 0 and ' + field.maxMarks + '.');
       } else if (field.type === 'boolean') {
-        if (field.required && (!hasFlag || typeof flags[key] !== 'boolean')) errors.push(field.label + ' requires a Yes or No answer.');
+        if (requireRequired && field.required && (!hasFlag || typeof flags[key] !== 'boolean')) errors.push(field.label + ' requires a Yes or No answer.');
+        else if (hasFlag && typeof flags[key] !== 'boolean') errors.push(field.label + ' requires a valid Yes or No answer.');
       } else if (field.type === 'single_select') {
-        if (field.required && (!hasText || !String(textAnswers[key]).trim())) errors.push(field.label + ' is required.');
-        if (hasText && String(textAnswers[key]).trim() && !field.options.includes(String(textAnswers[key]))) errors.push(field.label + ' has an invalid option.');
+        if (requireRequired && field.required && (!hasText || typeof textAnswers[key] !== 'string' || !textAnswers[key].trim())) errors.push(field.label + ' is required.');
+        if (hasText && (typeof textAnswers[key] !== 'string' || (textAnswers[key].trim() && !field.options.includes(textAnswers[key].trim())))) errors.push(field.label + ' has an invalid option.');
       } else if (field.type === 'multi_select') {
         let selected = [];
         if (hasText) {
-          try { selected = JSON.parse(textAnswers[key]); } catch { errors.push(field.label + ' has an invalid selection.'); }
+          try { selected = typeof textAnswers[key] === 'string' ? JSON.parse(textAnswers[key]) : null; } catch { errors.push(field.label + ' has an invalid selection.'); }
         }
-        if (!Array.isArray(selected) || selected.some((option) => !field.options.includes(option))) errors.push(field.label + ' has an invalid selection.');
-        if (field.required && (!Array.isArray(selected) || selected.length === 0)) errors.push(field.label + ' requires at least one selection.');
+        if (!Array.isArray(selected) || selected.some((option) => typeof option !== 'string' || !field.options.includes(option)) || new Set(selected).size !== selected.length) errors.push(field.label + ' has an invalid selection.');
+        if (requireRequired && field.required && (!Array.isArray(selected) || selected.length === 0)) errors.push(field.label + ' requires at least one selection.');
       } else {
-        if (field.required && (!hasText || typeof textAnswers[key] !== 'string' || !textAnswers[key].trim())) errors.push(field.label + ' is required.');
+        if (requireRequired && field.required && (!hasText || typeof textAnswers[key] !== 'string' || !textAnswers[key].trim())) errors.push(field.label + ' is required.');
         if (hasText && (typeof textAnswers[key] !== 'string' || textAnswers[key].length > 4000)) errors.push(field.label + ' must be text under 4000 characters.');
       }
     }
