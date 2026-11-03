@@ -125,7 +125,7 @@ exports.updateEvent = async (req, res) => {
     }
 
     const event = await Event.findByIdAndUpdate(eventId, normalized, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     }).lean();
     if (!event) {

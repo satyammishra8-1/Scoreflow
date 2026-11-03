@@ -25,7 +25,7 @@ async function issueJudgeInvitation(judge, event, emailDraft) {
       },
       $unset: { invitationAcceptedAt: 1 },
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
   if (!updatedJudge) return { sent: false, message: 'This judge can no longer receive an invitation.' };
   return sendJudgeInvitation({ judge: updatedJudge, event, token, emailDraft });

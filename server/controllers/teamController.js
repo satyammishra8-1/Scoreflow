@@ -184,7 +184,7 @@ exports.updateTeam = async (req, res) => {
     }
 
     const team = await Team.findOneAndUpdate({ _id: teamId, eventId }, normalized, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     }).lean();
     if (!team) {

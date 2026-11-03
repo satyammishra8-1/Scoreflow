@@ -121,7 +121,7 @@ function createResultReportEmailController({
         await DeliveryModel.findOneAndUpdate(
           { _id: active._id, status: 'Sending' },
           { $set: { status: 'Failed', completedAt: new Date(), members: active.members || [] } },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         ).lean();
       } else {
         return { success: true, teamId: String(teamId), status: 'Sending', data: deliveryData(active), replayed: true };
@@ -180,7 +180,7 @@ function createResultReportEmailController({
     const saved = await DeliveryModel.findOneAndUpdate(
       { _id: delivery._id },
       { $set: { status, members: results, completedAt } },
-      { new: true, runValidators: true },
+      { returnDocument: 'after', runValidators: true },
     ).lean();
     return { success: true, teamId: String(teamId), status, data: deliveryData(saved || { ...delivery, status, members: results, completedAt }) };
   }

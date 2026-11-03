@@ -151,7 +151,7 @@ exports.addJudgeTeam = async (req, res) => {
     if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
     const team = await Team.findOne({ _id: teamId, eventId: judge.eventId }).select('_id').lean();
     if (!team) return res.status(400).json({ success: false, error: 'The team does not belong to this judge\'s event.' });
-    const updated = await Judge.findByIdAndUpdate(judgeId, { $addToSet: { assignedTeamIds: teamId }, $set: { status: 'Active' } }, { new: true, runValidators: true }).lean();
+    const updated = await Judge.findByIdAndUpdate(judgeId, { $addToSet: { assignedTeamIds: teamId }, $set: { status: 'Active' } }, { returnDocument: 'after', runValidators: true }).lean();
     return res.status(200).json({ success: true, data: toJudgeResponse(updated) });
   } catch (error) {
     console.error('Failed to assign team:', error);
@@ -168,7 +168,7 @@ exports.removeJudgeTeam = async (req, res) => {
     if (!isValidObjectId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     const team = await Team.findOne({ _id: teamId, eventId }).select('_id').lean();
     if (!team) return res.status(404).json({ success: false, error: 'Team not found for this event.' });
-    const judge = await Judge.findOneAndUpdate({ _id: judgeId, eventId }, { $pull: { assignedTeamIds: teamId } }, { new: true }).lean();
+    const judge = await Judge.findOneAndUpdate({ _id: judgeId, eventId }, { $pull: { assignedTeamIds: teamId } }, { returnDocument: 'after' }).lean();
     if (!judge) return res.status(404).json({ success: false, error: 'Judge not found.' });
     return res.status(200).json({ success: true, data: toJudgeResponse(judge) });
   } catch (error) {
@@ -266,7 +266,7 @@ exports.updateJudge = async (req, res) => {
       update.assignedTeamIds = normalized.assignedTeamIds;
     }
     const judge = await Judge.findByIdAndUpdate(judgeId, update, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     }).lean();
     let invitation;
@@ -371,7 +371,7 @@ exports.acceptJudgeInvitation = async (req, res) => {
         $set: { invitationStatus: 'accepted', invitationAcceptedAt: now },
         $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 },
       },
-      { new: true, runValidators: true },
+      { returnDocument: 'after', runValidators: true },
     ).lean();
     if (!accepted) {
       return res.status(409).json({ success: false, error: 'This invitation link is no longer valid. Please ask the organizer for a new invitation.' });

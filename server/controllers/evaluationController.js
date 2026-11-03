@@ -210,7 +210,7 @@ exports.createOrUpdateEvaluationConfiguration = async (req, res) => {
       { eventId },
       normalized,
       {
-        new: true,
+        returnDocument: 'after',
         upsert: true,
         setDefaultsOnInsert: true,
       },
@@ -308,7 +308,7 @@ exports.createEvaluationConfig = async (req, res) => {
       { eventId: normalizedEventId },
       normalized,
       {
-        new: true,
+        returnDocument: 'after',
         upsert: true,
         setDefaultsOnInsert: true,
       },
@@ -390,7 +390,7 @@ exports.updateEvaluationConfig = async (req, res) => {
     const updated = await EvaluationConfiguration.findOneAndUpdate(
       { eventId: normalizedEventId },
       normalized,
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     return res.status(200).json({
@@ -609,7 +609,7 @@ exports.createEvaluation = async (req, res) => {
       },
       normalized,
       {
-        new: true,
+        returnDocument: 'after',
         upsert: true,
         setDefaultsOnInsert: true,
       },

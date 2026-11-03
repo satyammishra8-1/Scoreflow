@@ -283,7 +283,7 @@ function createResultReportController({
       const saved = await ReportModel.findOneAndUpdate(
         { event: loaded.event._id, team: loaded.team._id },
         { $set: { report: payload.report, model: payload.model, promptVersion: payload.promptVersion || PROMPT_VERSION, evidenceHash: evidenceFingerprint(loaded.verifiedResult), generatedAt: new Date() } },
-        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+        { returnDocument: 'after', upsert: true, runValidators: true, setDefaultsOnInsert: true },
       );
       return res.status(200).json({ success: true, data: { ...toReportResponse(saved), isCurrent: true } });
     } catch (error) {
