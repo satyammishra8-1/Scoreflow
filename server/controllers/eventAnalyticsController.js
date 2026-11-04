@@ -46,10 +46,10 @@ function createEventAnalyticsController({
         ReportModel.countDocuments({ event: event._id }),
         DeliveryModel.aggregate([
           { $match: { event: event._id } }, { $unwind: '$members' }, { $match: { 'members.status': 'Sent' } },
-          { $count: 'delivered' },
+          { $count: 'sent' },
         ]),
         AnnouncementModel.aggregate([
-          { $match: { eventId: event._id } }, { $group: { _id: null, delivered: { $sum: { $ifNull: ['$sentCount', 0] } } } },
+          { $match: { eventId: event._id } }, { $group: { _id: null, sent: { $sum: { $ifNull: ['$sentCount', 0] } } } },
         ]),
       ]);
 
@@ -64,7 +64,7 @@ function createEventAnalyticsController({
         evaluationProgressPercent: totalAssignments ? Math.round((completedEvaluations / totalAssignments) * 100) : 0,
         completedJudges, pendingJudges, judgesWithAssignments: evaluations.judgesWithAssignments || 0,
         judgeProgressPercent: evaluations.judgesWithAssignments ? Math.round((completedJudges / evaluations.judgesWithAssignments) * 100) : 0,
-        reportsGenerated, emailsDelivered: (reportEmailTotals[0]?.delivered || 0) + (announcementEmailTotals[0]?.delivered || 0),
+        reportsGenerated, emailsSent: (reportEmailTotals[0]?.sent || 0) + (announcementEmailTotals[0]?.sent || 0),
       } });
     } catch (error) {
       console.error('Failed to retrieve event analytics:', error.message);

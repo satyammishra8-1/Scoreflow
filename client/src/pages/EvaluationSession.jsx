@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
-import axios from 'axios';
+import { api as API } from '../auth/api';
+import { useAuth } from '../auth/useAuth';
 
 import {
 
@@ -32,14 +33,6 @@ import ModelEvaluationFields from '../components/ModelEvaluationFields';
 import DynamicEvaluationFields from '../components/DynamicEvaluationFields';
 
 import './EvaluationSession.css';
-
-const API = axios.create({
-
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-
-});
-
-
 
 function toUiJudge(apiJudge) {
 
@@ -115,26 +108,9 @@ function getLegacyMemberAttendanceKey(member) {
 
 function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
-  const [searchParams] = useSearchParams();
-
-  const isAdminMode = searchParams.get('mode') === 'admin';
+  const { session: authSession, signOut } = useAuth();
+  const isAdminMode = authSession?.role === 'organizer';
   const [editingCompleted, setEditingCompleted] = useState(false);
-
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-
-    try {
-
-      const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
-
-      return stored === 'true';
-
-    } catch {
-
-      return false;
-
-    }
-
-  });
 
   const [teams, setTeams] = useState([]);
   const [judges, setJudges] = useState([]);
@@ -241,11 +217,13 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     async function loadJudges() {
       try {
         const [judgeResponse, teamResponse] = await Promise.all([
-          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+          API.get(isAdminMode ? `/events/${encodeURIComponent(eventId)}/judges` : `/auth/judge/events/${encodeURIComponent(eventId)}`),
           API.get(`/events/${encodeURIComponent(eventId)}/teams`),
         ]);
         if (!cancelled) {
-          const list = Array.isArray(judgeResponse.data?.data) ? judgeResponse.data.data : [];
+          const list = isAdminMode
+            ? (Array.isArray(judgeResponse.data?.data) ? judgeResponse.data.data : [])
+            : [judgeResponse.data?.data].filter(Boolean);
           setJudges(list.map(toUiJudge).filter((judge) => judge && String(judge.eventId) === String(eventId)));
           const eventTeams = Array.isArray(teamResponse.data?.data) ? teamResponse.data.data : [];
           setTeams(eventTeams
@@ -278,7 +256,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, isAdminMode]);
 
 
   useEffect(() => {
@@ -370,20 +348,6 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
   }, [eventId, judgeId, teamId]);
 
 
-
-  useEffect(() => {
-
-    try {
-
-      window.localStorage.setItem('scoreflow.sidebar.collapsed', String(sidebarCollapsed));
-
-    } catch {
-
-      // storage unavailable; ignore silently
-
-    }
-
-  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
@@ -905,7 +869,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <p>{judgesError}</p>
 
-          <Link to={`/organizer/events/${eventId}/judges`} className="judges-primary-button">Back to Judges</Link>
+          <Link to={isAdminMode ? `/organizer/events/${eventId}/judges` : `/judge/${eventId}/${judgeId}`} className="judges-primary-button">{isAdminMode ? 'Back to Judges' : 'Back to Judge Dashboard'}</Link>
 
         </div>
 
@@ -929,7 +893,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <p>{evaluationAccessError || 'This team is not assigned to this judge for this event.'}</p>
 
-          <Link to={`/organizer/events/${eventId}/judges`} className="judges-primary-button">Back to Judges</Link>
+          <Link to={isAdminMode ? `/organizer/events/${eventId}/judges` : `/judge/${eventId}/${judgeId}`} className="judges-primary-button">{isAdminMode ? 'Back to Judges' : 'Back to Judge Dashboard'}</Link>
 
         </div>
 
@@ -943,49 +907,14 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   return (
 
-    <div className={`evaluation-session-page ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-
-      <aside className={`event-sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-
-        <Link to="/organizer/dashboard" className="event-brand" aria-label="ScoreFlow home">
-
-          <span className="event-brand-mark">S</span>
-
-          <span className="event-brand-text">ScoreFlow</span>
-
-        </Link>
-
-        <button
-
-          type="button"
-
-          className="event-sidebar-toggle"
-
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-
-          onClick={() => setSidebarCollapsed((current) => !current)}
-
-        >
-
-          {sidebarCollapsed ? '⟩' : '⟨'}
-
-        </button>
-
-        <nav className="event-navigation" aria-label="Judge navigation">
-
-          <Link to={`/judge/${eventId}/${judgeId}`}><span aria-hidden="true">♙</span><span className="event-nav-label">Judge Dashboard</span></Link>
-
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Judges</span></Link>
-
-          <Link to={`/organizer/events/${eventId}/evaluation`}><span aria-hidden="true">☷</span><span className="event-nav-label">Criteria</span></Link>
-
-        </nav>
-
-      </aside>
-
-
-
+    <div className="evaluation-session-page">
       <main className="evaluation-session-main">
+        <nav className="evaluation-session-nav" aria-label="Evaluation session navigation">
+          <Link to="/organizer/dashboard" className="evaluation-session-brand"><span className="dashboard-brand-mark">S</span>ScoreFlow</Link>
+          {isAdminMode ? <Link to={`/organizer/events/${eventId}/judges`} className="evaluation-session-return">← Return to Judges</Link>
+            : <Link to={`/judge/${eventId}/${judgeId}`} className="evaluation-session-return">← Judge Dashboard</Link>}
+          <button type="button" className="evaluation-session-logout" onClick={signOut}>Sign out</button>
+        </nav>
 
         <header className="event-topbar">
 

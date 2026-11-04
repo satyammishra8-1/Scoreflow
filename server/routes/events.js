@@ -7,11 +7,12 @@ const {
   deleteEvent,
 } = require('../controllers/eventController');
 const { getEventAnalytics } = require('../controllers/eventAnalyticsController');
+const { authenticate, requireOrganizer, requireEventAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.route('/events').post(createEvent).get(listEvents);
-router.get('/events/:eventId/analytics', getEventAnalytics);
-router.route('/events/:eventId').get(getEvent).put(updateEvent).delete(deleteEvent);
+router.route('/events').post(...requireOrganizer, createEvent).get(...requireOrganizer, listEvents);
+router.get('/events/:eventId/analytics', ...requireOrganizer, getEventAnalytics);
+router.route('/events/:eventId').get(authenticate, requireEventAccess, getEvent).put(...requireOrganizer, updateEvent).delete(...requireOrganizer, deleteEvent);
 
 module.exports = router;

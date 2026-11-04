@@ -1,12 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import { buildEventResults } from '../data/resultsUtils';
 import { isDeliveryCurrentForReport, reportIsQualitative, RESULT_REPORT_SECTION_TITLES as titles } from '../data/resultReportPresentation';
 import './OrganizerResultReports.css';
 
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 const idOf = (value) => String(value?.teamId || value?._id || value?.id || '');
 const hasValidEmail = (team) => (team?.members || []).some((member) => {
   const email = String(member?.email || '').trim();

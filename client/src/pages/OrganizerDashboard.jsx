@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-});
 
 function eventIdOf(event) {
   const id = event?.eventId ?? event?._id;

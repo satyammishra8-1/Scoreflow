@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
+import { useAuth } from '../auth/useAuth';
 import './JudgeInvitation.css';
-
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 
 function JudgeInvitation() {
   const { token = '' } = useParams();
   const navigate = useNavigate();
+  const { session: authSession } = useAuth();
   const [invitation, setInvitation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -34,11 +35,13 @@ function JudgeInvitation() {
     setAccepting(true);
     setError('');
     try {
-      const response = await API.post('/judge-invitations/accept', { token });
+      const response = await API.post('/judge-invitations/accept', { token, password });
       const acceptedInvite = response.data?.data;
       if (!acceptedInvite?.eventId || !acceptedInvite?.judgeId) throw new Error('The invitation was accepted, but the judge dashboard could not be identified.');
       setAccepted(true);
-      window.setTimeout(() => navigate(`/judge/${encodeURIComponent(acceptedInvite.eventId)}/${encodeURIComponent(acceptedInvite.judgeId)}`, { replace: true }), 700);
+      window.setTimeout(() => navigate(authSession?.role === 'judge' && authSession.eventId === acceptedInvite.eventId
+        ? `/judge/${encodeURIComponent(acceptedInvite.eventId)}/${encodeURIComponent(acceptedInvite.judgeId)}`
+        : `/judge/login?eventId=${encodeURIComponent(acceptedInvite.eventId)}`, { replace: true }), 700);
     } catch (requestError) {
       setError(requestError.response?.status === 410
         ? 'This invitation has expired. Please ask the organizer to resend the invitation.'
@@ -62,9 +65,10 @@ function JudgeInvitation() {
                 <div><dt>Invitation status</dt><dd>{accepted ? 'Accepted' : 'Pending'}</dd></div>
               </dl>
               {accepted ? <p className="judge-invitation-success" role="status">Invitation accepted. Opening your Judge Dashboard...</p>
-                : <><p className="judge-invitation-copy">Accept this invitation to verify your email address and access your event's Judge Dashboard.</p>
+                : <><p className="judge-invitation-copy">Create your judge password to accept this invitation and access your event's Judge Dashboard.</p>
                   {error && <p className="judge-invitation-error" role="alert">{error}</p>}
-                  <button className="judge-invitation-button" type="button" onClick={acceptInvitation} disabled={accepting}>{accepting ? 'Accepting...' : 'Accept Invitation'}</button>
+                  <label className="judge-invitation-password">Password<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /></label>
+                  <button className="judge-invitation-button" type="button" onClick={acceptInvitation} disabled={accepting || password.length < 12}>{accepting ? 'Accepting...' : 'Accept Invitation'}</button>
                 </>}
             </>}
       </section>

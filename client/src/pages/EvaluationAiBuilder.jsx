@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import './EvaluationAiBuilder.css';
 import { buildEvaluationSchemaPreview } from '../data/evaluationSchemaPreview';
 import { mergeEvaluationSchemas } from '../data/evaluationSchemaMerge';
 
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 const FIELD_TYPES = ['score', 'boolean', 'text', 'question', 'feedback', 'single_select', 'multi_select', 'group'];
 const idFor = () => `field_${globalThis.crypto?.randomUUID?.().replaceAll('-', '') || Date.now()}`;
 

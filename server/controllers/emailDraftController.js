@@ -41,7 +41,7 @@ function createEmailDraftController({
       try {
         response = await fetchImpl(`${serviceUrl.replace(/\/$/, '')}/emails/${emailType}/generate`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'X-ScoreFlow-Service-Token': process.env.AI_SERVICE_SHARED_SECRET || '' },
           body: JSON.stringify(payload),
           signal: AbortSignal.timeout(100000),
         });

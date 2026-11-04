@@ -21,6 +21,8 @@ const judgeSchema = new mongoose.Schema(
       lowercase: true,
       maxlength: [254, 'Judge email must be at most 254 characters.'],
     },
+    passwordHash: { type: String, select: false },
+    tokenVersion: { type: Number, default: 0 },
     assignedTeamIds: {
       type: [mongoose.Schema.Types.ObjectId],
       ref: 'Team',

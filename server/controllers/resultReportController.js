@@ -235,7 +235,7 @@ function createResultReportController({
       try {
         serviceResponse = await fetchImpl(`${serviceUrl.replace(/\/$/, '')}/reports/generate`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'X-ScoreFlow-Service-Token': process.env.AI_SERVICE_SHARED_SECRET || '' },
           body: JSON.stringify(loaded.verifiedResult),
           signal: AbortSignal.timeout(120000),
         });

@@ -1,10 +1,12 @@
 import os
 import logging
 import re
+import hmac
 from typing import Annotated, Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 from google import genai
 from google.genai import types
@@ -626,6 +628,18 @@ async def generate_judge_invitation_email_draft(data: EmailDraftRequest) -> tupl
 
 
 app = FastAPI(title="ScoreFlow AI Result Reports", version="1.0.0")
+
+
+@app.middleware("http")
+async def require_node_service_auth(request: Request, call_next):
+    if request.url.path != "/health":
+        configured = os.getenv("AI_SERVICE_SHARED_SECRET", "").strip()
+        supplied = request.headers.get("x-scoreflow-service-token", "")
+        if not configured:
+            return JSONResponse(status_code=503, content={"detail": "AI service authentication is not configured"})
+        if not hmac.compare_digest(supplied.encode(), configured.encode()):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized service request"})
+    return await call_next(request)
 
 
 @app.get("/health")

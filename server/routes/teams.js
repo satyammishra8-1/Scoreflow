@@ -6,11 +6,12 @@ const {
   updateTeam,
   deleteTeam,
 } = require('../controllers/teamController');
+const { authenticate, requireEventAccess, requireAssignedTeam, requireOrganizer } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.route('/teams').post(createTeam);
-router.route('/events/:eventId/teams').get(listTeamsByEvent);
-router.route('/teams/:teamId').get(getTeam).put(updateTeam).delete(deleteTeam);
+router.route('/teams').post(...requireOrganizer, createTeam);
+router.route('/events/:eventId/teams').get(authenticate, requireEventAccess, listTeamsByEvent);
+router.route('/teams/:teamId').get(authenticate, requireAssignedTeam, getTeam).put(...requireOrganizer, updateTeam).delete(...requireOrganizer, deleteTeam);
 
 module.exports = router;

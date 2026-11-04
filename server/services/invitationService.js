@@ -16,7 +16,10 @@ function createInvitationCredentials(now = Date.now()) {
 async function issueJudgeInvitation(judge, event, emailDraft) {
   const { token, tokenHash, expiresAt } = createInvitationCredentials();
   const updatedJudge = await Judge.findOneAndUpdate(
-    { _id: judge._id, eventId: judge.eventId, invitationStatus: { $ne: 'accepted' } },
+    { _id: judge._id, eventId: judge.eventId, $or: [
+      { invitationStatus: { $ne: 'accepted' } },
+      { invitationStatus: 'accepted', passwordHash: { $exists: false } },
+    ] },
     {
       $set: {
         invitationStatus: 'pending',

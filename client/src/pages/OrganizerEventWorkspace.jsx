@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
 import './EventManagement.css';
 import './OrganizerEventWorkspace.css';
-
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 
 function OrganizerEventWorkspace() {
   const { eventId = '' } = useParams();
@@ -98,8 +96,11 @@ function OrganizerEventWorkspace() {
                     <div className="event-analytics-cards">
                       <article className="event-analytics-card"><span>Total Teams</span><strong>{eventAnalytics.totalTeams}</strong><small>Registered for this event</small></article>
                       <article className="event-analytics-card"><span>Evaluation Progress</span><strong>{eventAnalytics.completedEvaluations} <small>completed</small></strong><small>{eventAnalytics.pendingEvaluations} pending of {eventAnalytics.totalAssignments} assigned evaluations</small></article>
-                      <article className="event-analytics-card"><span>Judge Progress</span><strong>{eventAnalytics.completedJudges} / {eventAnalytics.totalJudges}</strong><small>Judges completed all assigned evaluations · {eventAnalytics.pendingJudges} still in progress</small></article>
-                      <article className="event-analytics-card"><span>Reports &amp; Emails</span><strong>{eventAnalytics.reportsGenerated} <small>reports</small></strong><small>{eventAnalytics.emailsDelivered} confirmed emails delivered</small></article>
+                      <article className="event-analytics-card"><span>Judge Progress</span><strong>{eventAnalytics.completedJudges} / {eventAnalytics.totalJudges}</strong><small>{eventAnalytics.judgesWithAssignments} judges have assignments · {eventAnalytics.pendingJudges} still have evaluations pending</small></article>
+                      <article className="event-analytics-card event-analytics-report-email"><span>Reports &amp; Emails</span>
+                        <div><strong>{eventAnalytics.reportsGenerated}</strong><small>Reports generated</small></div>
+                        <div><strong>{eventAnalytics.emailsSent}</strong><small>Emails sent · inbox delivery not confirmed</small></div>
+                      </article>
                     </div>
                     <div className="event-analytics-charts">
                       <article className="event-analytics-chart"><div><h3>Evaluation progress</h3><strong>{eventAnalytics.evaluationProgressPercent}%</strong></div>
@@ -107,8 +108,8 @@ function OrganizerEventWorkspace() {
                         <p>{eventAnalytics.completedEvaluations} completed <span>·</span> {eventAnalytics.pendingEvaluations} pending</p></article>
                       <article className="event-analytics-chart"><div><h3>Judge progress</h3><strong>{eventAnalytics.judgeProgressPercent}%</strong></div>
                         <div className="analytics-progress-track judge-progress-track" role="progressbar" aria-label="Judges who completed all assigned evaluations" aria-valuemin="0" aria-valuemax="100" aria-valuenow={eventAnalytics.judgeProgressPercent}><span style={{ width: `${eventAnalytics.judgeProgressPercent}%` }} /></div>
-                        <p>{eventAnalytics.completedJudges} completed <span>·</span> {eventAnalytics.pendingJudges} with pending evaluations</p>
-                        {eventAnalytics.totalJudges > eventAnalytics.judgesWithAssignments && <small>{eventAnalytics.totalJudges - eventAnalytics.judgesWithAssignments} judges have no team assignments.</small>}</article>
+                        <p>{eventAnalytics.completedJudges} completed <span>·</span> {eventAnalytics.pendingJudges} with pending evaluations <span>·</span> {eventAnalytics.totalJudges - eventAnalytics.judgesWithAssignments} unassigned</p>
+                      </article>
                     </div>
                   </>}
             </section>

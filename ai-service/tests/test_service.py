@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from pydantic import ValidationError
 
+os.environ.setdefault("AI_SERVICE_SHARED_SECRET", "test-service-secret")
 import main
 from prompts import (
     SYSTEM_PROMPT,
@@ -86,29 +87,38 @@ INVITATION_DRAFT_REQUEST = {
 
 
 class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_generation_endpoint_rejects_missing_or_invalid_node_secret(self):
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            missing = await client.post("/reports/generate", json=SAMPLE)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "wrong"}) as client:
+            invalid = await client.post("/reports/generate", json=SAMPLE)
+        self.assertEqual(missing.status_code, 401)
+        self.assertEqual(invalid.status_code, 401)
+
     async def test_valid_request_returns_validated_structured_report(self):
         parsed = main.ReportContent(**REPORT)
         with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(
             main, "generate_report", new=AsyncMock(return_value=(parsed, "test-model"))
         ):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/reports/generate", json=SAMPLE)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["report"], REPORT)
         self.assertEqual(response.json()["model"], "test-model")
 
     async def test_missing_provider_key_is_reported_without_fake_success(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"AI_SERVICE_SHARED_SECRET": "test-service-secret"}, clear=True):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/reports/generate", json=SAMPLE)
         self.assertEqual(response.status_code, 503)
 
     async def test_numeric_score_fields_are_rejected_by_request_schema(self):
         invalid = {**SAMPLE, "finalScore": 92}
         transport = httpx.ASGITransport(app=main.app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
             response = await client.post("/reports/generate", json=invalid)
         self.assertEqual(response.status_code, 422)
 
@@ -117,7 +127,7 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(
             main, "generate_report", new=AsyncMock(return_value=(main.ReportContent(**REPORT), "test-model"))
         ):
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 for evaluation_type in ["criteria-based", "open-holistic", "remote-async", "live-demo", "ranking-voting", "custom"]:
                     response = await client.post("/reports/generate", json={**SAMPLE, "evaluationType": evaluation_type})
                     self.assertEqual(response.status_code, 200, evaluation_type)
@@ -180,9 +190,9 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         close.assert_awaited_once()
 
     async def test_gemini_missing_key_fails_without_request(self):
-        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}, clear=True):
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "AI_SERVICE_SHARED_SECRET": "test-service-secret"}, clear=True):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/reports/generate", json=SAMPLE)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["detail"], {
@@ -452,7 +462,7 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         parsed = main.EvaluationSchema.model_validate(SCHEMA)
         with patch.object(main, "generate_evaluation_schema", new=AsyncMock(return_value=(parsed, "test-model"))):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/evaluation-schema/generate", json=SCHEMA_REQUEST)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["evaluationSchema"]["title"], "Project Review")
@@ -462,7 +472,7 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         generate = AsyncMock()
         with patch.object(main, "generate_evaluation_schema", new=generate):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/evaluation-schema/generate", json={**SCHEMA_REQUEST, "unknown": "value"})
         self.assertEqual(response.status_code, 422)
         generate.assert_not_awaited()
@@ -471,7 +481,7 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         failure = main.ProviderResponseError("malformed_response", "The model returned an invalid schema")
         with patch.object(main, "generate_evaluation_schema", new=AsyncMock(side_effect=failure)):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/evaluation-schema/generate", json=SCHEMA_REQUEST)
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["detail"]["code"], "malformed_response")
@@ -509,7 +519,7 @@ class EmailDraftServiceTests(unittest.IsolatedAsyncioTestCase):
         parsed = main.EmailDraft(**EMAIL_DRAFT)
         with patch.object(main, "generate_announcement_email_draft", new=AsyncMock(return_value=(parsed, "test-model"))) as generate:
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/emails/announcements/generate", json=ANNOUNCEMENT_DRAFT_REQUEST)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["emailDraft"], EMAIL_DRAFT)
@@ -520,7 +530,7 @@ class EmailDraftServiceTests(unittest.IsolatedAsyncioTestCase):
         parsed = main.EmailDraft(**EMAIL_DRAFT)
         with patch.object(main, "generate_judge_invitation_email_draft", new=AsyncMock(return_value=(parsed, "test-model"))) as generate:
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/emails/judge-invitations/generate", json=INVITATION_DRAFT_REQUEST)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["emailDraft"], EMAIL_DRAFT)
@@ -531,7 +541,7 @@ class EmailDraftServiceTests(unittest.IsolatedAsyncioTestCase):
         generate = AsyncMock()
         with patch.object(main, "generate_announcement_email_draft", new=generate):
             transport = httpx.ASGITransport(app=main.app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
                 response = await client.post("/emails/announcements/generate", json={**ANNOUNCEMENT_DRAFT_REQUEST, "audienceType": "everyone"})
         self.assertEqual(response.status_code, 422)
         generate.assert_not_awaited()

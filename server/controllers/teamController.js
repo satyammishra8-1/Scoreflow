@@ -118,7 +118,9 @@ exports.listTeamsByEvent = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Event not found.' });
     }
 
-    const teams = await Team.find({ eventId }).sort({ teamNumber: 1, createdAt: 1 }).lean();
+    const query = { eventId };
+    if (req.auth?.role === 'judge') query._id = { $in: req.eventJudge?.assignedTeamIds || [] };
+    const teams = await Team.find(query).sort({ teamNumber: 1, createdAt: 1 }).lean();
     return res.status(200).json({ success: true, data: teams.map(toTeamResponse) });
   } catch (error) {
     console.error('Failed to list teams:', error);
@@ -131,7 +133,9 @@ exports.getTeam = async (req, res) => {
     if (!isValidObjectId(teamId)) {
       return res.status(400).json({ success: false, error: 'A valid teamId is required.' });
     }
-    const team = await Team.findById(teamId).lean();
+    const team = req.auth?.role === 'judge'
+      ? await Team.findOne({ _id: teamId, eventId: req.auth.eventId }).lean()
+      : await Team.findById(teamId).lean();
     if (!team) {
       return res.status(404).json({ success: false, error: 'Team not found.' });
     }

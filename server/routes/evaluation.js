@@ -13,36 +13,37 @@ const {
 } = require('../controllers/evaluationController');
 
 const router = express.Router();
+const { authenticate, requireOrganizer, requireEventAccess, requireAssignedTeam, authorizeEvaluationSubmission, authorizeEvaluationId } = require('../middleware/auth');
 
-router.post('/events/:eventId/evaluation/ai-generate', createEvaluationSchemaController());
-router.post('/events/:eventId/evaluation/ai-validate', createEvaluationSchemaValidationController());
+router.post('/events/:eventId/evaluation/ai-generate', ...requireOrganizer, createEvaluationSchemaController());
+router.post('/events/:eventId/evaluation/ai-validate', ...requireOrganizer, createEvaluationSchemaValidationController());
 
 // Evaluation configuration
 router
   .route('/events/:eventId/evaluation')
-  .get(getEvaluationConfiguration)
-  .put(createOrUpdateEvaluationConfiguration);
+  .get(authenticate, requireEventAccess, getEvaluationConfiguration)
+  .put(...requireOrganizer, createOrUpdateEvaluationConfiguration);
 
 router
   .route('/events/:eventId/evaluation-config')
-  .get(getEvaluationConfigByEvent)
-  .put(createEvaluationConfig);
+  .get(authenticate, requireEventAccess, getEvaluationConfigByEvent)
+  .put(...requireOrganizer, createEvaluationConfig);
 
 // Judge evaluations
 router
   .route('/evaluations')
-  .post(createEvaluation);
+  .post(authenticate, authorizeEvaluationSubmission, createEvaluation);
 
 router
   .route('/evaluations/:evaluationId')
-  .get(getEvaluation);
+  .get(authenticate, authorizeEvaluationId, getEvaluation);
 
 router
   .route('/events/:eventId/evaluations')
-  .get(listEvaluationsByEvent);
+  .get(authenticate, requireEventAccess, listEvaluationsByEvent);
 
 router
   .route('/events/:eventId/judges/:judgeId/teams/:teamId/evaluation')
-  .get(getEvaluationByJudgeTeam);
+  .get(authenticate, requireEventAccess, requireAssignedTeam, getEvaluationByJudgeTeam);
 
 module.exports = router;

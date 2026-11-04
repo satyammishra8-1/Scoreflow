@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
+import { useAuth } from '../auth/useAuth';
 import './EventManagement.css';
 import './OrganizerJudges.css';
 import './JudgeDashboard.css';
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-});
 
 const MODEL_LABELS = {
   'criteria-based': 'Criteria Based',
@@ -33,6 +30,7 @@ function safeExternalUrl(value) {
 }
 
 function JudgeDashboard() {
+  const { signOut } = useAuth();
   const { eventId, judgeId } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,9 +45,9 @@ function JudgeDashboard() {
 
     async function loadDashboard() {
       try {
-        const [eventResponse, judgesResponse, teamsResponse, configResponse, evaluationsResponse] = await Promise.all([
+        const [eventResponse, judgeResponse, teamsResponse, configResponse, evaluationsResponse] = await Promise.all([
           API.get(`/events/${encodeURIComponent(eventId)}`),
-          API.get(`/events/${encodeURIComponent(eventId)}/judges`),
+          API.get(`/auth/judge/events/${encodeURIComponent(eventId)}`),
           API.get(`/events/${encodeURIComponent(eventId)}/teams`),
           API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`),
           API.get(`/events/${encodeURIComponent(eventId)}/evaluations`),
@@ -57,8 +55,11 @@ function JudgeDashboard() {
         if (cancelled) return;
 
         const currentEvent = eventResponse.data?.data;
-        const currentJudge = (Array.isArray(judgesResponse.data?.data) ? judgesResponse.data.data : [])
-          .find((item) => getId(item) === String(judgeId) && String(item.eventId) === String(eventId));
+        const currentJudge = judgeResponse.data?.data;
+        if (getId(currentJudge) !== String(judgeId) || String(currentJudge?.eventId) !== String(eventId)) {
+          setError('This judge or event could not be found.');
+          return;
+        }
         if (!currentJudge || !currentEvent) {
           setError('This judge or event could not be found.');
           return;
@@ -109,6 +110,7 @@ function JudgeDashboard() {
             <span>Evaluation Type</span>
             <strong>{evaluationType}</strong>
           </div>
+          <button className="judge-signout-button" type="button" onClick={signOut}>Sign out</button>
         </header>
 
         <h2 className="judge-assigned-heading">Assigned Teams</h2>

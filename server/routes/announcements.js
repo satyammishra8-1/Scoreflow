@@ -3,6 +3,8 @@ const { createAnnouncement, listAnnouncementsByEvent } = require('../controllers
 const { createEmailDraftController } = require('../controllers/emailDraftController');
 
 const router = express.Router();
+const { requireOrganizer } = require('../middleware/auth');
+router.use(...requireOrganizer);
 router.post('/events/:eventId/announcements/ai-draft', createEmailDraftController({ emailType: 'announcements' }));
 router.route('/events/:eventId/announcements').post(createAnnouncement).get(listAnnouncementsByEvent);
 

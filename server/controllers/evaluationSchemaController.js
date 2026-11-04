@@ -37,7 +37,7 @@ function createEvaluationSchemaController({ EventModel = Event, ConfigModel = Ev
       let response;
       try {
         response = await fetchImpl(serviceUrl.replace(/\/$/, '') + '/evaluation-schema/generate', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers: { 'content-type': 'application/json', 'X-ScoreFlow-Service-Token': process.env.AI_SERVICE_SHARED_SECRET || '' },
           body: JSON.stringify({ prompt, eventName: event.name, eventType: event.type, eventDescription: event.description || '', evaluationModel: config?.model || null, existingCriteria }),
           signal: AbortSignal.timeout(210000),
         });

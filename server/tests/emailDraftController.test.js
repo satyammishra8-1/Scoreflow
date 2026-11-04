@@ -20,7 +20,10 @@ function setup({ emailType = 'announcements', fetchImpl = async () => ({ ok: tru
 }
 
 test('email draft controller requests content only from the configured AI capability', async (t) => {
-  await t.test('announcement includes server event context and audience', async () => {
+  await t.test('announcement includes server event context, audience and Node-only service authentication', async (subtest) => {
+    const previousSecret = process.env.AI_SERVICE_SHARED_SECRET;
+    process.env.AI_SERVICE_SHARED_SECRET = 'test-node-ai-service-secret';
+    subtest.after(() => { if (previousSecret === undefined) delete process.env.AI_SERVICE_SHARED_SECRET; else process.env.AI_SERVICE_SHARED_SECRET = previousSecret; });
     const { calls, handler } = setup();
     const res = response();
     await handler({ params: { eventId }, body: { prompt: 'Explain the exhibition schedule clearly.', audienceType: 'teams' } }, res);
@@ -33,6 +36,7 @@ test('email draft controller requests content only from the configured AI capabi
       eventType: event.type, eventDescription: event.description, audienceType: 'teams',
     });
     assert.equal(options.method, 'POST');
+    assert.equal(options.headers['X-ScoreFlow-Service-Token'], 'test-node-ai-service-secret');
   });
 
   await t.test('invitation uses its separate capability and never calls a delivery service', async () => {

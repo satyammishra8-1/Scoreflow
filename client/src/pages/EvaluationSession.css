@@ -1,128 +1,4 @@
-.evaluation-session-page {
-
-  --sidebar-width: 252px;
-
-  --sidebar-collapsed-width: 82px;
-
-  display: flex;
-
-  min-height: 100vh;
-
-  background: #f3f6fb;
-
-}
-
-
-
-.evaluation-session-page .event-sidebar {
-
-  position: static;
-
-  z-index: auto;
-
-  width: var(--sidebar-width);
-
-  flex: 0 0 var(--sidebar-width);
-
-  min-height: 100vh;
-
-  transition: width 0.2s ease, flex-basis 0.2s ease;
-
-}
-
-
-
-.evaluation-session-page .event-brand,
-
-.evaluation-session-page .event-navigation a {
-
-  width: 100%;
-
-}
-
-
-
-.evaluation-session-page .event-brand-text,
-
-.evaluation-session-page .event-nav-label {
-
-  display: inline;
-
-}
-
-
-
-.evaluation-session-page.sidebar-collapsed .event-sidebar {
-
-  width: var(--sidebar-collapsed-width);
-
-  flex-basis: var(--sidebar-collapsed-width);
-
-}
-
-
-
-.evaluation-session-page.sidebar-collapsed .event-brand-text,
-
-.evaluation-session-page.sidebar-collapsed .event-nav-label {
-
-  display: none;
-
-}
-
-
-
-.evaluation-session-page.sidebar-collapsed .event-navigation a {
-
-  justify-content: center;
-
-  padding-left: 0;
-
-  padding-right: 0;
-
-}
-
-
-
-.evaluation-session-page .event-sidebar-toggle {
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-
-  width: calc(100% - 18px);
-
-  margin: 0 9px 12px;
-
-  padding: 7px 0;
-
-  border: 1px solid rgba(255, 255, 255, 0.2);
-
-  border-radius: 8px;
-
-  background: rgba(255, 255, 255, 0.04);
-
-  color: #d8deeb;
-
-  cursor: pointer;
-
-}
-
-
-
-.evaluation-session-page.sidebar-collapsed .event-sidebar-toggle {
-
-  width: calc(100% - 10px);
-
-  margin-left: 5px;
-
-  margin-right: 5px;
-
-}
-
-
+.evaluation-session-page { display: block; min-height: 100vh; background: #f3f6fb; }
 
 .evaluation-session-main {
 
@@ -133,6 +9,13 @@
   padding: 24px 30px 40px;
 
 }
+
+.evaluation-session-nav { position: sticky; z-index: 15; top: 0; display: flex; min-height: 64px; align-items: center; gap: 18px; padding: 0 30px; border-bottom: 1px solid #e2e8f2; background: rgba(255, 255, 255, .97); }
+.evaluation-session-brand { display: inline-flex; align-items: center; gap: 9px; color: #172033; font-size: 16px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.evaluation-session-brand .dashboard-brand-mark { margin: 0; }
+.evaluation-session-return { margin-left: auto; color: #526078; font-size: 13px; font-weight: 600; text-decoration: none; }
+.evaluation-session-logout { border: 0; padding: 8px 10px; border-radius: 6px; color: #526078; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.evaluation-session-return:hover, .evaluation-session-logout:hover { color: #3158c9; }
 
 
 
@@ -1608,69 +1491,13 @@
 }
 
 @media (max-width: 900px) {
-  .evaluation-session-page {
-    flex-direction: column;
-  }
-
-  .evaluation-session-page .event-sidebar,
-  .evaluation-session-page.sidebar-collapsed .event-sidebar {
-    position: static;
-    width: 100%;
-    min-height: 0;
-    flex: 0 0 auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-  }
-
-  .evaluation-session-page .event-brand {
-    width: auto;
-    flex: 0 0 auto;
-    margin: 0;
-    padding: 0;
-    font-size: 17px;
-  }
-
-  .evaluation-session-page .event-brand-mark {
-    width: 30px;
-    height: 30px;
-  }
-
-  .evaluation-session-page .event-sidebar-toggle {
-    display: none;
-  }
-
-  .evaluation-session-page .event-navigation,
-  .evaluation-session-page.sidebar-collapsed .event-navigation {
-    display: flex;
-    min-width: 0;
-    gap: 4px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-  }
-
-  .evaluation-session-page .event-navigation a,
-  .evaluation-session-page.sidebar-collapsed .event-navigation a {
-    width: auto;
-    min-height: 44px;
-    flex: 0 0 auto;
-    justify-content: flex-start;
-    padding: 0 10px;
-    white-space: nowrap;
-  }
-
-  .evaluation-session-page .event-brand-text,
-  .evaluation-session-page .event-nav-label,
-  .evaluation-session-page.sidebar-collapsed .event-brand-text,
-  .evaluation-session-page.sidebar-collapsed .event-nav-label {
-    display: inline;
-  }
-
   .evaluation-session-main {
     width: 100%;
-    padding: 22px 24px 36px;
+    padding: 0 24px 36px;
   }
+
+  .evaluation-session-main > .evaluation-session-heading,
+  .evaluation-session-main > .event-topbar { margin-top: 22px; }
 
   .evaluation-session-page .event-topbar {
     position: static;
@@ -1684,27 +1511,12 @@
 }
 
 @media (max-width: 640px) {
-  .evaluation-session-page .event-sidebar,
-  .evaluation-session-page.sidebar-collapsed .event-sidebar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 14px;
-  }
-
-  .evaluation-session-page .event-navigation,
-  .evaluation-session-page.sidebar-collapsed .event-navigation {
-    width: 100%;
-  }
-
-  .evaluation-session-page .event-navigation a,
-  .evaluation-session-page.sidebar-collapsed .event-navigation a {
-    padding: 0 9px;
-    font-size: 12px;
-  }
-
+  .evaluation-session-nav { min-height: 58px; gap: 8px; padding: 0 12px; }
+  .evaluation-session-brand { font-size: 14px; }
+  .evaluation-session-return { font-size: 12px; }
+  .evaluation-session-logout { padding: 8px 4px; }
   .evaluation-session-main {
-    padding: 16px 12px 28px;
+    padding: 0 12px 28px;
   }
 
   .evaluation-session-heading {

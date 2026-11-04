@@ -86,3 +86,5 @@
   .judge-team-header { flex-wrap: wrap; }
   .judge-status { flex: 0 0 auto; }
 }
+.judge-signout-button { align-self: flex-start; min-height: 38px; padding: 0 12px; border: 1px solid #e0e6ef; border-radius: 7px; color: #526078; background: #fff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.judge-signout-button:hover { border-color: #b9c8ee; color: #3158c9; }

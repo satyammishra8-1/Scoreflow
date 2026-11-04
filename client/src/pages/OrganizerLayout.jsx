@@ -1,4 +1,5 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
+import { useAuth } from '../auth/useAuth';
 import './OrganizerDashboard.css';
 
 const EVENT_TABS = [
@@ -17,6 +18,7 @@ function OrganizerLayout({
   userName = 'Organizer', userRole = 'Administrator', userInitial = 'O',
 }) {
   const params = useParams();
+  const { signOut } = useAuth();
   const location = useLocation();
   const eventId = eventIdProp || params.eventId;
   const isEventWorkspace = Boolean(eventId && eventId !== 'default');
@@ -42,7 +44,7 @@ function OrganizerLayout({
           <div className="topbar-actions"><div className="topbar-user">
             <div className="profile-avatar">{userInitial}</div>
             <div className="topbar-user-name"><strong>{userName}</strong><span>{userRole}</span></div>
-          </div></div>
+          </div><button className="topbar-logout" type="button" onClick={signOut}>Sign out</button></div>
         </header>
         {isEventWorkspace && <nav className="event-workspace-nav" aria-label="Event navigation">
           {EVENT_TABS.map((tab) => {

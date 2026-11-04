@@ -1447,6 +1447,8 @@
 .dashboard-topbar > .dashboard-search { margin: 0 auto; }
 .topbar-dashboard-link { margin: 0 auto; color: #526078; font-size: 13px; text-decoration: none; }
 .topbar-dashboard-link:hover { color: #3158c9; }
+.topbar-logout { border: 0; padding: 8px 10px; border-radius: 6px; color: #526078; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.topbar-logout:hover { color: #3158c9; }
 .event-workspace-nav { position: sticky; z-index: 14; top: 72px; display: flex; gap: 6px; overflow-x: auto; padding: 0 38px; border-bottom: 1px solid var(--dashboard-border); background: #fff; scrollbar-width: thin; }
 .event-workspace-tab { flex: 0 0 auto; padding: 15px 14px 13px; border-bottom: 2px solid transparent; color: #687387; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .event-workspace-tab:hover { color: #3158c9; }

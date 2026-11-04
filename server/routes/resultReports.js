@@ -3,6 +3,8 @@ const controller = require('../controllers/resultReportController');
 const emailController = require('../controllers/resultReportEmailController');
 
 const router = express.Router();
+const { requireOrganizer } = require('../middleware/auth');
+router.use(...requireOrganizer);
 router.get('/events/:eventId/result-reports', controller.listReports);
 router.get('/events/:eventId/result-reports/delivery-status', emailController.listDeliveryStatusByEvent);
 router.post('/events/:eventId/result-reports/send', emailController.sendReportsBulk);

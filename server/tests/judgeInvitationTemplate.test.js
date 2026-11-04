@@ -155,10 +155,11 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     acceptanceJudge = { ...judgeA, invitationStatus: 'pending', invitationExpiresAt: new Date(Date.now() + 60000) };
     acceptedResult = { _id: judgeA._id, eventId };
     const res = response();
-    await controller.acceptJudgeInvitation({ body: { token: credentials.token } }, res);
+    await controller.acceptJudgeInvitation({ body: { token: credentials.token, password: 'A-very-secure-test-password' } }, res);
     assert.equal(res.statusCode, 200);
     assert.equal(String(capturedAcceptanceQuery._id), judgeA._id);
     assert.equal(String(capturedAcceptanceQuery.eventId), eventId);
+    assert.equal(capturedAcceptanceQuery.invitationStatus, 'pending');
     assert.deepEqual(res.body.data, { eventId, judgeId: judgeA._id, invitationStatus: 'accepted' });
   });
 

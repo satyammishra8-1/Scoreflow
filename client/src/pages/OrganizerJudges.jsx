@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import { Link, useParams } from 'react-router-dom';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
 import './OrganizerJudges.css';
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-});
 
 function getTeamId(team) {
   return String(team.teamId || team.id || team.number);

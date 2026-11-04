@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
 import './EventManagement.css';
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-});
 
 const eventTypes = [
   'Hackathon',

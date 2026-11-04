@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import './OrganizerDashboard.css';
 import './OrganizerAnnouncements.css';
 import './JudgeInvitationTemplate.css';
 
-const API = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api' });
 const idOf = (row) => String(row?.judgeId || row?.teamId || row?._id || row?.id || '');
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const getError = (error, fallback) => error?.response?.data?.error || fallback;

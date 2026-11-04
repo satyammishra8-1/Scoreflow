@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
+import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
 import { buildTeamImportPlan, createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
 import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
@@ -12,10 +12,6 @@ import {
 } from './TeamModals';
 import './OrganizerDashboard.css';
 import './OrganizerTeams.css';
-
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-});
 
 function getTeamKey(team) {
   const raw = team?.teamId ?? team?._id ?? team?.id;

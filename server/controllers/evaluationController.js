@@ -528,7 +528,9 @@ exports.listEvaluationsByEvent = async (req, res) => {
     }
     const event = await Event.findById(eventId).select('_id').lean();
     if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
-    const evaluations = await Evaluation.find({ eventId })
+    const query = { eventId };
+    if (req.auth?.role === 'judge') query.judgeId = req.auth.sub;
+    const evaluations = await Evaluation.find(query)
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
     return res.status(200).json({
