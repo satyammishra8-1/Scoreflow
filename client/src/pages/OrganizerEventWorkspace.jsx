@@ -54,12 +54,13 @@ function OrganizerEventWorkspace() {
     { title: 'Judges', count: workspace.judges, detail: 'Manage judges and their team assignments.', action: 'Open Judges', to: `/organizer/events/${eventId}/judges` },
     { title: 'Evaluation', count: null, detail: workspace.evaluation ? `Configured · ${workspace.evaluation.model}` : 'Not configured', action: 'Open Evaluation', to: `/organizer/events/${eventId}/evaluation`, evaluation: true },
     { title: 'Announcements', count: null, detail: 'Send event updates to judges or team members.', action: 'Open Announcements', to: `/organizer/events/${eventId}/announcements`, evaluation: true },
+    { title: 'Results', count: null, detail: 'Review event results and standings.', action: 'Open Results', to: `/organizer/events/${eventId}/results`, evaluation: true },
   ];
 
   return (
     <OrganizerLayout activeKey="events" wrapperClassName="event-management" contentClassName="event-content" eventId={eventId}>
       <div className="event-page-heading">
-        <div><Link className="event-back-link" to="/organizer/dashboard">← Dashboard</Link><h1>Event Workspace</h1><p>Event details and management tools.</p></div>
+        <div><Link className="event-back-link" to="/organizer/dashboard">← Dashboard</Link><h1>{event?.name || 'Event Workspace'}</h1><p>Event details and management tools.</p></div>
         {event && <div className="event-heading-actions">
           <Link className="event-secondary-button" to={`/organizer/events/${encodeURIComponent(eventId)}/results`}>View Results</Link>
           <Link className="event-primary-button" to={`/organizer/events/${encodeURIComponent(eventId)}/result-reports`}>Result Reports</Link>
