@@ -12,6 +12,13 @@ function OrganizerEventWorkspace() {
   const { eventId = '' } = useParams();
   const [event, setEvent] = useState(null);
   const [workspace, setWorkspace] = useState({ teams: null, judges: null, evaluation: null });
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsError, setAnalyticsError] = useState('');
+  const [analyticsAttempt, setAnalyticsAttempt] = useState(0);
+  const analyticsRequestKey = `${eventId}:${analyticsAttempt}`;
+  const eventAnalytics = analytics?.key === analyticsRequestKey ? analytics.data : null;
+  const eventAnalyticsError = analyticsError?.key === analyticsRequestKey ? analyticsError.message : '';
+  const eventAnalyticsIsLoading = !eventAnalytics && !eventAnalyticsError;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -49,6 +56,19 @@ function OrganizerEventWorkspace() {
     return () => { cancelled = true; };
   }, [eventId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    API.get(`/events/${encodeURIComponent(eventId)}/analytics`)
+      .then((response) => {
+        if (!cancelled && response.data?.success) setAnalytics({ key: analyticsRequestKey, data: response.data.data });
+        if (!cancelled && !response.data?.success) setAnalyticsError({ key: analyticsRequestKey, message: response.data?.error || 'Unable to load event analytics.' });
+      })
+      .catch((loadError) => {
+        if (!cancelled) setAnalyticsError({ key: analyticsRequestKey, message: loadError.response?.data?.error || 'Unable to load event analytics.' });
+      });
+    return () => { cancelled = true; };
+  }, [eventId, analyticsRequestKey]);
+
   const cards = [
     { title: 'Teams', count: workspace.teams, detail: 'Manage teams registered for this event.', action: 'Open Teams', to: `/organizer/events/${eventId}/teams` },
     { title: 'Judges', count: workspace.judges, detail: 'Manage judges and their team assignments.', action: 'Open Judges', to: `/organizer/events/${eventId}/judges` },
@@ -70,6 +90,28 @@ function OrganizerEventWorkspace() {
       {loading ? <section className="dashboard-empty-state"><h3>Loading event...</h3><p>Fetching event details and workspace data.</p></section>
         : error ? <section className="dashboard-empty-state" role="alert"><h3>Unable to open event</h3><p>{error}</p><Link className="event-secondary-button" to="/organizer/dashboard">Back to Dashboard</Link></section>
           : event && <>
+            <section className="event-analytics" aria-labelledby="event-analytics-title">
+              <div className="event-analytics-heading"><div><h2 id="event-analytics-title">Event progress</h2><p>Completion at a glance, based on saved event activity.</p></div></div>
+              {eventAnalyticsIsLoading ? <div className="dashboard-empty-state" role="status"><p>Loading event progress…</p></div>
+                : eventAnalyticsError ? <div className="dashboard-empty-state" role="alert"><p>{eventAnalyticsError}</p><button className="event-secondary-button" type="button" onClick={() => setAnalyticsAttempt((attempt) => attempt + 1)}>Retry</button></div>
+                  : eventAnalytics && <>
+                    <div className="event-analytics-cards">
+                      <article className="event-analytics-card"><span>Total Teams</span><strong>{eventAnalytics.totalTeams}</strong><small>Registered for this event</small></article>
+                      <article className="event-analytics-card"><span>Evaluation Progress</span><strong>{eventAnalytics.completedEvaluations} <small>completed</small></strong><small>{eventAnalytics.pendingEvaluations} pending of {eventAnalytics.totalAssignments} assigned evaluations</small></article>
+                      <article className="event-analytics-card"><span>Judge Progress</span><strong>{eventAnalytics.completedJudges} / {eventAnalytics.totalJudges}</strong><small>Judges completed all assigned evaluations · {eventAnalytics.pendingJudges} still in progress</small></article>
+                      <article className="event-analytics-card"><span>Reports &amp; Emails</span><strong>{eventAnalytics.reportsGenerated} <small>reports</small></strong><small>{eventAnalytics.emailsDelivered} confirmed emails delivered</small></article>
+                    </div>
+                    <div className="event-analytics-charts">
+                      <article className="event-analytics-chart"><div><h3>Evaluation progress</h3><strong>{eventAnalytics.evaluationProgressPercent}%</strong></div>
+                        <div className="analytics-progress-track" role="progressbar" aria-label="Completed evaluations" aria-valuemin="0" aria-valuemax="100" aria-valuenow={eventAnalytics.evaluationProgressPercent}><span style={{ width: `${eventAnalytics.evaluationProgressPercent}%` }} /></div>
+                        <p>{eventAnalytics.completedEvaluations} completed <span>·</span> {eventAnalytics.pendingEvaluations} pending</p></article>
+                      <article className="event-analytics-chart"><div><h3>Judge progress</h3><strong>{eventAnalytics.judgeProgressPercent}%</strong></div>
+                        <div className="analytics-progress-track judge-progress-track" role="progressbar" aria-label="Judges who completed all assigned evaluations" aria-valuemin="0" aria-valuemax="100" aria-valuenow={eventAnalytics.judgeProgressPercent}><span style={{ width: `${eventAnalytics.judgeProgressPercent}%` }} /></div>
+                        <p>{eventAnalytics.completedJudges} completed <span>·</span> {eventAnalytics.pendingJudges} with pending evaluations</p>
+                        {eventAnalytics.totalJudges > eventAnalytics.judgesWithAssignments && <small>{eventAnalytics.totalJudges - eventAnalytics.judgesWithAssignments} judges have no team assignments.</small>}</article>
+                    </div>
+                  </>}
+            </section>
             <section className="event-information-card" aria-labelledby="workspace-event-title">
               <h2 id="workspace-event-title">{event.name}</h2>
               <dl className="workspace-event-details">

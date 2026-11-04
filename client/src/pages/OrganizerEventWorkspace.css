@@ -10,7 +10,32 @@
 .workspace-event-details .workspace-description { grid-column: 1 / -1; }
 .workspace-description dd { font-weight: 400; line-height: 1.6; white-space: pre-wrap; }
 .event-workspace-card > small { display: block; min-height: 36px; margin: 0 0 18px; color: #7a8497; line-height: 1.5; }
+.event-analytics { margin: 0 0 24px; }
+.event-analytics-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 14px; }
+.event-analytics-heading h2 { margin: 0; color: #1b2538; font-size: 19px; }
+.event-analytics-heading p { margin: 5px 0 0; color: #7a8497; font-size: 12px; }
+.event-analytics-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.event-analytics-card, .event-analytics-chart { min-width: 0; padding: 18px; border: 1px solid #e7ebf2; border-radius: 10px; background: #fff; box-shadow: 0 3px 12px rgba(25, 40, 70, .035); }
+.event-analytics-card > span { display: block; color: #6d788c; font-size: 12px; font-weight: 600; }
+.event-analytics-card > strong { display: block; margin: 10px 0 5px; color: #202b40; font-size: 25px; line-height: 1.15; }
+.event-analytics-card > strong small { font-size: 13px; font-weight: 600; }
+.event-analytics-card > small, .event-analytics-chart > small { display: block; color: #7a8497; font-size: 11px; line-height: 1.5; }
+.event-analytics-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.event-analytics-chart > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.event-analytics-chart h3 { margin: 0; color: #273249; font-size: 13px; }
+.event-analytics-chart > div:first-child > strong { color: #3158c9; font-size: 15px; }
+.analytics-progress-track { height: 10px; overflow: hidden; margin: 17px 0 10px; border-radius: 999px; background: #edf0f5; }
+.analytics-progress-track > span { display: block; height: 100%; border-radius: inherit; background: #4169e1; transition: width .2s ease; }
+.judge-progress-track > span { background: #21a67a; }
+.event-analytics-chart p { margin: 0; color: #6d788c; font-size: 11px; }
+.event-analytics-chart p span { padding: 0 5px; color: #a8afbc; }
+.event-analytics .dashboard-empty-state { margin: 0; }
+.event-analytics .dashboard-empty-state button { margin-top: 10px; cursor: pointer; }
 @media (max-width: 700px) {
+  .event-analytics-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .event-analytics-charts { grid-template-columns: 1fr; gap: 10px; }
+  .event-analytics-card, .event-analytics-chart { padding: 14px; }
+  .event-analytics-card > strong { font-size: 21px; }
   .workspace-event-details { grid-template-columns: 1fr; }
   .workspace-event-details .workspace-description { grid-column: auto; }
 }
