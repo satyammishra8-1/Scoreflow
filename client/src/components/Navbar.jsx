@@ -6,7 +6,6 @@ const navItems = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'For Institutions', href: '#institutions' },
   { label: 'Contact', href: '#contact' },
 ];
 
@@ -55,10 +54,6 @@ export default function Navbar() {
 
         <div className="nav-actions">
           <ThemeToggle />
-
-          <a href="#contact" className="nav-link-login">
-            Login
-          </a>
 
           <Link
             to="/organizer/dashboard"

@@ -1,11 +1,5 @@
 import { Link } from 'react-router-dom';
 
-const metrics = [
-  { label: 'Competitions', value: '18+' },
-  { label: 'Judges', value: '142' },
-  { label: 'Teams', value: '96%' },
-];
-
 export default function Hero() {
   return (
     <section className="hero-section">
@@ -28,14 +22,6 @@ export default function Hero() {
             </a>
           </div>
 
-          <div className="hero-metrics" aria-label="ScoreFlow impact metrics">
-            {metrics.map((metric) => (
-              <div key={metric.label} className="mini-metric">
-                <strong>{metric.value}</strong>
-                <span>{metric.label}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="hero-visual" aria-label="ScoreFlow product preview">
