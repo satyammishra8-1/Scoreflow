@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   { label: 'Home', href: '#home' },
@@ -20,17 +21,22 @@ export default function Navbar() {
           <span>ScoreFlow</span>
         </a>
 
-        <button
-          type="button"
-          className="menu-toggle"
-          aria-label="Toggle menu"
-          aria-expanded={isOpen}
-          onClick={() => setIsOpen((open) => !open)}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
+        <div className="nav-mobile-bar">
+          <div className="mobile-theme-toggle">
+            <ThemeToggle />
+          </div>
+          <button
+            type="button"
+            className="menu-toggle"
+            aria-label="Toggle menu"
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
 
         <nav
           className={`main-nav ${isOpen ? 'open' : ''}`}
@@ -48,6 +54,8 @@ export default function Navbar() {
         </nav>
 
         <div className="nav-actions">
+          <ThemeToggle />
+
           <a href="#contact" className="nav-link-login">
             Login
           </a>

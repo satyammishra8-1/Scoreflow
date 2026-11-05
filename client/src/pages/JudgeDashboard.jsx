@@ -110,7 +110,9 @@ function JudgeDashboard() {
             <span>Evaluation Type</span>
             <strong>{evaluationType}</strong>
           </div>
-          <button className="judge-signout-button" type="button" onClick={signOut}>Sign out</button>
+          <div className="judge-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <button className="judge-signout-button" type="button" onClick={signOut}>Sign out</button>
+          </div>
         </header>
 
         <h2 className="judge-assigned-heading">Assigned Teams</h2>

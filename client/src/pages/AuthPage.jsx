@@ -34,7 +34,9 @@ export default function AuthPage({ mode }) {
   }
 
   return <main className="auth-page"><section className="auth-card">
-    <Link to="/" className="auth-brand"><span className="dashboard-brand-mark">S</span>ScoreFlow</Link>
+    <div className="auth-brand-row">
+      <Link to="/" className="auth-brand"><span className="dashboard-brand-mark">S</span>ScoreFlow</Link>
+    </div>
     <p className="auth-eyebrow">{setup ? 'INITIAL ORGANIZER SETUP' : judge ? 'JUDGE ACCESS' : 'ORGANIZER ACCESS'}</p>
     <h1>{setup ? 'Set up your organizer account' : judge ? 'Judge sign in' : 'Welcome back'}</h1>
     <p className="auth-description">{setup ? 'Create an account for an email authorized by your deployment administrator.' : judge ? 'Use the email, password and event ID associated with your invitation.' : 'Sign in to manage your ScoreFlow events.'}</p>

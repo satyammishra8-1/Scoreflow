@@ -23,6 +23,17 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background: #f5f7fb;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+[data-theme='dark'] {
+  color: #f1f5f9;
+  background: #090d16;
+}
+
+[data-theme='dark'] body {
+  background: #090d16;
+  color: #f1f5f9;
 }
 
 img {

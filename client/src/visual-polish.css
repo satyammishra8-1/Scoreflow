@@ -154,3 +154,278 @@
   .judge-dashboard-page .judge-team-card { transition: none; }
   .feature-card { transition: none; }
 }
+
+/* =========================================================
+   GLOBAL DARK MODE POLISH (ALL PAGES)
+   ========================================================= */
+
+[data-theme='dark'] .sf-dashboard {
+  --dashboard-bg: #090d16;
+  --dashboard-card: #101726;
+  --dashboard-border: #1e293b;
+  --dashboard-text: #f1f5f9;
+  --dashboard-muted: #94a3b8;
+  --dashboard-navy: #0e1422;
+  --dashboard-blue: #3b82f6;
+  --dashboard-green: #34d399;
+}
+
+[data-theme='dark'] .dashboard-topbar {
+  background: rgba(16, 23, 38, 0.96);
+  border-bottom-color: #1e293b;
+}
+
+[data-theme='dark'] .topbar-brand {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .dashboard-search {
+  background: #141c2c;
+  border-color: #1e293b;
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .dashboard-search input {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .dashboard-search input::placeholder {
+  color: #64748b;
+}
+
+[data-theme='dark'] .topbar-dashboard-link {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .topbar-dashboard-link:hover {
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .topbar-user-name strong {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .topbar-user-name span {
+  color: #64748b;
+}
+
+[data-theme='dark'] .topbar-logout {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .topbar-logout:hover {
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .event-workspace-nav {
+  background: #101726;
+  border-bottom-color: #1e293b;
+}
+
+[data-theme='dark'] .event-workspace-tab {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .event-workspace-tab:hover {
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .event-workspace-tab.active {
+  border-bottom-color: #3b82f6;
+  color: #60a5fa;
+}
+
+/* Page Headings & Gradient Banners */
+[data-theme='dark'] .sf-dashboard .teams-page-heading,
+[data-theme='dark'] .sf-dashboard .judges-page-heading,
+[data-theme='dark'] .sf-dashboard.event-management .event-page-heading,
+[data-theme='dark'] .sf-dashboard.organizer-results .results-page-header,
+[data-theme='dark'] .sf-dashboard .evaluation-wizard-header {
+  border-color: #1e293b;
+  background: radial-gradient(ellipse at 90% 10%, #1e2b48 0, transparent 40%), linear-gradient(115deg, #131a2a, #0e1422);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .sf-dashboard .teams-page-heading h1,
+[data-theme='dark'] .sf-dashboard .judges-page-heading h1,
+[data-theme='dark'] .sf-dashboard.event-management .event-page-heading h1,
+[data-theme='dark'] .sf-dashboard.organizer-results .results-page-header h1,
+[data-theme='dark'] .sf-dashboard .evaluation-wizard-header h1 {
+  color: #f8fafc;
+}
+
+/* Cards & Panels */
+[data-theme='dark'] .sf-dashboard .teams-summary-card,
+[data-theme='dark'] .sf-dashboard .judges-summary-card,
+[data-theme='dark'] .sf-dashboard .teams-table-card,
+[data-theme='dark'] .sf-dashboard .judges-table-card,
+[data-theme='dark'] .sf-dashboard.organizer-results .results-event-summary,
+[data-theme='dark'] .sf-dashboard.organizer-results .team-result-card,
+[data-theme='dark'] .sf-dashboard.organizer-results .judge-summary-table-wrap,
+[data-theme='dark'] .sf-dashboard.event-management .event-information-card,
+[data-theme='dark'] .sf-dashboard.event-management .event-workspace-card,
+[data-theme='dark'] .sf-dashboard .evaluation-wizard-card,
+[data-theme='dark'] .sf-dashboard .summary-card,
+[data-theme='dark'] .sf-dashboard .stat-card {
+  background: #101726;
+  border-color: #1e293b;
+  color: #f1f5f9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .workspace-event-details > div:not(.workspace-description) {
+  background: #141c2c;
+  border-color: #1e293b;
+}
+
+[data-theme='dark'] .sf-dashboard .evaluation-simple-list-item {
+  border-color: #1e293b;
+  background: #131a2a;
+}
+
+[data-theme='dark'] .sf-dashboard .evaluation-simple-list-item:hover {
+  background: #182236;
+  border-color: #2b3a54;
+}
+
+/* Tables */
+[data-theme='dark'] .sf-dashboard .teams-table th,
+[data-theme='dark'] .sf-dashboard .judges-table th,
+[data-theme='dark'] .sf-dashboard .results-table th {
+  background: #141c2c;
+  color: #94a3b8;
+  border-color: #1e293b;
+}
+
+[data-theme='dark'] .sf-dashboard .teams-table td,
+[data-theme='dark'] .sf-dashboard .judges-table td,
+[data-theme='dark'] .sf-dashboard .results-table td {
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard .teams-table tbody tr:hover,
+[data-theme='dark'] .sf-dashboard .judges-table tbody tr:hover,
+[data-theme='dark'] .sf-dashboard .results-table tbody tr:hover {
+  background: #162035;
+}
+
+/* Modals & Popups */
+[data-theme='dark'] .sf-modal,
+[data-theme='dark'] .modal-content,
+[data-theme='dark'] .team-modal,
+[data-theme='dark'] .judge-modal {
+  background: #101726;
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+/* Judge Dashboard Page */
+[data-theme='dark'] .judge-dashboard-page {
+  background: #090d16;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-dashboard-header {
+  background: #101726;
+  border-color: #1e293b;
+}
+
+[data-theme='dark'] .judge-dashboard-header-copy h1 {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .judge-evaluation-type strong {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-assigned-heading {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .judge-team-card {
+  background: #101726;
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-team-header h3 {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .judge-signout-button {
+  border-color: #1e293b;
+  background: #162035;
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .judge-signout-button:hover {
+  background: #1c2842;
+  color: #f8fafc;
+}
+
+/* Evaluation Session Page */
+[data-theme='dark'] .evaluation-session-page {
+  background: #090d16;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .evaluation-session-nav {
+  background: rgba(16, 23, 38, 0.96);
+  border-bottom-color: #1e293b;
+}
+
+[data-theme='dark'] .evaluation-session-brand {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .evaluation-session-return,
+[data-theme='dark'] .evaluation-session-logout {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .evaluation-session-return:hover,
+[data-theme='dark'] .evaluation-session-logout:hover {
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .evaluation-session-page .evaluation-card,
+[data-theme='dark'] .evaluation-session-page .evaluation-panel,
+[data-theme='dark'] .evaluation-session-page .member-attendance-panel {
+  background: #101726;
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .evaluation-session-page .model-textarea,
+[data-theme='dark'] .evaluation-session-page input,
+[data-theme='dark'] .evaluation-session-page select {
+  background: #141c2c;
+  border-color: #1e293b;
+  color: #f8fafc;
+}
+
+/* Judge Invitation Page */
+[data-theme='dark'] .judge-invitation-page {
+  background: #090d16;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-invitation-card {
+  background: #101726;
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-invitation-card h1 {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .judge-invitation-details dd {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .judge-invitation-copy {
+  color: #94a3b8;
+}
+
