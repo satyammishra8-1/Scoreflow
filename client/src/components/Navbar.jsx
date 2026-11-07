@@ -44,7 +44,16 @@ export default function Navbar() {
           <ul>
             {navItems.map((item) => (
               <li key={item.label}>
-                <a href={item.href} onClick={() => setIsOpen(false)}>
+                <a
+                  href={item.href}
+                  onClick={(event) => {
+                    setIsOpen(false);
+                    if (item.label === 'Home') {
+                      event.preventDefault();
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                >
                   {item.label}
                 </a>
               </li>
