@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const Judge = require('../models/Judge');
-const { sendJudgeInvitation } = require('./emailService');
+const emailService = require('./emailService');
 
 const INVITATION_LIFETIME_MS = 48 * 60 * 60 * 1000;
 
@@ -16,10 +16,7 @@ function createInvitationCredentials(now = Date.now()) {
 async function issueJudgeInvitation(judge, event, emailDraft) {
   const { token, tokenHash, expiresAt } = createInvitationCredentials();
   const updatedJudge = await Judge.findOneAndUpdate(
-    { _id: judge._id, eventId: judge.eventId, $or: [
-      { invitationStatus: { $ne: 'accepted' } },
-      { invitationStatus: 'accepted', passwordHash: { $exists: false } },
-    ] },
+    { _id: judge._id, eventId: judge.eventId, invitationStatus: { $ne: 'accepted' } },
     {
       $set: {
         invitationStatus: 'pending',
@@ -31,7 +28,21 @@ async function issueJudgeInvitation(judge, event, emailDraft) {
     { returnDocument: 'after', runValidators: true },
   );
   if (!updatedJudge) return { sent: false, message: 'This judge can no longer receive an invitation.' };
-  return sendJudgeInvitation({ judge: updatedJudge, event, token, emailDraft });
+  const clearUndeliveredToken = () => Judge.updateOne(
+    { _id: judge._id, eventId: judge.eventId, invitationTokenHash: tokenHash },
+    { $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 }, $set: { invitationStatus: 'pending' } },
+  );
+  let delivery;
+  try {
+    delivery = await emailService.sendJudgeInvitation({ judge: updatedJudge, event, token, emailDraft });
+  } catch (error) {
+    await clearUndeliveredToken();
+    throw error;
+  }
+  if (!delivery?.sent) {
+    await clearUndeliveredToken();
+  }
+  return delivery;
 }
 
 function hashInvitationToken(token) {

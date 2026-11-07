@@ -10,8 +10,9 @@ Copy `server/.env.example` to the server's private environment configuration and
 - `NODE_ENV=production` and `PORT`.
 - `CLIENT_URL`: canonical public frontend URL used in invitation links.
 - `CLIENT_ORIGINS`: comma-separated exact browser origins allowed by CORS.
-- `ORGANIZER_EMAIL_ALLOWLIST`: exactly two comma-separated lowercase addresses for the project owner and team leader.
-- `ORGANIZER_SETUP_TOKEN`: a random one-time bootstrap secret of at least 32 bytes.
+- `ORGANIZER_EMAIL_ALLOWLIST`: one or more comma-separated authorized organizer email addresses. Only these addresses can begin organizer signup.
+
+Legacy events without an `ownerId` stay stored and are inaccessible to organizers until assigned. After the authorized organizer account exists, run from `server/` to preview the approved legacy mapping: `node scripts/migrateEventOwners.js satmis2024@gmail.com`. Add `--apply` only when ready to write; it assigns only currently unowned events. The script never changes event or related records.
 - `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`: independent random secrets of at least 32 bytes.
 - `AI_SERVICE_URL` and `AI_SERVICE_SHARED_SECRET`: private AI service URL and the shared secret also configured on FastAPI.
 - `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME`.
@@ -19,7 +20,7 @@ Copy `server/.env.example` to the server's private environment configuration and
 
 Generate each random secret independently, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`. Restrict access to the values in the deployment secret manager.
 
-Run the frontend's `/organizer/setup` screen once for each allowlisted address, supplying the bootstrap token and a unique password of at least 12 characters. Setup closes automatically after both authorized accounts exist. Rotate the bootstrap token after setup and keep the replacement in the secret manager because production startup requires the setting. There is no public organizer registration or password-reset endpoint.
+Organizers enter their name, allowlisted email, and password on `/signup`. The form checks a 12-character minimum, mixed-case letters, and a number; the backend hashes the password with bcrypt and stores it only on a pending registration. Configure Brevo's API v3 key, sender email, and the public `CLIENT_URL`; the API sends a single-use email verification link that expires after 30 minutes. Opening the link activates the account and redirects to login. Pending registrations and hashed verification tokens expire automatically. No setup secret is sent to the browser. There is no password-reset endpoint.
 
 ## AI service variables
 
@@ -27,9 +28,9 @@ Copy `ai-service/.env.example` into the AI service's private environment. Set `A
 
 ## Authentication and access
 
-Organizer passwords and judge passwords are bcrypt hashed. Organizer identities must be in the two-address environment allowlist. Judges create a password while accepting a valid, unexpired invitation and sign in with that email, password, and event ID. Access tokens last ten minutes and remain in frontend memory. Refresh tokens are random, stored as keyed hashes in MongoDB, rotated on use, and sent only in HttpOnly, SameSite=Strict cookies. Logout revokes all refresh sessions for that account and invalidates access tokens.
+Organizer passwords and judge passwords are bcrypt hashed. Organizer identities must be in the environment allowlist. Judges receive invitation-scoped access by accepting a valid, unexpired invitation. Access tokens last ten minutes and remain in frontend memory. Refresh tokens are random, stored as keyed hashes in MongoDB, rotated on use, and sent only in HttpOnly, SameSite=Strict cookies. Logout revokes all refresh sessions for that account and invalidates access tokens.
 
-The API requires organizer authentication for event creation/listing/changes, team mutations, judge management and invitations, evaluation configuration writes, announcements, results, result reports, analytics, email generation and report delivery. Judges can read only their event, their assigned teams, event evaluation configuration, and their own evaluations. Evaluation submissions replace the submitted judge ID with the authenticated identity after verifying the event and team assignment. Judge invitation preview and acceptance, login, organizer initial setup, refresh, logout, and health are the intentionally public endpoints.
+The API requires organizer authentication for event creation/listing/changes, team mutations, judge management and invitations, evaluation configuration writes, announcements, results, result reports, analytics, email generation and report delivery. Judges can read only their event, their assigned teams, event evaluation configuration, and their own evaluations. Evaluation submissions replace the submitted judge ID with the authenticated identity after verifying the event and team assignment. Judge invitation preview and acceptance, organizer signup and email verification, login, refresh, logout, and health are the intentionally public endpoints.
 
 ## Deployment constraints
 

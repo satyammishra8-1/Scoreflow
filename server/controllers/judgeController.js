@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const Judge = require('../models/Judge');
 const Event = require('../models/Event');
 const Team = require('../models/Team');
 const { hashInvitationToken, issueJudgeInvitation } = require('../services/invitationService');
+const { createAuthController } = require('./authController');
+const invitationAuthController = createAuthController();
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id);
@@ -361,10 +362,6 @@ exports.acceptJudgeInvitation = async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const invitation = await findInvitation(req.body?.token, res);
     if (!invitation) return;
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 72) {
-      return res.status(400).json({ success: false, error: 'Use a password of at least 12 characters and no more than 72 UTF-8 bytes.' });
-    }
     const now = new Date();
     const accepted = await Judge.findOneAndUpdate(
       {
@@ -375,18 +372,31 @@ exports.acceptJudgeInvitation = async (req, res) => {
         invitationExpiresAt: { $gt: now },
       },
       {
-        $set: { invitationStatus: 'accepted', invitationAcceptedAt: now, passwordHash: await bcrypt.hash(password, 12) },
+        $set: { invitationStatus: 'accepted', invitationAcceptedAt: now },
         $inc: { tokenVersion: 1 },
-        $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 },
       },
       { returnDocument: 'after', runValidators: true },
     ).lean();
     if (!accepted) {
       return res.status(409).json({ success: false, error: 'This invitation link is no longer valid. Please ask the organizer for a new invitation.' });
     }
+    let session;
+    try {
+      session = await invitationAuthController.issueJudgeInvitationSession(accepted, res);
+    } catch (error) {
+      await Judge.updateOne(
+        { _id: accepted._id, eventId: accepted.eventId, invitationStatus: 'accepted', invitationTokenHash: hashInvitationToken(invitation.token) },
+        { $set: { invitationStatus: 'pending' }, $unset: { invitationAcceptedAt: 1 } },
+      );
+      throw error;
+    }
+    await Judge.updateOne(
+      { _id: accepted._id, eventId: accepted.eventId, invitationStatus: 'accepted', invitationTokenHash: hashInvitationToken(invitation.token) },
+      { $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 } },
+    );
     return res.status(200).json({
       success: true,
-      data: { eventId: String(accepted.eventId), judgeId: String(accepted._id), invitationStatus: 'accepted' },
+      data: { ...session, eventId: String(accepted.eventId), judgeId: String(accepted._id), invitationStatus: 'accepted' },
     });
   } catch (error) {
     console.error('Failed to accept judge invitation:', error.message);
@@ -401,9 +411,9 @@ exports.resendJudgeInvitation = async (req, res) => {
     if (!isValidObjectId(judgeId) || !isValidObjectId(eventId)) {
       return res.status(400).json({ success: false, error: 'A valid eventId and judgeId are required.' });
     }
-    const judge = await Judge.findOne({ _id: judgeId, eventId }).select('+invitationTokenHash +passwordHash').lean();
+    const judge = await Judge.findOne({ _id: judgeId, eventId }).select('+invitationTokenHash').lean();
     if (!judge) return res.status(404).json({ success: false, error: 'Judge not found for this event.' });
-    if (judge.invitationStatus === 'accepted' && judge.passwordHash) {
+    if (judge.invitationStatus === 'accepted') {
       return res.status(409).json({ success: false, error: 'This judge has already accepted the invitation.' });
     }
     const event = await Event.findById(eventId).lean();
@@ -452,10 +462,7 @@ exports.sendJudgeInvitations = async (req, res) => {
       if (selectedIds.length > 500) return res.status(400).json({ success: false, error: 'Select no more than 500 judges at a time.' });
     }
 
-    const query = { eventId, $or: [
-      { invitationStatus: { $ne: 'accepted' } },
-      { invitationStatus: 'accepted', passwordHash: { $exists: false } },
-    ] };
+    const query = { eventId, invitationStatus: { $ne: 'accepted' } };
     if (recipientMode === 'specific') query._id = { $in: selectedIds };
     const judges = await Judge.find(query).lean();
     if (recipientMode === 'specific' && judges.length !== selectedIds.length) {

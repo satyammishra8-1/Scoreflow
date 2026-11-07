@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import OrganizerVerification from './pages/OrganizerVerification';
 import OrganizerDashboard from './pages/OrganizerDashboard';
 import EventManagement from './pages/EventManagement';
 import OrganizerEventWorkspace from './pages/OrganizerEventWorkspace';
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Login initialMode="register" />} />
+      <Route path="/organizer/verify/:token" element={<OrganizerVerification />} />
       <Route path="/judge/invite/:token" element={<JudgeInvitation />} />
       <Route path="/organizer/dashboard" element={<Protected role="organizer"><OrganizerDashboard /></Protected>} />
       <Route path="/organizer/events" element={<Protected role="organizer"><EventManagement /></Protected>} />

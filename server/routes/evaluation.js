@@ -13,30 +13,30 @@ const {
 } = require('../controllers/evaluationController');
 
 const router = express.Router();
-const { authenticate, requireOrganizer, requireEventAccess, requireAssignedTeam, authorizeEvaluationSubmission, authorizeEvaluationId } = require('../middleware/auth');
+const { authenticate, requireOrganizer, requireEventAccess, requireOwnedEvent, requireOwnedEvaluation, requireAssignedTeam, authorizeEvaluationSubmission, authorizeEvaluationId } = require('../middleware/auth');
 
-router.post('/events/:eventId/evaluation/ai-generate', ...requireOrganizer, createEvaluationSchemaController());
-router.post('/events/:eventId/evaluation/ai-validate', ...requireOrganizer, createEvaluationSchemaValidationController());
+router.post('/events/:eventId/evaluation/ai-generate', ...requireOrganizer, requireOwnedEvent, createEvaluationSchemaController());
+router.post('/events/:eventId/evaluation/ai-validate', ...requireOrganizer, requireOwnedEvent, createEvaluationSchemaValidationController());
 
 // Evaluation configuration
 router
   .route('/events/:eventId/evaluation')
   .get(authenticate, requireEventAccess, getEvaluationConfiguration)
-  .put(...requireOrganizer, createOrUpdateEvaluationConfiguration);
+  .put(...requireOrganizer, requireOwnedEvent, createOrUpdateEvaluationConfiguration);
 
 router
   .route('/events/:eventId/evaluation-config')
   .get(authenticate, requireEventAccess, getEvaluationConfigByEvent)
-  .put(...requireOrganizer, createEvaluationConfig);
+  .put(...requireOrganizer, requireOwnedEvent, createEvaluationConfig);
 
 // Judge evaluations
 router
   .route('/evaluations')
-  .post(authenticate, authorizeEvaluationSubmission, createEvaluation);
+  .post(authenticate, requireEventAccess, authorizeEvaluationSubmission, createEvaluation);
 
 router
   .route('/evaluations/:evaluationId')
-  .get(authenticate, authorizeEvaluationId, getEvaluation);
+  .get(authenticate, requireOwnedEvaluation, authorizeEvaluationId, getEvaluation);
 
 router
   .route('/events/:eventId/evaluations')

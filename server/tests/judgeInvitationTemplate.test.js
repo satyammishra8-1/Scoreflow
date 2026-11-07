@@ -8,6 +8,7 @@ const judgeB = { _id: '64b000000000000000000012', eventId, name: 'Asha Dev', ema
 
 const Event = require('../models/Event');
 const Judge = require('../models/Judge');
+const RefreshSession = require('../models/RefreshSession');
 const emailService = require('../services/emailService');
 const actualSendJudgeInvitation = emailService.sendJudgeInvitation;
 let sendCalls = [];
@@ -40,7 +41,10 @@ Judge.findOne = async (query) => {
   if (!acceptanceJudge || !query.invitationTokenHash || query.invitationTokenHash !== savedHashes.get(String(acceptanceJudge._id))) return null;
   return acceptanceJudge;
 };
-Judge.updateOne = async () => ({ acknowledged: true });
+Judge.updateOne = async (query) => {
+  if (query?.invitationTokenHash && savedHashes.get(String(query._id)) === query.invitationTokenHash) savedHashes.delete(String(query._id));
+  return { acknowledged: true };
+};
 emailService.sendJudgeInvitation = async (args) => {
   sendCalls.push(args);
   return { sent: true };
@@ -51,9 +55,11 @@ const controller = require('../controllers/judgeController');
 
 function response() {
   return {
+    headers: {},
     statusCode: 200,
     status(code) { this.statusCode = code; return this; },
     set() { return this; },
+    append(key, value) { this.headers[key] = value; return this; },
     json(value) { this.body = value; return this; },
   };
 }
@@ -130,6 +136,19 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     assert.equal(expiredLink.statusCode, 400);
   });
 
+  await t.test('email delivery failure removes the unusable invitation token', async () => {
+    reset();
+    const previousSender = emailService.sendJudgeInvitation;
+    emailService.sendJudgeInvitation = async () => ({ sent: false, message: 'mail unavailable' });
+    try {
+      const result = await invitationService.issueJudgeInvitation(judgeA, event);
+      assert.equal(result.sent, false);
+      assert.equal(savedHashes.has(judgeA._id), false);
+    } finally {
+      emailService.sendJudgeInvitation = previousSender;
+    }
+  });
+
   await t.test('expired invitation is rejected', async () => {
     reset();
     const credentials = invitationService.createInvitationCredentials();
@@ -148,19 +167,32 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     assert.match(res.body.error, /invalid or has already been used/);
   });
 
-  await t.test('acceptance binds the judge and event and returns the dashboard destination IDs', async () => {
+  await t.test('acceptance binds the judge and event and creates invitation-scoped access without a password', async () => {
     reset();
+    const previous = { access: process.env.JWT_ACCESS_SECRET, refresh: process.env.JWT_REFRESH_SECRET, create: RefreshSession.create };
+    process.env.JWT_ACCESS_SECRET = 'test-access-secret-that-is-long-enough-32-bytes';
+    process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-that-is-long-enough-32-bytes';
+    RefreshSession.create = async () => ({ _id: 'refresh-test' });
     const credentials = invitationService.createInvitationCredentials();
     savedHashes.set(judgeA._id, credentials.tokenHash);
     acceptanceJudge = { ...judgeA, invitationStatus: 'pending', invitationExpiresAt: new Date(Date.now() + 60000) };
-    acceptedResult = { _id: judgeA._id, eventId };
+    acceptedResult = { _id: judgeA._id, eventId, email: judgeA.email, name: judgeA.name, tokenVersion: 1 };
     const res = response();
-    await controller.acceptJudgeInvitation({ body: { token: credentials.token, password: 'A-very-secure-test-password' } }, res);
+    await controller.acceptJudgeInvitation({ body: { token: credentials.token } }, res);
     assert.equal(res.statusCode, 200);
     assert.equal(String(capturedAcceptanceQuery._id), judgeA._id);
     assert.equal(String(capturedAcceptanceQuery.eventId), eventId);
     assert.equal(capturedAcceptanceQuery.invitationStatus, 'pending');
-    assert.deepEqual(res.body.data, { eventId, judgeId: judgeA._id, invitationStatus: 'accepted' });
+    assert.equal(res.body.data.eventId, eventId);
+    assert.equal(res.body.data.judgeId, judgeA._id);
+    assert.equal(res.body.data.invitationStatus, 'accepted');
+    assert.equal(res.body.data.role, 'judge');
+    assert.ok(res.body.data.accessToken);
+    assert.match(res.headers['Set-Cookie'], /HttpOnly/);
+    assert.equal(capturedAcceptanceQuery.invitationStatus, 'pending');
+    process.env.JWT_ACCESS_SECRET = previous.access;
+    process.env.JWT_REFRESH_SECRET = previous.refresh;
+    RefreshSession.create = previous.create;
   });
 
   await t.test('bulk invite sends personalized invitations only to judges in the requested event', async () => {

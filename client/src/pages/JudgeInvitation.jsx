@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api as API } from '../auth/api';
+import { useAuth } from '../auth/useAuth';
 import './JudgeInvitation.css';
 
 function JudgeInvitation() {
@@ -11,7 +12,7 @@ function JudgeInvitation() {
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
-  const [password, setPassword] = useState('');
+  const { establishInvitationSession } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
@@ -33,9 +34,10 @@ function JudgeInvitation() {
     setAccepting(true);
     setError('');
     try {
-      const response = await API.post('/judge-invitations/accept', { token, password });
+      const response = await API.post('/judge-invitations/accept', { token });
       const acceptedInvite = response.data?.data;
       if (!acceptedInvite?.eventId || !acceptedInvite?.judgeId) throw new Error('The invitation was accepted, but the judge dashboard could not be identified.');
+      establishInvitationSession(acceptedInvite);
       setAccepted(true);
       window.setTimeout(() => navigate(`/judge/${encodeURIComponent(acceptedInvite.eventId)}/${encodeURIComponent(acceptedInvite.judgeId)}`, { replace: true }), 700);
     } catch (requestError) {
@@ -61,10 +63,9 @@ function JudgeInvitation() {
                 <div><dt>Invitation status</dt><dd>{accepted ? 'Accepted' : 'Pending'}</dd></div>
               </dl>
               {accepted ? <p className="judge-invitation-success" role="status">Invitation accepted. Opening your Judge Dashboard...</p>
-                : <><p className="judge-invitation-copy">Create your judge password to accept this invitation and access your event's Judge Dashboard.</p>
+              : <><p className="judge-invitation-copy">Accept this event invitation to open the evaluations assigned to you. No separate judge account or password is needed.</p>
                   {error && <p className="judge-invitation-error" role="alert">{error}</p>}
-                  <label className="judge-invitation-password">Password<input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /></label>
-                  <button className="judge-invitation-button" type="button" onClick={acceptInvitation} disabled={accepting || password.length < 12}>{accepting ? 'Accepting...' : 'Accept Invitation'}</button>
+                  <button className="judge-invitation-button" type="button" onClick={acceptInvitation} disabled={accepting}>{accepting ? 'Accepting...' : 'Accept Invitation'}</button>
                 </>}
             </>}
       </section>
