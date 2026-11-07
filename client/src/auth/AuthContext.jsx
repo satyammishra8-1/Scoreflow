@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
     refreshAccessToken().then((data) => {
-      if (mounted) setSession({ role: data.role, email: data.email, eventId: data.eventId });
+      if (mounted) setSession({ role: data.role, email: data.email, eventId: data.eventId, judgeId: data.judgeId });
     }).catch(() => {
       setAccessToken(null);
       if (mounted) setSession(null);
@@ -24,7 +24,7 @@ export function AuthProvider({ children }) {
     const data = response.data?.data;
     if (!data?.accessToken || !data?.role) throw new Error('The server returned an invalid session.');
     setAccessToken(data.accessToken);
-    setSession({ role: data.role, email: data.email, eventId: data.eventId });
+    setSession({ role: data.role, email: data.email, eventId: data.eventId, judgeId: data.judgeId });
     return data;
   }
 

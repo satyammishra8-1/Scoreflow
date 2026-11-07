@@ -13,7 +13,7 @@ export default function Hero() {
           </p>
 
           <div className="hero-actions">
-            <Link to="/organizer/dashboard" className="button button-primary">
+            <Link to="/login" className="button button-primary">
               Get Started
             </Link>
 
