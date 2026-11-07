@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 export default function CTA() {
   return (
     <section className="cta-section" id="cta">
@@ -7,9 +9,9 @@ export default function CTA() {
           <p>Bring structured evaluation and intelligent feedback to your next competition.</p>
         </div>
 
-        <a href="#home" className="button button-primary cta-button">
+        <Link to="/organizer/dashboard" className="button button-primary cta-button">
           Get Started
-        </a>
+        </Link>
       </div>
     </section>
   );

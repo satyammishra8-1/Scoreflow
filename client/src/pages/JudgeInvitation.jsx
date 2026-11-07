@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api as API } from '../auth/api';
-import { useAuth } from '../auth/useAuth';
 import './JudgeInvitation.css';
 
 function JudgeInvitation() {
   const { token = '' } = useParams();
   const navigate = useNavigate();
-  const { session: authSession } = useAuth();
   const [invitation, setInvitation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
@@ -39,9 +37,7 @@ function JudgeInvitation() {
       const acceptedInvite = response.data?.data;
       if (!acceptedInvite?.eventId || !acceptedInvite?.judgeId) throw new Error('The invitation was accepted, but the judge dashboard could not be identified.');
       setAccepted(true);
-      window.setTimeout(() => navigate(authSession?.role === 'judge' && authSession.eventId === acceptedInvite.eventId
-        ? `/judge/${encodeURIComponent(acceptedInvite.eventId)}/${encodeURIComponent(acceptedInvite.judgeId)}`
-        : `/judge/login?eventId=${encodeURIComponent(acceptedInvite.eventId)}`, { replace: true }), 700);
+      window.setTimeout(() => navigate(`/judge/${encodeURIComponent(acceptedInvite.eventId)}/${encodeURIComponent(acceptedInvite.judgeId)}`, { replace: true }), 700);
     } catch (requestError) {
       setError(requestError.response?.status === 410
         ? 'This invitation has expired. Please ask the organizer to resend the invitation.'
