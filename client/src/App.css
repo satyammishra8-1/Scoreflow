@@ -469,6 +469,67 @@ main {
   padding: 92px 0 0;
 }
 
+.about-section {
+  padding-bottom: 92px;
+  scroll-margin-top: 88px;
+}
+
+.about-heading {
+  max-width: 760px;
+}
+
+.about-heading > p {
+  max-width: 690px;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.about-card {
+  padding: 25px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.025);
+}
+
+.about-card-mark {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 18px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: var(--secondary-soft);
+  font-weight: 700;
+}
+
+.about-card h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 1.15rem;
+  letter-spacing: -0.025em;
+}
+
+.about-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+[data-theme='dark'] .about-card {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
 .section-heading {
   margin-bottom: 28px;
 }
@@ -993,6 +1054,7 @@ main {
   .ai-layout,
   .feature-grid,
   .steps-grid,
+  .about-grid,
   .benefits-grid {
     grid-template-columns: 1fr;
   }
@@ -1228,6 +1290,32 @@ main {
 
 [data-theme='dark'] .footer-wrap {
   border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .site-footer {
+  border-top-color: var(--border);
+  background: #0f172a;
+  color: var(--text);
+}
+
+[data-theme='dark'] .site-footer .footer-brand,
+[data-theme='dark'] .site-footer .footer-column h4 {
+  color: #f8fafc;
+}
+
+[data-theme='dark'] .site-footer .footer-branding p,
+[data-theme='dark'] .site-footer .footer-nav a,
+[data-theme='dark'] .site-footer .footer-bottom {
+  color: #a8b4c7;
+}
+
+[data-theme='dark'] .site-footer .footer-nav a:hover,
+[data-theme='dark'] .site-footer .footer-nav a:focus-visible {
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .site-footer .footer-bottom {
+  border-top-color: var(--border);
 }
 
 

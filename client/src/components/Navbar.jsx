@@ -6,7 +6,7 @@ const navItems = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Contact', href: '#contact' },
+  { label: 'About Us', href: '#about-us' },
 ];
 
 export default function Navbar() {

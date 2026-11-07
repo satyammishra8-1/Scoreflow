@@ -4,11 +4,11 @@ const productLinks = [
   { label: 'How It Works', href: '#how-it-works' },
 ];
 
-const companyLinks = [{ label: 'Contact', href: '#contact' }];
+const companyLinks = [{ label: 'About Us', href: '#about-us' }];
 
 export default function Footer() {
   return (
-    <footer className="site-footer" id="contact">
+    <footer className="site-footer">
       <div className="container footer-wrap">
         <div className="footer-branding">
           <a href="#home" className="footer-brand" aria-label="ScoreFlow home">

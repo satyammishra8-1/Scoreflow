@@ -2,6 +2,8 @@ import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
 import Features from '../components/Features';
 import HowItWorks from '../components/HowItWorks';
+import AboutUs from '../components/AboutUs';
+import Footer from '../components/Footer';
 
 const metrics = [
   { label: 'Competitions', value: '18+' },
@@ -27,7 +29,9 @@ export default function Home() {
         </section>
         <Features />
         <HowItWorks />
+        <AboutUs />
       </main>
+      <Footer />
     </>
   );
 }
