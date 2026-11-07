@@ -97,7 +97,7 @@ exports.createTeam = async (req, res) => {
     const team = await Team.create({ ...normalized, eventId: rawEventId });
     return res.status(201).json({ success: true, data: toTeamResponse(team) });
   } catch (error) {
-    console.error('Failed to create team:', error);
+    console.error('Failed to create team:', error?.code === 11000 ? 'duplicate team' : (error?.name || 'database error'));
     const duplicate = handleDuplicateKeyError(error);
     if (duplicate) return res.status(409).json(duplicate);
     if (error.name === 'ValidationError') {
