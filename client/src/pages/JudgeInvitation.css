@@ -1,0 +1,14 @@
+.judge-invitation-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: #f5f7fb; font-family: 'Segoe UI', Tahoma, sans-serif; color: #202b40; }
+.judge-invitation-card { width: min(100%, 520px); padding: 34px; border: 1px solid #e5e9f0; border-radius: 12px; background: #fff; box-shadow: 0 12px 36px rgba(25, 40, 65, .08); }
+.judge-invitation-brand { color: #4169df; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.judge-invitation-card h1 { margin: 10px 0 22px; font-size: 25px; }
+.judge-invitation-details { display: grid; gap: 15px; margin: 0; }
+.judge-invitation-details > div { display: grid; gap: 4px; }
+.judge-invitation-details dt { color: #7a8497; font-size: 12px; }
+.judge-invitation-details dd { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.judge-invitation-copy { margin: 22px 0; color: #59667d; font-size: 14px; line-height: 1.6; }
+.judge-invitation-button { width: 100%; min-height: 46px; border: 0; border-radius: 7px; color: #fff; background: #4169df; font-size: 14px; font-weight: 700; cursor: pointer; }
+.judge-invitation-button:hover:not(:disabled) { background: #3158c9; }
+.judge-invitation-button:disabled { cursor: wait; opacity: .7; }
+.judge-invitation-error { color: #b3343b; font-size: 13px; line-height: 1.5; }
+.judge-invitation-success { margin-top: 22px; color: #147b59; font-size: 14px; font-weight: 600; }

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+
+import { api as API } from '../auth/api';
+import { useAuth } from '../auth/useAuth';
 
 import {
 
@@ -8,15 +11,44 @@ import {
 
   calculateWeightedScore,
 
-  readSavedCriteria,
+  calculateDynamicWeightedScore,
 
-  readSavedEvaluationSessions,
+  dynamicScoreFields,
 
-} from '../data/evaluationStorage';
+  normalizeCriterion,
+
+} from '../data/evaluationUtils';
+
+import {
+
+  buildModelRequirements,
+
+  getScoresCardTitle,
+
+  isFeedbackRequired,
+
+} from '../data/evaluationRequirements';
+
+import ModelEvaluationFields from '../components/ModelEvaluationFields';
+import DynamicEvaluationFields from '../components/DynamicEvaluationFields';
 
 import './EvaluationSession.css';
 
+function toUiJudge(apiJudge) {
 
+  if (!apiJudge || typeof apiJudge !== 'object') return null;
+
+  return {
+
+    ...apiJudge,
+
+    id: String(apiJudge._id || apiJudge.judgeId || apiJudge.id || ''),
+
+    teamIds: Array.isArray(apiJudge.assignedTeamIds) ? apiJudge.assignedTeamIds.map(String) : [],
+
+  };
+
+}
 
 function formatDuration(valueInSeconds) {
 
@@ -31,50 +63,6 @@ function formatDuration(valueInSeconds) {
   const pad = (input) => String(input).padStart(2, '0');
 
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-
-}
-
-
-
-function readStoredTeams(eventId) {
-
-  try {
-
-    const stored = window.localStorage.getItem(`scoreflow.organizer.event.${eventId}.teams`);
-
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    return Array.isArray(parsed) ? parsed : [];
-
-  } catch {
-
-    return [];
-
-  }
-
-}
-
-
-
-function readStoredJudges(eventId) {
-
-  try {
-
-    const stored = window.localStorage.getItem(`scoreflow.organizer.event.${eventId}.judges`);
-
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-
-    return Array.isArray(parsed) ? parsed : [];
-
-  } catch {
-
-    return [];
-
-  }
 
 }
 
@@ -98,7 +86,11 @@ function getElapsedSecondsSince(startedAt) {
 
 
 
-function getMemberAttendanceKey(member) {
+function getMemberAttendanceKey(_member, index) {
+  return `member-${index + 1}`;
+}
+
+function getLegacyMemberAttendanceKey(member) {
 
   if (typeof member.email === 'string' && member.email.trim()) return `email:${member.email.trim().toLowerCase()}`;
 
@@ -116,115 +108,249 @@ function getMemberAttendanceKey(member) {
 
 function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
-  const [searchParams] = useSearchParams();
+  const { session: authSession, signOut } = useAuth();
+  const isAdminMode = authSession?.role === 'organizer';
+  const [editingCompleted, setEditingCompleted] = useState(false);
 
-  const isAdminMode = searchParams.get('mode') === 'admin';
+  const [teams, setTeams] = useState([]);
+  const [judges, setJudges] = useState([]);
+  const [judgesLoading, setJudgesLoading] = useState(true);
+  const [judgesError, setJudgesError] = useState('');
+  const [session, setSession] = useState(() => ({
+    id: `session-${getCurrentTimestamp()}`,
+    eventId,
+    teamId,
+    judgeId,
+    startedAt: null,
+    completedAt: null,
+    duration: 0,
+    attendance: 'Present',
+    scores: {},
+    totalScore: 0,
+    weightedScore: 0,
+    feedback: '',
+    status: 'NOT_STARTED',
+  }));
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => Number(session.duration || 0));
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [evaluationLoading, setEvaluationLoading] = useState(true);
+  const [evaluationAccessError, setEvaluationAccessError] = useState('');
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+  const [evalConfig, setEvalConfig] = useState(null);
 
-    try {
+  const [configLoading, setConfigLoading] = useState(true);
 
-      const stored = window.localStorage.getItem('scoreflow.sidebar.collapsed');
+  useEffect(() => {
 
-      return stored === 'true';
+    let cancelled = false;
 
-    } catch {
+    async function loadEvaluationConfig() {
 
-      return false;
+      try {
+
+        const response = await API.get(`/events/${encodeURIComponent(eventId)}/evaluation-config`);
+
+        if (!cancelled && response.data?.success) {
+
+          if (response.data.data) setEvalConfig(response.data.data);
+          else setJudgesError('Evaluation is not configured for this event yet.');
+
+        }
+
+      } catch {
+
+        if (!cancelled) setJudgesError('Unable to load this event\'s evaluation configuration.');
+
+      } finally {
+
+        if (!cancelled) setConfigLoading(false);
+
+      }
 
     }
 
-  });
+    loadEvaluationConfig();
 
-  const criteria = useMemo(() => readSavedCriteria(eventId).criteria, [eventId]);
+    return () => {
 
-  const [teams] = useState(() => readStoredTeams(eventId));
+      cancelled = true;
 
-  const [judges] = useState(() => readStoredJudges(eventId));
+    };
 
+  }, [eventId]);
+
+  const criteria = useMemo(() => {
+
+    if (!evalConfig) return [];
+
+    if (evalConfig.model === 'criteria-based') {
+
+      return (evalConfig.criteriaBased?.criteria || []).map(
+
+        (criterion, index) => normalizeCriterion(criterion, index, eventId),
+
+      );
+
+    }
+
+    if (evalConfig.model === 'live-demo') {
+
+      return (evalConfig.liveDemo?.criteria || []).map(
+
+        (criterion, index) => normalizeCriterion(criterion, index, eventId),
+
+      );
+
+    }
+
+    return [];
+
+  }, [evalConfig, eventId]);
+
+  const evalModel = evalConfig?.model || 'criteria-based';
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadJudges() {
+      try {
+        const [judgeResponse, teamResponse] = await Promise.all([
+          API.get(isAdminMode ? `/events/${encodeURIComponent(eventId)}/judges` : `/auth/judge/events/${encodeURIComponent(eventId)}`),
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+        ]);
+        if (!cancelled) {
+          const list = isAdminMode
+            ? (Array.isArray(judgeResponse.data?.data) ? judgeResponse.data.data : [])
+            : [judgeResponse.data?.data].filter(Boolean);
+          setJudges(list.map(toUiJudge).filter((judge) => judge && String(judge.eventId) === String(eventId)));
+          const eventTeams = Array.isArray(teamResponse.data?.data) ? teamResponse.data.data : [];
+          setTeams(eventTeams
+            .filter((team) => String(team.eventId) === String(eventId))
+            .map((team) => ({
+              ...team,
+              id: String(team._id || team.teamId || team.id || ''),
+              number: team.teamNumber,
+              name: team.teamName,
+              github: team.githubUrl || '',
+              demo: team.demoUrl || '',
+            })));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err?.response?.data?.error;
+          setJudgesError(
+            typeof message === 'string' && message.trim()
+              ? message
+              : 'Unable to load judges. Please try again.',
+          );
+        }
+      } finally {
+        if (!cancelled) setJudgesLoading(false);
+      }
+    }
+
+    loadJudges();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, isAdminMode]);
 
 
   useEffect(() => {
 
-    try {
+    let cancelled = false;
 
-      window.localStorage.setItem('scoreflow.sidebar.collapsed', String(sidebarCollapsed));
+    async function loadExistingEvaluation() {
 
-    } catch {
+      try {
 
-      // storage unavailable; ignore silently
+        const response = await API.get(
+
+          `/events/${encodeURIComponent(eventId)}/judges/${encodeURIComponent(judgeId)}/teams/${encodeURIComponent(teamId)}/evaluation`,
+
+        );
+
+        if (!cancelled && response.data?.success && response.data.data) {
+
+          const api = response.data.data;
+
+          setSession({
+
+            id: api.id,
+
+            eventId: api.eventId,
+
+            teamId: api.teamId,
+
+            judgeId: api.judgeId,
+
+            startedAt: api.startedAt != null ? api.startedAt : null,
+
+            completedAt: api.completedAt != null ? api.completedAt : null,
+
+            duration: Number(api.duration || 0),
+
+            attendance: api.attendance || 'Present',
+
+            scores:
+
+              typeof api.scores === 'object' && api.scores !== null ? { ...api.scores } : {},
+
+            totalScore: Number(api.totalScore || 0),
+
+            weightedScore: Number(api.weightedScore || 0),
+
+            feedback: typeof api.feedback === 'string' ? api.feedback : '',
+
+            status: api.status || 'NOT_STARTED',
+
+            memberAttendance:
+
+              typeof api.memberAttendance === 'object'
+
+                ? { ...api.memberAttendance }
+
+                : {},
+
+            textAnswers:
+
+              typeof api.textAnswers === 'object' ? { ...api.textAnswers } : {},
+
+            flags: typeof api.flags === 'object' ? { ...api.flags } : {},
+
+          });
+
+        }
+
+      } catch (loadError) {
+        if (!cancelled && loadError?.response?.status !== 404) {
+          const message = loadError?.response?.data?.error || 'Unable to load the evaluation from MongoDB.';
+          setEvaluationAccessError(message);
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) setEvaluationLoading(false);
+      }
 
     }
 
-  }, [sidebarCollapsed]);
+    loadExistingEvaluation();
 
-  const [session, setSession] = useState(() => {
+    return () => {
 
-    const sessions = readSavedEvaluationSessions(eventId);
-
-    const existing = sessions.find((item) => item.judgeId === judgeId && item.teamId === teamId);
-
-    if (existing) {
-
-      return {
-
-        ...existing,
-
-        attendance: existing.attendance || 'Present',
-
-        scores: existing.scores || {},
-
-        feedback: existing.feedback || '',
-
-        status: existing.status || 'NOT_STARTED',
-
-      };
-
-    }
-
-    return {
-
-      id: `session-${getCurrentTimestamp()}`,
-
-      eventId,
-
-      teamId,
-
-      judgeId,
-
-      startedAt: null,
-
-      completedAt: null,
-
-      duration: 0,
-
-      attendance: 'Present',
-
-      scores: {},
-
-      totalScore: 0,
-
-      weightedScore: 0,
-
-      feedback: '',
-
-      status: 'NOT_STARTED',
+      cancelled = true;
 
     };
 
-  });
-
-  const [elapsedSeconds, setElapsedSeconds] = useState(() => Number(session.duration || 0));
-
-  const [error, setError] = useState('');
-
-  const [success, setSuccess] = useState('');
+  }, [eventId, judgeId, teamId]);
 
 
 
   useEffect(() => {
     if (session.status !== 'IN_PROGRESS' || !session.startedAt) {
-      setElapsedSeconds(Number(session.duration || 0));
       return undefined;
     }
 
@@ -234,7 +360,6 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
       );
     };
 
-    updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
   }, [session.status, session.startedAt, session.duration]);
@@ -274,15 +399,64 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
     setElapsedSeconds(currentElapsed);
   }
 
-  const completedCriteriaCount = criteria.filter((criterion) => {
+  function resetTimer() {
+    if (isReadOnly) return;
+    const nextSession = {
+      ...session,
+      startedAt: null,
+      completedAt: null,
+      duration: 0,
+      status: 'NOT_STARTED',
+    };
+    persistSession(nextSession);
+    setElapsedSeconds(0);
+  }
 
-    const value = Number(session.scores?.[criterion.id] ?? -1);
+  const modelRequirements = useMemo(
 
-    return value >= 0 && value <= Number(criterion.maxMarks || 0);
+    () =>
 
-  }).length;
+      buildModelRequirements({
 
-  const totalCriteriaCount = criteria.length;
+        model: evalModel,
+
+        config: evalConfig,
+
+        criteria,
+
+        scores: session.scores || {},
+
+        textAnswers: session.textAnswers || {},
+
+        flags: session.flags || {},
+
+        feedback: session.feedback || '',
+        dynamicSchema: evalConfig?.dynamicSchema,
+
+      }),
+
+    [
+
+      evalModel,
+
+      evalConfig,
+
+      criteria,
+
+      session.scores,
+
+      session.textAnswers,
+
+      session.flags,
+
+      session.feedback,
+    ],
+
+  );
+
+  const completedCriteriaCount = modelRequirements.filter((requirement) => requirement.done).length;
+
+  const totalCriteriaCount = modelRequirements.length;
 
   const progressPercent = totalCriteriaCount === 0 ? 0 : Math.round((completedCriteriaCount / totalCriteriaCount) * 100);
 
@@ -290,43 +464,61 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   const weightedScore = calculateWeightedScore(session.scores || {}, criteria);
 
+  const dynamicFields = dynamicScoreFields(evalConfig?.dynamicSchema);
+
+  const dynamicWeightedScore = calculateDynamicWeightedScore(session.scores || {}, evalConfig?.dynamicSchema);
+
+  const showFeedbackCard = isFeedbackRequired(evalModel, evalConfig);
 
 
-  const team = teams.find((item) => String(item.id || item.number) === String(teamId));
+
+  const team = teams.find((item) => String(item._id || item.id || item.number) === String(teamId));
 
   const judge = judges.find((item) => String(item.id) === String(judgeId));
 
-  const assignedToJudge = judge && team && (judge.teamIds || []).includes(String(team.id || team.number));
+  const assignedToJudge = judge && team && String(team.eventId) === String(eventId)
+    && String(judge.eventId) === String(eventId)
+    && (judge.teamIds || []).includes(String(team._id || team.id || team.number));
 
   const teamMembers = Array.isArray(team?.members) ? team.members : [];
 
-  const memberAttendance = teamMembers.map((member) => {
+  const memberAttendance = teamMembers.map((member, index) => {
 
     const legacyStatus = session.attendance === 'Absent' ? 'ABSENT' : 'PRESENT';
 
-    const status = session.memberAttendance?.[getMemberAttendanceKey(member)] || legacyStatus;
+    const savedAttendance = session.memberAttendance || {};
+    const status = savedAttendance[getMemberAttendanceKey(member, index)]
+      || savedAttendance[getLegacyMemberAttendanceKey(member)]
+      || legacyStatus;
 
-    return { member, key: getMemberAttendanceKey(member), status };
+    return { member, key: getMemberAttendanceKey(member, index), status };
 
   });
 
   const presentMemberCount = memberAttendance.filter(({ status }) => status === 'PRESENT').length;
 
-  const isReadOnly = session.status === 'COMPLETED';
+  const isReadOnly = session.status === 'COMPLETED' && !editingCompleted;
 
   const isEvaluationReady = totalCriteriaCount > 0
 
-    && completedCriteriaCount === totalCriteriaCount
-
-    && Boolean(session.feedback?.trim());
+    && completedCriteriaCount === totalCriteriaCount;
 
 
 
-  function persistSession(nextSession) {
+  async function persistSession(nextSession) {
+
+    const attendanceInput = nextSession.memberAttendance || {};
+    const memberAttendance = Object.fromEntries(teamMembers.flatMap((member, index) => {
+      const key = getMemberAttendanceKey(member, index);
+      const status = attendanceInput[key] || attendanceInput[getLegacyMemberAttendanceKey(member)];
+      return status ? [[key, String(status).toUpperCase()]] : [];
+    }));
 
     const normalized = {
 
       ...nextSession,
+
+      memberAttendance,
 
       totalScore: calculateRawTotal(nextSession.scores || {}, criteria),
 
@@ -338,19 +530,79 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    const stored = readSavedEvaluationSessions(eventId);
+    // Optimistic update keeps the UI responsive while the API persists.
 
-    const filtered = stored.filter((item) => item.id !== normalized.id);
-
-    const finalSessions = [...filtered, normalized];
-
-    window.localStorage.setItem(`scoreflow.organizer.event.${eventId}.evaluationSessions`, JSON.stringify(finalSessions));
-
-    setSession(normalized);
+    setSession({ ...normalized, id: session.id });
 
     setError('');
 
     setSuccess('');
+
+    try {
+
+      const response = await API.post('/evaluations', {
+
+        eventId,
+
+        judgeId,
+
+        teamId,
+
+        scores: normalized.scores,
+
+        totalScore: normalized.totalScore,
+
+        weightedScore: normalized.weightedScore,
+
+        feedback: normalized.feedback || '',
+
+        status: normalized.status,
+
+        duration: normalized.duration,
+
+        attendance: normalized.attendance || 'Present',
+
+        memberAttendance: normalized.memberAttendance || {},
+
+        textAnswers: normalized.textAnswers || {},
+
+        flags: normalized.flags || {},
+
+        startedAt: normalized.startedAt ? new Date(normalized.startedAt) : null,
+
+        completedAt: normalized.completedAt ? new Date(normalized.completedAt) : null,
+
+      });
+
+      if (!response.data?.success) {
+
+        throw new Error(response.data?.error || 'Failed to save evaluation.');
+
+      }
+
+      const saved = response.data.data;
+
+      setSession((current) => ({
+
+        ...current,
+
+        id: saved.id,
+
+        totalScore: saved.totalScore ?? current.totalScore,
+
+        weightedScore: saved.weightedScore ?? current.weightedScore,
+
+      }));
+
+      return true;
+
+    } catch (err) {
+
+      setError(err?.response?.data?.error || 'Failed to save evaluation. Please try again.');
+
+      return false;
+
+    }
 
   }
 
@@ -406,6 +658,78 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
+  function updateNumericField(key, rawValue, maxValue = 100) {
+
+    if (isReadOnly) return;
+
+    const nextScores = { ...session.scores };
+
+    if (String(rawValue).trim() === '') {
+
+      delete nextScores[key];
+
+    } else {
+
+      const numericValue = Number(rawValue);
+
+      nextScores[key] = Number.isFinite(numericValue)
+
+        ? Math.min(Math.max(numericValue, 0), Number(maxValue))
+
+        : 0;
+
+    }
+
+    persistSession({
+
+      ...session,
+
+      scores: nextScores,
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
+  function updateTextAnswer(key, value) {
+
+    if (isReadOnly) return;
+
+    persistSession({
+
+      ...session,
+
+      textAnswers: { ...(session.textAnswers || {}), [key]: value },
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
+  function updateFlag(key, value) {
+
+    if (isReadOnly) return;
+
+    persistSession({
+
+      ...session,
+
+      flags: { ...(session.flags || {}), [key]: Boolean(value) },
+
+      duration: displayDuration,
+
+    });
+
+  }
+
+
+
   function updateMemberAttendance(memberKey, nextAttendance) {
 
     if (isReadOnly) return;
@@ -432,21 +756,11 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-  function submitEvaluation() {
+  async function submitEvaluation() {
 
-    const missingCriteria = criteria.filter((criterion) => {
+    if (modelRequirements.length === 0) {
 
-      const value = Number(session.scores?.[criterion.id] ?? -1);
-
-      return value < 0 || value > Number(criterion.maxMarks || 0);
-
-    });
-
-
-
-    if (criteria.length > 0 && missingCriteria.length > 0) {
-
-      setError('Each criterion must have a valid score between 0 and its maximum marks.');
+      setError('No evaluation fields are configured for this event yet.');
 
       return;
 
@@ -454,9 +768,11 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-    if (!session.feedback || !session.feedback.trim()) {
+    const missingRequirements = modelRequirements.filter((requirement) => !requirement.done);
 
-      setError('Overall feedback is required before completion.');
+    if (missingRequirements.length > 0) {
+
+      setError(`Complete these fields before submitting: ${missingRequirements.map((requirement) => requirement.label).join(', ')}.`);
 
       return;
 
@@ -484,15 +800,18 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    persistSession(nextSession);
+    if (await persistSession(nextSession)) {
 
-    setSuccess('Evaluation submitted successfully.');
+      setSuccess('Evaluation submitted successfully.');
+      setEditingCompleted(false);
+
+    }
 
   }
 
 
 
-  function reopenEvaluation() {
+  async function reopenEvaluation() {
 
     const nextSession = {
 
@@ -508,15 +827,61 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
     };
 
-    persistSession(nextSession);
+    if (await persistSession(nextSession)) {
 
-    setSuccess('Evaluation reopened for edits.');
+      setSuccess('Evaluation reopened for edits.');
+
+    }
 
   }
 
 
 
-  if (!team || !judge || !assignedToJudge) {
+  if (judgesLoading || configLoading || evaluationLoading) {
+
+    return (
+
+      <div className="evaluation-session-page">
+
+        <div className="evaluation-session-empty">
+
+          <p role="status">Loading judge...</p>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
+
+
+
+  if (judgesError) {
+
+    return (
+
+      <div className="evaluation-session-page">
+
+        <div className="evaluation-session-empty">
+
+          <h1>Unable to load judge</h1>
+
+          <p>{judgesError}</p>
+
+          <Link to={isAdminMode ? `/organizer/events/${eventId}/judges` : `/judge/${eventId}/${judgeId}`} className="judges-primary-button">{isAdminMode ? 'Back to Judges' : 'Back to Judge Dashboard'}</Link>
+
+        </div>
+
+      </div>
+
+    );
+
+  }
+
+
+
+  if (evaluationAccessError || !team || !judge || !assignedToJudge) {
 
     return (
 
@@ -526,9 +891,9 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <h1>Evaluation is unavailable</h1>
 
-          <p>This team is not assigned to this judge for this event.</p>
+          <p>{evaluationAccessError || 'This team is not assigned to this judge for this event.'}</p>
 
-          <Link to={`/organizer/events/${eventId}/judges`} className="judges-primary-button">Back to Judges</Link>
+          <Link to={isAdminMode ? `/organizer/events/${eventId}/judges` : `/judge/${eventId}/${judgeId}`} className="judges-primary-button">{isAdminMode ? 'Back to Judges' : 'Back to Judge Dashboard'}</Link>
 
         </div>
 
@@ -542,49 +907,14 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
   return (
 
-    <div className={`evaluation-session-page ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-
-      <aside className={`event-sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-
-        <Link to="/organizer/dashboard" className="event-brand" aria-label="ScoreFlow home">
-
-          <span className="event-brand-mark">S</span>
-
-          <span className="event-brand-text">ScoreFlow</span>
-
-        </Link>
-
-        <button
-
-          type="button"
-
-          className="event-sidebar-toggle"
-
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-
-          onClick={() => setSidebarCollapsed((current) => !current)}
-
-        >
-
-          {sidebarCollapsed ? '⟩' : '⟨'}
-
-        </button>
-
-        <nav className="event-navigation" aria-label="Judge navigation">
-
-          <Link to={`/judge/${eventId}/${judgeId}`}><span aria-hidden="true">♙</span><span className="event-nav-label">Judge Dashboard</span></Link>
-
-          <Link to={`/organizer/events/${eventId}/judges`}><span aria-hidden="true">▣</span><span className="event-nav-label">Judges</span></Link>
-
-          <Link to={`/organizer/events/${eventId}/criteria`}><span aria-hidden="true">☷</span><span className="event-nav-label">Criteria</span></Link>
-
-        </nav>
-
-      </aside>
-
-
-
+    <div className="evaluation-session-page">
       <main className="evaluation-session-main">
+        <nav className="evaluation-session-nav" aria-label="Evaluation session navigation">
+          <Link to="/organizer/dashboard" className="evaluation-session-brand"><span className="dashboard-brand-mark">S</span>ScoreFlow</Link>
+          {isAdminMode ? <Link to={`/organizer/events/${eventId}/judges`} className="evaluation-session-return">← Return to Judges</Link>
+            : <Link to={`/judge/${eventId}/${judgeId}`} className="evaluation-session-return">← Judge Dashboard</Link>}
+          <button type="button" className="evaluation-session-logout" onClick={signOut}>Sign out</button>
+        </nav>
 
         <header className="event-topbar">
 
@@ -594,7 +924,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
               <p className="judges-context">Evaluation session</p>
 
-              <h1>{team.name}</h1>
+              <h1>Team {team.number}: {team.name}</h1>
 
             </div>
 
@@ -617,7 +947,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
                 <div className="evaluation-timer-actions">
                   {session.status === 'NOT_STARTED' && (
                     <button type="button" className="evaluation-timer-button primary" onClick={startTimer}>
-                      Start Evaluation
+                      Start
                     </button>
                   )}
                   {session.status === 'IN_PROGRESS' && (
@@ -630,6 +960,9 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
                       Resume
                     </button>
                   )}
+                  <button type="button" className="evaluation-timer-button" onClick={resetTimer}>
+                    Reset
+                  </button>
                 </div>
               )}
             </div>
@@ -654,7 +987,12 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
             <span>Submitted at: {session.completedAt ? new Date(session.completedAt).toLocaleString() : '—'}</span>
 
-            <small>{isAdminMode ? 'This evaluation is locked. Reopen it to make corrections.' : 'This evaluation is locked for judges. Please contact the organizer for corrections.'}</small>
+            <small>Saved values are loaded from this event, judge, and team evaluation.</small>
+            {isReadOnly && !isAdminMode && (
+              <button type="button" className="judges-secondary-button" onClick={() => setEditingCompleted(true)}>
+                Edit Evaluation
+              </button>
+            )}
 
           </div>
 
@@ -820,11 +1158,25 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
             <div className="evaluation-summary-grid">
 
-              <div className="summary-stat"><span>Criteria Completed</span><strong>{completedCriteriaCount} / {totalCriteriaCount}</strong></div>
+              <div className="summary-stat"><span>Fields Completed</span><strong>{completedCriteriaCount} / {totalCriteriaCount}</strong></div>
 
-              <div className="summary-stat"><span>Raw Score</span><strong>{rawTotal} / {criteria.reduce((sum, criterion) => sum + Number(criterion.maxMarks || 0), 0)}</strong></div>
+              {criteria.length > 0 ? (
 
-              <div className="summary-stat"><span>Weighted Score</span><strong>{weightedScore.toFixed(1)} / 100</strong></div>
+                <>
+
+                  <div className="summary-stat"><span>Raw Score</span><strong>{rawTotal} / {criteria.reduce((sum, criterion) => sum + Number(criterion.maxMarks || 0), 0)}</strong></div>
+
+                  <div className="summary-stat"><span>Weighted Score</span><strong>{weightedScore.toFixed(1)} / 100</strong></div>
+
+                </>
+
+              ) : (
+
+                <div className="summary-stat"><span>Model</span><strong>{getScoresCardTitle(evalModel)}</strong></div>
+
+              )}
+
+              {dynamicFields.length > 0 && <div className="summary-stat"><span>AI Rubric Score</span><strong>{dynamicWeightedScore} / 100</strong></div>}
 
               <div className="summary-stat"><span>Attendance</span><strong>{presentMemberCount} / {teamMembers.length} Present</strong></div>
 
@@ -838,7 +1190,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                 <span>Evaluation Progress</span>
 
-                <strong>{completedCriteriaCount} / {totalCriteriaCount} Criteria Completed</strong>
+                <strong>{completedCriteriaCount} / {totalCriteriaCount} Fields Completed</strong>
 
               </div>
 
@@ -890,87 +1242,59 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
           <div className="evaluation-section-header">
 
-            <h2>Score Criteria</h2>
+            <h2>{getScoresCardTitle(evalModel)}</h2>
 
             <span className="evaluation-status-badge evaluation-badge-muted">{completedCriteriaCount}/{totalCriteriaCount}</span>
 
           </div>
 
-          {criteria.length === 0 ? (
+          {configLoading ? (
 
-            <p className="judges-empty-message">No evaluation criteria are configured for this event.</p>
+            <p className="judges-empty-message">Loading evaluation configuration...</p>
 
           ) : (
 
-            <div className="score-grid">
+            <>
+            <ModelEvaluationFields
 
-              {criteria.map((criterion) => {
+              model={evalModel}
 
-                const current = Number(session.scores?.[criterion.id] ?? 0);
+              config={evalConfig}
 
-                return (
+              criteria={criteria}
 
-                  <div className="score-row" key={criterion.id}>
+              scores={session.scores || {}}
 
-                    <div className="score-row-copy">
+              textAnswers={session.textAnswers || {}}
 
-                      <div className="score-row-header">
+              flags={session.flags || {}}
 
-                        <strong>{criterion.name}</strong>
+              team={team}
+              assignedTeamCount={Math.max(1, judge?.teamIds?.length || 1)}
 
-                        <span>Weight: {criterion.weight || 0}%</span>
+              readOnly={isReadOnly}
 
-                      </div>
+              onScoreChange={updateNumericField}
 
-                      <small>{criterion.description || 'No description provided.'}</small>
+              onTextChange={updateTextAnswer}
 
-                      <div className="score-meta-row">
+              onFlagChange={updateFlag}
 
-                        <span>Maximum: {criterion.maxMarks} marks</span>
+              onCriterionScoreChange={updateScore}
 
-                        <span className="score-meta-chip">{current} scored</span>
+            />
 
-                      </div>
-
-                    </div>
-
-                    <div className="score-controls">
-
-                      <label>
-
-                        <span>Score</span>
-
-                        <input
-
-                          type="number"
-
-                          min="0"
-
-                          max={criterion.maxMarks}
-
-                          step="0.5"
-
-                          value={current}
-
-                          readOnly={isReadOnly}
-
-                          onChange={(event) => updateScore(criterion.id, event.target.value)}
-
-                        />
-
-                      </label>
-
-                      <span className="score-max-text">/ {criterion.maxMarks}</span>
-
-                    </div>
-
-                  </div>
-
-                );
-
-              })}
-
-            </div>
+            <DynamicEvaluationFields
+              schema={evalConfig?.dynamicSchema}
+              scores={session.scores || {}}
+              textAnswers={session.textAnswers || {}}
+              flags={session.flags || {}}
+              readOnly={isReadOnly}
+              onScoreChange={updateNumericField}
+              onTextChange={updateTextAnswer}
+              onFlagChange={updateFlag}
+            />
+            </>
 
           )}
 
@@ -978,25 +1302,37 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
 
 
-        <section className="evaluation-card feedback-card">
+        {showFeedbackCard && (
 
-          <h2>Overall Feedback</h2>
+          <section className="evaluation-card feedback-card">
 
-          <textarea
+            <h2>{evalModel === 'ranking-voting' ? 'Comment' : 'Overall Feedback'}</h2>
 
-            rows="5"
+            <textarea
 
-            value={session.feedback || ''}
+              rows="5"
 
-            readOnly={isReadOnly}
+              value={session.feedback || ''}
 
-            onChange={(event) => updateFeedback(event.target.value)}
+              readOnly={isReadOnly}
 
-            placeholder="Summarize the team's strengths, weaknesses and key observations..."
+              onChange={(event) => updateFeedback(event.target.value)}
 
-          />
+              placeholder={
 
-        </section>
+                evalModel === 'ranking-voting'
+
+                  ? 'Add a comment supporting this ranking...'
+
+                  : "Summarize the team's strengths, weaknesses and key observations..."
+
+              }
+
+            />
+
+          </section>
+
+        )}
 
 
 
@@ -1020,7 +1356,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                 <strong>✓ Evaluation Ready</strong>
 
-                <span>All required criteria have been completed.</span>
+                <span>All required fields have been completed.</span>
 
               </>
 
@@ -1034,7 +1370,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
                   {totalCriteriaCount === 0 || completedCriteriaCount !== totalCriteriaCount
 
-                    ? 'Complete all required criteria before submitting.'
+                    ? 'Complete all required fields before submitting.'
 
                     : 'Add overall feedback before submitting.'}
 
@@ -1070,7 +1406,7 @@ function EvaluationSession({ eventId = 'default', judgeId, teamId }) {
 
               >
 
-                Complete Evaluation
+                {session.status === 'COMPLETED' ? 'Save Changes' : 'Submit Evaluation'}
 
               </button>
 

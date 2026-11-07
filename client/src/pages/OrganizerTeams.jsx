@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { readSavedTeams } from '../data/teamStorage';
-import { createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
+import { useMemo, useRef, useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { api as API } from '../auth/api';
+import OrganizerLayout from './OrganizerLayout';
+import { buildTeamImportPlan, createSampleWorkbook, parseTeamWorkbook } from '../data/teamImport';
 import { findDuplicateMemberIndexes, normalizeExternalUrl } from '../data/teamValidation';
 import {
   DeleteTeamModal,
@@ -12,60 +13,67 @@ import {
 import './OrganizerDashboard.css';
 import './OrganizerTeams.css';
 
-function TeamSidebar({ eventId, isOpen, closeMenu }) {
-  return (
-    <>
-      <button
-        className={`dashboard-scrim ${isOpen ? 'visible' : ''}`}
-        type="button"
-        aria-label="Close navigation"
-        onClick={closeMenu}
-      />
-      <aside className={`dashboard-sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        <Link to="/organizer/dashboard" className="dashboard-brand" onClick={closeMenu}>
-          <span className="dashboard-brand-mark">S</span><span>ScoreFlow</span>
-        </Link>
-        <nav className="sidebar-navigation" aria-label="Organizer navigation">
-          <Link className="sidebar-link" to="/organizer/dashboard" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▦</span><span>Dashboard</span>
-          </Link>
-          <Link className="sidebar-link" to="/organizer/events" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▣</span><span>Events</span>
-          </Link>
-          <Link className="sidebar-link sidebar-link-active" to={`/organizer/events/${eventId}/teams`} onClick={closeMenu} aria-current="page">
-            <span className="sidebar-icon" aria-hidden="true">♧</span><span>Teams</span>
-            <span className="active-indicator" />
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/judges`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">♙</span><span>Judges</span>
-          </Link>
-          <Link className="sidebar-link" to={`/organizer/events/${eventId}/criteria`} onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">☷</span><span>Evaluation Criteria</span>
-          </Link>
-          <a className="sidebar-link" href="#" key="results" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">▤</span><span>Results</span>
-          </a>
-          <a className="sidebar-link" href="#" key="feedback" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">✉</span><span>Feedback &amp; Emails</span>
-          </a>
-        </nav>
-        <div className="sidebar-bottom">
-          <a href="#" className="sidebar-link" onClick={closeMenu}>
-            <span className="sidebar-icon" aria-hidden="true">⚙</span><span>Settings</span>
-          </a>
-        </div>
-      </aside>
-    </>
-  );
+function getTeamKey(team) {
+  const raw = team?.teamId ?? team?._id ?? team?.id;
+  return raw != null ? String(raw) : '';
 }
 
-function safeStoredEventName() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem('scoreflow.organizer.event') || 'null');
-    return parsed && typeof parsed.name === 'string' ? parsed.name.trim() : '';
-  } catch {
-    return '';
-  }
+function toUiTeam(apiTeam) {
+  if (!apiTeam || typeof apiTeam !== 'object') return null;
+  const key = getTeamKey(apiTeam);
+  const members = Array.isArray(apiTeam.members) ? apiTeam.members : [];
+  const judges = Array.isArray(apiTeam.judges) ? apiTeam.judges : [];
+  return {
+    ...apiTeam,
+    id: key,
+    teamId: key,
+    number: typeof apiTeam.teamNumber === 'string' ? apiTeam.teamNumber : '',
+    name: typeof apiTeam.teamName === 'string' ? apiTeam.teamName : '',
+    project: typeof apiTeam.project === 'string' ? apiTeam.project : '',
+    github: typeof apiTeam.githubUrl === 'string' ? apiTeam.githubUrl : '',
+    demo: typeof apiTeam.demoUrl === 'string' ? apiTeam.demoUrl : '',
+    status: apiTeam.status === 'Complete' ? 'Complete' : 'Pending',
+    members: members.map((member, index) => ({
+      id: typeof member?.id === 'string' && member.id
+        ? member.id
+        : `${key || apiTeam.teamNumber || 'team'}-member-${index + 1}`,
+      name: typeof member?.name === 'string' ? member.name : '',
+      email: typeof member?.email === 'string' ? member.email : '',
+      usn: typeof member?.usn === 'string' ? member.usn : '',
+      section: typeof member?.section === 'string' ? member.section : '',
+      github: typeof member?.github === 'string' ? member.github : '',
+      demo: typeof member?.demo === 'string' ? member.demo : '',
+    })),
+    judges,
+    eventId: apiTeam.eventId != null ? String(apiTeam.eventId) : '',
+  };
+}
+
+function toApiPayload(uiTeam, eventId) {
+  return {
+    eventId,
+    teamNumber: uiTeam.number,
+    teamName: uiTeam.name,
+    project: uiTeam.project || '',
+    members: (uiTeam.members || []).map((member) => ({
+      name: member.name,
+      email: member.email || '',
+      usn: member.usn || '',
+      section: member.section || '',
+      github: member.github || '',
+      demo: member.demo || '',
+    })),
+    githubUrl: uiTeam.github || '',
+    demoUrl: uiTeam.demo || '',
+    judges: Array.isArray(uiTeam.judges) ? uiTeam.judges : [],
+    status: uiTeam.status || 'Pending',
+  };
+}
+
+function getApiErrorMessage(error, fallback) {
+  const message = error?.response?.data?.error;
+  if (typeof message === 'string' && message.trim()) return message;
+  return fallback;
 }
 
 function TeamLink({ value, label }) {
@@ -87,11 +95,8 @@ function OrganizerTeams() {
 }
 
 function OrganizerTeamsEvent({ eventId }) {
-  const storageKey = `scoreflow.organizer.event.${eventId}.teams`;
-  const judgeStorageKey = `scoreflow.organizer.event.${eventId}.judges`;
-  const [initialData] = useState(() => readSavedTeams(storageKey, eventId));
-  const [teams, setTeams] = useState(initialData.teams);
-  const [eventName] = useState(safeStoredEventName);
+  const [teams, setTeams] = useState([]);
+  const [eventName, setEventName] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -101,16 +106,45 @@ function OrganizerTeamsEvent({ eventId }) {
   const [previewData, setPreviewData] = useState(null);
   const [duplicateStrategy, setDuplicateStrategy] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
-  const [pageMessage, setPageMessage] = useState(initialData.error
-    ? { type: 'error', text: initialData.error }
-    : null);
+  const [pageMessage, setPageMessage] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isReading, setIsReading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const fileInput = useRef(null);
   const activeEventId = useRef(eventId);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeams() {
+      setIsLoading(true);
+      setPageMessage(null);
+      try {
+        const [teamsResponse, eventResponse] = await Promise.all([
+          API.get(`/events/${encodeURIComponent(eventId)}/teams`),
+          API.get(`/events/${encodeURIComponent(eventId)}`).catch(() => null),
+        ]);
+        if (cancelled || activeEventId.current !== eventId) return;
+        const list = Array.isArray(teamsResponse.data?.data) ? teamsResponse.data.data : [];
+        setTeams(list.filter((team) => String(team.eventId) === String(eventId)).map(toUiTeam).filter(Boolean));
+        const eventNameValue = eventResponse?.data?.data?.name;
+        setEventName(typeof eventNameValue === 'string' ? eventNameValue.trim() : '');
+      } catch (error) {
+        if (cancelled || activeEventId.current !== eventId) return;
+        setTeams([]);
+        setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to load teams for this event.') });
+      } finally {
+        if (!cancelled && activeEventId.current === eventId) setIsLoading(false);
+      }
+    }
+
+    loadTeams();
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
 
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -154,50 +188,64 @@ function OrganizerTeamsEvent({ eventId }) {
     };
   }, [previewData]);
 
-  function saveTeams(nextTeams) {
+  async function refreshTeams(successMessage) {
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
-      setTeams(nextTeams);
-      setPageMessage(null);
+      const response = await API.get(`/events/${encodeURIComponent(eventId)}/teams`);
+      if (activeEventId.current !== eventId) return { ok: false };
+      const list = Array.isArray(response.data?.data) ? response.data.data : [];
+      setTeams(list.filter((team) => String(team.eventId) === String(eventId)).map(toUiTeam).filter(Boolean));
+      if (successMessage) setPageMessage({ type: 'success', text: successMessage });
+      else setPageMessage(null);
       return { ok: true };
-    } catch {
-      const error = 'Unable to save teams in this browser. Check available local storage and try again.';
-      setPageMessage({ type: 'error', text: error });
-      return { ok: false, error };
+    } catch (error) {
+      if (activeEventId.current !== eventId) return { ok: false };
+      const message = getApiErrorMessage(error, 'Unable to load teams for this event.');
+      setPageMessage({ type: 'error', text: message });
+      return { ok: false, error: message };
     }
   }
 
-  function saveTeam(team) {
+  async function saveTeam(team) {
+    const teamKey = getTeamKey(team);
     const duplicate = teams.some((existing) => (
-      existing.id !== team.id && existing.number.toLowerCase() === team.number.toLowerCase()
+      getTeamKey(existing) !== teamKey && existing.number.toLowerCase() === team.number.toLowerCase()
     ));
     if (duplicate) return { ok: false, error: `Team No. ${team.number} is already in use.` };
 
-    const withEvent = { ...team, eventId };
-    const exists = teams.some((existing) => existing.id === team.id);
-    const nextTeams = exists
-      ? teams.map((existing) => existing.id === team.id ? withEvent : existing)
-      : [...teams, withEvent];
-    const result = saveTeams(nextTeams);
-    if (result.ok) {
-      setEditingTeam(undefined);
-      setSelectedTeam(null);
-      setPageMessage({
-        type: 'success',
-        text: exists ? `Team ${team.number} updated successfully.` : `Team ${team.number} added successfully.`,
-      });
+    const exists = teamKey && teams.some((existing) => getTeamKey(existing) === teamKey);
+    try {
+      if (exists) {
+        await API.put(`/teams/${encodeURIComponent(teamKey)}`, toApiPayload(team, eventId));
+      } else {
+        await API.post('/teams', toApiPayload(team, eventId));
+      }
+      const result = await refreshTeams(
+        exists ? `Team ${team.number} updated successfully.` : `Team ${team.number} added successfully.`,
+      );
+      if (result.ok) {
+        setEditingTeam(undefined);
+        setSelectedTeam(null);
+      }
+      return result;
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Unable to save the team. Try again.');
+      setPageMessage({ type: 'error', text: message });
+      return { ok: false, error: message };
     }
-    return result;
   }
 
-  function updateStatus(teamId, status) {
-    const team = teams.find((item) => item.id === teamId);
+  async function updateStatus(teamId, status) {
+    const team = teams.find((item) => getTeamKey(item) === String(teamId));
     if (!team) {
       setPageMessage({ type: 'error', text: 'Unable to find the team to update.' });
       return;
     }
-    const result = saveTeams(teams.map((item) => item.id === teamId ? { ...item, status } : item));
-    if (result.ok) setPageMessage({ type: 'success', text: `Team ${team.number} marked ${status.toLowerCase()}.` });
+    try {
+      await API.put(`/teams/${encodeURIComponent(String(teamId))}`, toApiPayload({ ...team, status }, eventId));
+      await refreshTeams(`Team ${team.number} marked ${status.toLowerCase()}.`);
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to update the team status.') });
+    }
   }
 
   async function handleSelectedFile(file) {
@@ -270,7 +318,7 @@ function OrganizerTeamsEvent({ eventId }) {
     }
   }
 
-  function confirmImport() {
+  async function confirmImport() {
     if (
       !previewData ||
       previewSummary?.duplicateNumbers.length > 0 ||
@@ -279,41 +327,34 @@ function OrganizerTeamsEvent({ eventId }) {
       (collisionNumbers.length > 0 && !['skip', 'replace'].includes(duplicateStrategy))
     ) return;
     setIsImporting(true);
-    const existingByNumber = new Map(teams.map((team) => [team.number.toLowerCase(), team]));
-    const nextTeams = [...teams];
+    setPageMessage(null);
+    const importPlan = buildTeamImportPlan(previewData.teams, teams, duplicateStrategy);
     let addedCount = 0;
     let replacedCount = 0;
     let skippedCount = 0;
     let importedMembers = 0;
 
-    previewData.teams.forEach((imported) => {
-      const existing = existingByNumber.get(imported.number.toLowerCase());
-      if (existing && duplicateStrategy === 'skip') {
-        skippedCount += 1;
-        return;
+    try {
+      for (const { imported, existing, action } of importPlan) {
+        if (action === 'skip') {
+          skippedCount += 1;
+          continue;
+        }
+        if (action === 'blocked') throw new Error(`Choose whether to skip or replace existing team ${imported.number}.`);
+        importedMembers += imported.members.length;
+        if (action === 'replace') {
+          await API.put(
+            `/teams/${encodeURIComponent(getTeamKey(existing))}`,
+            toApiPayload({ ...imported, status: existing.status, judges: existing.judges }, eventId),
+          );
+          replacedCount += 1;
+        } else {
+          await API.post('/teams', toApiPayload(imported, eventId));
+          addedCount += 1;
+        }
       }
-      importedMembers += imported.members.length;
-      if (existing) {
-        const replacement = {
-          ...imported,
-          id: existing.id,
-          eventId,
-          createdAt: existing.createdAt || imported.createdAt,
-          status: existing.status,
-          judges: existing.judges,
-        };
-        const index = nextTeams.findIndex((team) => team.id === existing.id);
-        nextTeams[index] = replacement;
-        replacedCount += 1;
-      } else {
-        nextTeams.push({ ...imported, eventId });
-        addedCount += 1;
-      }
-    });
 
-    const result = saveTeams(nextTeams);
-    setIsImporting(false);
-    if (result.ok) {
+      await refreshTeams();
       setPreviewData(null);
       setSelectedFile(null);
       setDuplicateStrategy('');
@@ -327,50 +368,25 @@ function OrganizerTeamsEvent({ eventId }) {
           type: 'success',
           text: `No teams were added or replaced; ${skippedCount} existing ${skippedCount === 1 ? 'team was' : 'teams were'} skipped.`,
         });
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to import teams. Try again.') });
+    } finally {
+      setIsImporting(false);
     }
   }
 
-  function deleteTeam() {
+  async function deleteTeam() {
     if (!deletingTeam) return;
     const team = deletingTeam;
-    const nextTeams = teams.filter((item) => item.id !== team.id);
+    const teamKey = getTeamKey(team);
     setIsDeleting(true);
-
-    let previousTeams;
-    let previousJudges;
     try {
-      previousTeams = window.localStorage.getItem(storageKey);
-      previousJudges = window.localStorage.getItem(judgeStorageKey);
-      window.localStorage.setItem(storageKey, JSON.stringify(nextTeams));
-      if (previousJudges !== null) {
-        const judges = JSON.parse(previousJudges);
-        if (Array.isArray(judges)) {
-          const teamId = String(team.id || team.number);
-          const updatedJudges = judges.map((judge) => ({
-            ...judge,
-            teamIds: Array.isArray(judge.teamIds) ? judge.teamIds.filter((id) => id !== teamId) : [],
-            completedTeamIds: Array.isArray(judge.completedTeamIds)
-              ? judge.completedTeamIds.filter((id) => id !== teamId)
-              : [],
-          }));
-          window.localStorage.setItem(judgeStorageKey, JSON.stringify(updatedJudges));
-        }
-      }
-      setTeams(nextTeams);
+      await API.delete(`/teams/${encodeURIComponent(teamKey)}`, { params: { eventId } });
+      await refreshTeams(`Team ${team.number} deleted successfully.`);
       setSelectedTeam(null);
       setDeletingTeam(null);
-      setPageMessage({ type: 'success', text: `Team ${team.number} deleted successfully.` });
-    } catch {
-      try {
-        if (previousTeams === null || previousTeams === undefined) window.localStorage.removeItem(storageKey);
-        else window.localStorage.setItem(storageKey, previousTeams);
-        if (previousJudges !== null && previousJudges !== undefined) {
-          window.localStorage.setItem(judgeStorageKey, previousJudges);
-        }
-      } catch {
-        setPageMessage({ type: 'error', text: 'Unable to restore browser data after the delete failed. Refresh and check the saved data.' });
-      }
-      setPageMessage({ type: 'error', text: 'Unable to delete the team. Check browser storage and try again.' });
+    } catch (error) {
+      setPageMessage({ type: 'error', text: getApiErrorMessage(error, 'Unable to delete the team. Try again.') });
     } finally {
       setIsDeleting(false);
     }
@@ -381,37 +397,22 @@ function OrganizerTeamsEvent({ eventId }) {
     setEditingTeam(team);
   }
 
-  const isBusy = isReading || isSaving || isImporting || isDeleting;
+  const isBusy = isLoading || isReading || isSaving || isImporting || isDeleting;
 
   return (
-    <div className="sf-dashboard teams-dashboard">
-      <TeamSidebar eventId={eventId} isOpen={isMenuOpen} closeMenu={() => setIsMenuOpen(false)} />
-      <div className="dashboard-main">
-        <header className="dashboard-topbar">
-          <button
-            className="mobile-menu-button"
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen(true)}
-          ><span /><span /><span /></button>
-          <label className="dashboard-search">
-            <span aria-hidden="true">⌕</span>
-            <input aria-label="Search" placeholder="Search events, teams, judges..." />
-          </label>
-          <div className="topbar-actions">
-            <button className="notification-button" type="button" aria-label="Notifications"><span aria-hidden="true">♧</span><i /></button>
-            <span className="topbar-divider" />
-            <div className="topbar-user">
-              <div className="profile-avatar">A</div>
-              <div className="topbar-user-name"><strong>Admin</strong><span>Organizer</span></div>
-              <span className="dropdown-chevron" aria-hidden="true">⌄</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="dashboard-content teams-content">
-          <div className="teams-page-heading">
+    <OrganizerLayout
+      activeKey="teams"
+      eventId={eventId}
+      wrapperClassName="teams-dashboard"
+      contentClassName="dashboard-content teams-content"
+      searchValue={search}
+      onSearchChange={(event) => setSearch(event.target.value)}
+      searchAriaLabel="Search teams"
+      userName="Admin"
+      userRole="Organizer"
+      userInitial="A"
+    >
+      <div className="teams-page-heading">
             <div>
               {eventName && <p className="teams-event-name">{eventName} <span>·</span> Teams</p>}
               <h1>Teams</h1>
@@ -498,7 +499,9 @@ function OrganizerTeamsEvent({ eventId }) {
                 </select>
               </label>
             </div>
-            {teams.length === 0 ? (
+            {isLoading ? (
+              <p className="teams-empty-message" role="status">Loading teams...</p>
+            ) : teams.length === 0 ? (
               <div className="teams-empty-state">
                 <span aria-hidden="true">♧</span>
                 <h2>No teams added yet.</h2>
@@ -519,7 +522,7 @@ function OrganizerTeamsEvent({ eventId }) {
                     </thead>
                     <tbody>
                       {filteredTeams.map((team) => (
-                        <tr key={team.id}>
+                        <tr key={getTeamKey(team) || team.number}>
                           <td><strong className="team-number-cell">{team.number}</strong></td>
                           <td>
                             <div className="team-name-cell">
@@ -535,7 +538,7 @@ function OrganizerTeamsEvent({ eventId }) {
                               className={`team-status-select team-status-${team.status.toLowerCase()}`}
                               value={team.status}
                               aria-label={`${team.number} status`}
-                              onChange={(event) => updateStatus(team.id, event.target.value)}
+                              onChange={(event) => updateStatus(getTeamKey(team), event.target.value)}
                               disabled={isBusy}
                             >
                               <option>Pending</option><option>Complete</option>
@@ -560,8 +563,6 @@ function OrganizerTeamsEvent({ eventId }) {
               </>
             )}
           </section>
-        </main>
-      </div>
 
       <TeamDetailsModal
         team={selectedTeam}
@@ -574,11 +575,14 @@ function OrganizerTeamsEvent({ eventId }) {
           lockTeamNumber={false}
           isSaving={isSaving}
           onClose={() => setEditingTeam(undefined)}
-          onSave={(team) => {
+          onSave={async (team) => {
             setIsSaving(true);
-            const result = saveTeam(team);
-            setIsSaving(false);
-            return result;
+            try {
+              const result = await saveTeam(team);
+              return result;
+            } finally {
+              setIsSaving(false);
+            }
           }}
         />
       )}
@@ -608,7 +612,7 @@ function OrganizerTeamsEvent({ eventId }) {
         onCancel={() => setDeletingTeam(null)}
         onConfirm={deleteTeam}
       />
-    </div>
+    </OrganizerLayout>
   );
 }
 
