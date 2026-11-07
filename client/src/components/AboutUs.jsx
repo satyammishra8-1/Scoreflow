@@ -17,7 +17,7 @@ export default function AboutUs() {
   return (
     <section className="content-section about-section" id="about-us" aria-labelledby="about-us-title">
       <div className="container">
-        <div className="section-heading about-heading">
+        <div className="section-heading about-heading scroll-reveal">
           <span className="eyebrow eyebrow-subtle">About ScoreFlow</span>
           <h2 id="about-us-title">Better organized competitions. Clearer outcomes.</h2>
           <p>
@@ -28,7 +28,7 @@ export default function AboutUs() {
         </div>
         <div className="about-grid">
           {principles.map((principle) => (
-            <article className="about-card" key={principle.title}>
+            <article className="about-card scroll-reveal" key={principle.title}>
               <span className="about-card-mark" aria-hidden="true">✓</span>
               <h3>{principle.title}</h3>
               <p>{principle.description}</p>
