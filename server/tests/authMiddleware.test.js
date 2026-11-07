@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Judge = require('../models/Judge');
-const { requireRole, requireEventAccess, authorizeEvaluationSubmission } = require('../middleware/auth');
+const Event = require('../models/Event');
+const jwt = require('jsonwebtoken');
+const { requireRole, requireEventAccess, requireOwnedEvent, authenticate, authorizeEvaluationSubmission } = require('../middleware/auth');
 
 function response() {
   return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
@@ -21,6 +23,35 @@ test('judge event authorization rejects event ID manipulation', async () => {
   await requireEventAccess({ params: { eventId: '64b000000000000000000002' }, auth: { role: 'judge', eventId: '64b000000000000000000001' } }, res, () => { continued = true; });
   assert.equal(res.statusCode, 403);
   assert.equal(continued, false);
+});
+
+test('organizer ownership middleware permits only events owned by the session identity', async (t) => {
+  const original = Event.findOne;
+  t.after(() => { Event.findOne = original; });
+  let lookup;
+  Event.findOne = (query) => {
+    lookup = query;
+    return { select() { return this; }, lean: async () => query.ownerId === 'org-owner' ? { _id: query._id } : null };
+  };
+  const request = (ownerId) => ({ params: { eventId: '64b000000000000000000001' }, auth: { role: 'organizer', sub: ownerId } });
+  let continued = false;
+  await requireOwnedEvent(request('org-owner'), response(), () => { continued = true; });
+  assert.equal(continued, true);
+  assert.equal(lookup.ownerId, 'org-owner');
+  const denied = response();
+  await requireOwnedEvent(request('another-owner'), denied, () => assert.fail('Cross-organizer access continued.'));
+  assert.equal(denied.statusCode, 404);
+});
+
+test('judge sessions issued by the removed password login flow are rejected', async (t) => {
+  const previousSecret = process.env.JWT_ACCESS_SECRET;
+  process.env.JWT_ACCESS_SECRET = 'test-access-secret-that-is-long-enough-32-bytes';
+  t.after(() => { if (previousSecret === undefined) delete process.env.JWT_ACCESS_SECRET; else process.env.JWT_ACCESS_SECRET = previousSecret; });
+  const token = jwt.sign({ sub: '64b000000000000000000011', role: 'judge', email: 'judge@example.test', eventId: '64b000000000000000000001' }, process.env.JWT_ACCESS_SECRET, { algorithm: 'HS256', issuer: 'scoreflow', audience: 'scoreflow-api', expiresIn: '1m' });
+  const req = { get: () => `Bearer ${token}` };
+  const res = response();
+  await authenticate(req, res, () => assert.fail('A judge password session without invitation provenance was accepted.'));
+  assert.equal(res.statusCode, 401);
 });
 
 test('evaluation submissions replace a frontend judge ID with the authenticated judge identity', async (t) => {

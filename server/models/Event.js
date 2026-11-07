@@ -9,6 +9,11 @@ const EVENT_TYPES = [
 
 const eventSchema = new mongoose.Schema(
   {
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'OrganizerAccount',
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Event name is required.'],

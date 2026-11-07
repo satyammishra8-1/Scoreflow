@@ -12,6 +12,8 @@ function isValidObjectId(id) {
 function toEventResponse(event) {
   if (!event) return null;
   const obj = typeof event.toObject === 'function' ? event.toObject() : event;
+  const publicEvent = { ...obj };
+  delete publicEvent.ownerId;
   let date = obj.date;
   if (date instanceof Date) {
     date = date.toISOString().slice(0, 10);
@@ -19,7 +21,7 @@ function toEventResponse(event) {
     date = date.slice(0, 10);
   }
   return {
-    ...obj,
+    ...publicEvent,
     eventId: String(obj._id),
     date,
   };
@@ -66,7 +68,7 @@ exports.createEvent = async (req, res) => {
       });
     }
 
-    const event = await Event.create(normalized);
+    const event = await Event.create({ ...normalized, ownerId: req.auth.sub });
     return res.status(201).json({ success: true, data: toEventResponse(event) });
   } catch (error) {
     console.error('Failed to create event:', error);
@@ -77,9 +79,9 @@ exports.createEvent = async (req, res) => {
   }
 };
 
-exports.listEvents = async (_req, res) => {
+exports.listEvents = async (req, res) => {
   try {
-    const events = await Event.find().sort({ createdAt: -1 }).lean();
+    const events = await Event.find({ ownerId: req.auth.sub }).sort({ createdAt: -1 }).lean();
     return res.status(200).json({
       success: true,
       data: events.map(toEventResponse),
@@ -97,7 +99,9 @@ exports.getEvent = async (req, res) => {
       return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     }
 
-    const event = await Event.findById(eventId).lean();
+    const event = req.auth?.role === 'organizer'
+      ? await Event.findOne({ _id: eventId, ownerId: req.auth.sub }).lean()
+      : await Event.findById(eventId).lean();
     if (!event) {
       return res.status(404).json({ success: false, error: 'Event not found.' });
     }
@@ -124,7 +128,7 @@ exports.updateEvent = async (req, res) => {
       });
     }
 
-    const event = await Event.findByIdAndUpdate(eventId, normalized, {
+    const event = await Event.findOneAndUpdate({ _id: eventId, ownerId: req.auth.sub }, normalized, {
       returnDocument: 'after',
       runValidators: true,
     }).lean();
@@ -148,7 +152,7 @@ exports.deleteEvent = async (req, res) => {
       return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     }
 
-    const event = await Event.findById(eventId).select('_id').lean();
+    const event = await Event.findOne({ _id: eventId, ownerId: req.auth.sub }).select('_id').lean();
     if (!event) {
       return res.status(404).json({ success: false, error: 'Event not found.' });
     }
@@ -159,7 +163,7 @@ exports.deleteEvent = async (req, res) => {
     await EvaluationConfiguration.deleteMany({ eventId: String(scopedEventId) });
     await Evaluation.deleteMany({ eventId: scopedEventId });
 
-    const deletedEvent = await Event.findByIdAndDelete(scopedEventId).select('_id').lean();
+    const deletedEvent = await Event.findOneAndDelete({ _id: scopedEventId, ownerId: req.auth.sub }).select('_id').lean();
     if (!deletedEvent) {
       return res.status(404).json({ success: false, error: 'Event not found.' });
     }
