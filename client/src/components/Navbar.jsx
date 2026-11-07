@@ -6,7 +6,9 @@ const navItems = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'About Us', href: '#about-us' },
+  { label: 'Contact', href: '#contact' },
+  { label: 'Login', to: '/login' },
+  { label: 'Get Started', to: '/signup' },
 ];
 
 export default function Navbar() {
@@ -37,28 +39,10 @@ export default function Navbar() {
           </button>
         </div>
 
-        <nav
-          className={`main-nav ${isOpen ? 'open' : ''}`}
-          aria-label="Main navigation"
-        >
-          <ul>
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <a
-                  href={item.href}
-                  onClick={(event) => {
-                    setIsOpen(false);
-                    if (item.label === 'Home') {
-                      event.preventDefault();
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                  }}
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
+        <nav className={`main-nav ${isOpen ? 'open' : ''}`} aria-label="Main navigation">
+          <ul>{navItems.map((item) => <li key={item.label}>{item.to
+            ? <Link to={item.to} onClick={() => setIsOpen(false)}>{item.label}</Link>
+            : <a href={item.href} onClick={() => setIsOpen(false)}>{item.label}</a>}</li>)}</ul>
         </nav>
 
         <div className="nav-actions">
