@@ -44,10 +44,10 @@ export default function Navbar() {
         </nav>
 
         <div className="nav-actions">
-          <a href="#contact" className="nav-link-login">
+          <a href="/login" className="nav-link-login">
             Login
           </a>
-          <a href="#cta" className="button button-primary nav-button">
+          <a href="/login" className="button button-primary nav-button">
             Get Started
           </a>
         </div>

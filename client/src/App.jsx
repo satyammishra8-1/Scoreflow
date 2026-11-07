@@ -6,6 +6,7 @@ import OrganizerJudges from './pages/OrganizerJudges';
 import EvaluationCriteria from './pages/EvaluationCriteria';
 import EvaluationSession from './pages/EvaluationSession';
 import JudgeDashboard from './pages/JudgeDashboard';
+import Login from './pages/Login';
 import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import './App.css';
 
@@ -19,6 +20,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/organizer/dashboard" element={<OrganizerDashboard />} />
         <Route path="/organizer/events" element={<EventManagement />} />
         <Route path="/organizer/events/:eventId/teams" element={<OrganizerTeams />} />

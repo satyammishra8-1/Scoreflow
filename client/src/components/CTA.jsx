@@ -7,7 +7,7 @@ export default function CTA() {
           <p>Bring structured evaluation and intelligent feedback to your next competition.</p>
         </div>
 
-        <a href="#home" className="button button-primary cta-button">
+        <a href="/login" className="button button-primary cta-button">
           Get Started
         </a>
       </div>

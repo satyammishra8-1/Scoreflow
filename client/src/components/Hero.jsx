@@ -17,7 +17,7 @@ export default function Hero() {
           </p>
 
           <div className="hero-actions">
-            <a href="#cta" className="button button-primary">
+            <a href="/login" className="button button-primary">
               Get Started
             </a>
             <a href="#how-it-works" className="button button-secondary">
