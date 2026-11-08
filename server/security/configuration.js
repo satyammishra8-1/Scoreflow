@@ -5,7 +5,6 @@ function assertProductionConfiguration() {
     ['MONGODB_URI', process.env.MONGODB_URI],
     ['JWT_ACCESS_SECRET', process.env.JWT_ACCESS_SECRET],
     ['JWT_REFRESH_SECRET', process.env.JWT_REFRESH_SECRET],
-    ['ORGANIZER_SETUP_TOKEN', process.env.ORGANIZER_SETUP_TOKEN],
     ['ORGANIZER_EMAIL_ALLOWLIST', process.env.ORGANIZER_EMAIL_ALLOWLIST],
     ['CLIENT_ORIGINS', process.env.CLIENT_ORIGINS],
     ['CLIENT_URL', process.env.CLIENT_URL],
@@ -15,13 +14,13 @@ function assertProductionConfiguration() {
     ['BREVO_SENDER_EMAIL', process.env.BREVO_SENDER_EMAIL],
     ['LLM_PROVIDER', process.env.LLM_PROVIDER],
   ]) if (!String(value || '').trim()) missing.push(name);
-  for (const name of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'ORGANIZER_SETUP_TOKEN', 'AI_SERVICE_SHARED_SECRET']) {
+  for (const name of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'AI_SERVICE_SHARED_SECRET']) {
     if (process.env[name] && Buffer.byteLength(process.env[name], 'utf8') < 32) missing.push(`${name} (minimum 32 bytes)`);
   }
   const allowlist = (process.env.ORGANIZER_EMAIL_ALLOWLIST || '').split(',').map((email) => email.trim()).filter(Boolean);
-  if (allowlist.length !== 2) missing.push('ORGANIZER_EMAIL_ALLOWLIST (exactly two comma-separated emails)');
-  else if (allowlist.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || new Set(allowlist.map((email) => email.toLowerCase())).size !== 2) {
-    missing.push('ORGANIZER_EMAIL_ALLOWLIST (two distinct valid emails)');
+  if (allowlist.length === 0) missing.push('ORGANIZER_EMAIL_ALLOWLIST (one or more comma-separated emails)');
+  else if (allowlist.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || new Set(allowlist.map((email) => email.toLowerCase())).size !== allowlist.length) {
+    missing.push('ORGANIZER_EMAIL_ALLOWLIST (distinct valid emails)');
   }
   if (process.env.JWT_ACCESS_SECRET && process.env.JWT_ACCESS_SECRET === process.env.JWT_REFRESH_SECRET) missing.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
   const provider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();

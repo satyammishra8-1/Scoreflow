@@ -4,6 +4,7 @@ const OrganizerAccount = require('../models/OrganizerAccount');
 const Judge = require('../models/Judge');
 const Team = require('../models/Team');
 const Evaluation = require('../models/Evaluation');
+const Event = require('../models/Event');
 const { normalizedAllowlist } = require('../controllers/authController');
 
 function unauthorized(res, message = 'Authentication is required.') {
@@ -16,7 +17,8 @@ async function authenticate(req, res, next) {
   if (!match || !process.env.JWT_ACCESS_SECRET) return unauthorized(res);
   try {
     const claims = jwt.verify(match[1], process.env.JWT_ACCESS_SECRET, { algorithms: ['HS256'], issuer: 'scoreflow', audience: 'scoreflow-api' });
-    if (!['organizer', 'judge'].includes(claims.role) || !mongoose.Types.ObjectId.isValid(claims.sub)) return unauthorized(res);
+    if (!['organizer', 'judge'].includes(claims.role) || !mongoose.Types.ObjectId.isValid(claims.sub)
+      || (claims.role === 'judge' && claims.sessionType !== 'invitation')) return unauthorized(res);
     const user = claims.role === 'organizer'
       ? await OrganizerAccount.findById(claims.sub).select('email tokenVersion active').lean()
       : await Judge.findById(claims.sub).select('email eventId tokenVersion invitationStatus').lean();
@@ -24,7 +26,7 @@ async function authenticate(req, res, next) {
       || (user.invitationStatus && user.invitationStatus !== 'accepted')
       || (user.tokenVersion || 0) !== (claims.ver || 0) || String(user.email).toLowerCase() !== claims.email) return unauthorized(res);
     if (claims.role === 'judge' && String(user.eventId) !== String(claims.eventId)) return unauthorized(res);
-    req.auth = { sub: String(claims.sub), role: claims.role, email: claims.email, eventId: claims.eventId, version: claims.ver || 0 };
+    req.auth = { sub: String(claims.sub), role: claims.role, email: claims.email, eventId: claims.eventId, sessionType: claims.sessionType, version: claims.ver || 0 };
     return next();
   } catch {
     return unauthorized(res);
@@ -37,14 +39,14 @@ async function authenticateOptional(req, _res, next) {
   if (match && process.env.JWT_ACCESS_SECRET) {
     try {
       const claims = jwt.verify(match[1], process.env.JWT_ACCESS_SECRET, { algorithms: ['HS256'], issuer: 'scoreflow', audience: 'scoreflow-api' });
-      const UserModel = claims.role === 'organizer' ? OrganizerAccount : claims.role === 'judge' ? Judge : null;
+      const UserModel = claims.role === 'organizer' ? OrganizerAccount : claims.role === 'judge' && claims.sessionType === 'invitation' ? Judge : null;
       const user = UserModel && mongoose.Types.ObjectId.isValid(claims.sub)
         ? await UserModel.findById(claims.sub).select('email eventId tokenVersion active invitationStatus').lean() : null;
       if (user && user.active !== false && (claims.role !== 'organizer' || normalizedAllowlist().includes(String(user.email).toLowerCase()))
         && (!user.invitationStatus || user.invitationStatus === 'accepted') && (user.tokenVersion || 0) === (claims.ver || 0)
         && String(user.email).toLowerCase() === claims.email
         && (claims.role !== 'judge' || String(user.eventId) === String(claims.eventId))) {
-        req.auth = { sub: String(claims.sub), role: claims.role, email: claims.email, eventId: claims.eventId, version: claims.ver || 0 };
+        req.auth = { sub: String(claims.sub), role: claims.role, email: claims.email, eventId: claims.eventId, sessionType: claims.sessionType, version: claims.ver || 0 };
       }
     } catch { /* Logout must also clear an expired access session using its refresh cookie. */ }
   }
@@ -60,8 +62,8 @@ function requireRole(role) {
 const requireOrganizer = [authenticate, requireRole('organizer')];
 
 async function requireEventAccess(req, res, next) {
-  if (req.auth?.role === 'organizer') return next();
   const eventId = req.params.eventId || req.body?.eventId || req.query.eventId;
+  if (req.auth?.role === 'organizer') return requireOwnedEvent(req, res, next, eventId);
   if (!eventId || String(eventId) !== String(req.auth?.eventId)) return res.status(403).json({ success: false, error: 'This event is outside your judge access.' });
   try {
     const judge = await Judge.findOne({ _id: req.auth.sub, eventId, email: req.auth.email, invitationStatus: 'accepted' }).lean();
@@ -73,8 +75,50 @@ async function requireEventAccess(req, res, next) {
   }
 }
 
+async function requireOwnedEvent(req, res, next, eventId = req.params.eventId || req.body?.eventId || req.query.eventId) {
+  if (req.auth?.role !== 'organizer') return res.status(403).json({ success: false, error: 'Organizer access is required.' });
+  if (!mongoose.Types.ObjectId.isValid(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
+  try {
+    const event = await Event.findOne({ _id: eventId, ownerId: req.auth.sub }).select('_id').lean();
+    if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
+    req.ownedEventId = String(event._id);
+    return next();
+  } catch {
+    return res.status(500).json({ success: false, error: 'Unable to verify event ownership.' });
+  }
+}
+
+async function requireOwnedResource(req, res, next, Model, id, label) {
+  if (req.auth?.role !== 'organizer') return next();
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, error: `A valid ${label} is required.` });
+  try {
+    const resource = await Model.findById(id).select('eventId').lean();
+    if (!resource) return res.status(404).json({ success: false, error: `${label[0].toUpperCase()}${label.slice(1)} not found.` });
+    const event = await Event.findOne({ _id: resource.eventId, ownerId: req.auth.sub }).select('_id').lean();
+    if (!event) return res.status(404).json({ success: false, error: `${label[0].toUpperCase()}${label.slice(1)} not found.` });
+    const requestedEventId = req.params.eventId || req.body?.eventId || req.query.eventId;
+    if (requestedEventId && String(requestedEventId) !== String(resource.eventId)) return res.status(404).json({ success: false, error: `${label[0].toUpperCase()}${label.slice(1)} not found.` });
+    req.ownedEventId = String(event._id);
+    return next();
+  } catch {
+    return res.status(500).json({ success: false, error: `Unable to verify ${label} ownership.` });
+  }
+}
+
+function requireOwnedTeam(req, res, next) {
+  return requireOwnedResource(req, res, next, Team, req.params.teamId, 'team');
+}
+
+function requireOwnedJudge(req, res, next) {
+  return requireOwnedResource(req, res, next, Judge, req.params.judgeId, 'judge');
+}
+
+function requireOwnedEvaluation(req, res, next) {
+  return requireOwnedResource(req, res, next, Evaluation, req.params.evaluationId, 'evaluation');
+}
+
 async function requireAssignedTeam(req, res, next) {
-  if (req.auth?.role === 'organizer') return next();
+  if (req.auth?.role === 'organizer') return requireOwnedTeam(req, res, next);
   try {
     const teamId = req.params.teamId || req.params.teamIdValue || req.params.team;
     const eventId = req.params.eventId || req.auth.eventId;
@@ -138,4 +182,4 @@ function rateLimit({ windowMs = 15 * 60 * 1000, max = 10 } = {}) {
   };
 }
 
-module.exports = { authenticate, authenticateOptional, requireRole, requireOrganizer, requireEventAccess, requireAssignedTeam, authorizeEvaluationSubmission, authorizeEvaluationId, rateLimit };
+module.exports = { authenticate, authenticateOptional, requireRole, requireOrganizer, requireEventAccess, requireOwnedEvent, requireOwnedTeam, requireOwnedJudge, requireOwnedEvaluation, requireAssignedTeam, authorizeEvaluationSubmission, authorizeEvaluationId, rateLimit };

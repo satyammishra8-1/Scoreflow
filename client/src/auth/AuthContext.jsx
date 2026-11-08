@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, refreshAccessToken, setAccessToken } from './api';
 import { AuthContext } from './authContextValue';
 
@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
     refreshAccessToken().then((data) => {
-      if (mounted) setSession({ role: data.role, email: data.email, eventId: data.eventId });
+      if (mounted) setSession({ role: data.role, name: data.name, email: data.email, eventId: data.eventId, judgeId: data.judgeId });
     }).catch(() => {
       setAccessToken(null);
       if (mounted) setSession(null);
@@ -24,9 +24,17 @@ export function AuthProvider({ children }) {
     const data = response.data?.data;
     if (!data?.accessToken || !data?.role) throw new Error('The server returned an invalid session.');
     setAccessToken(data.accessToken);
-    setSession({ role: data.role, email: data.email, eventId: data.eventId });
+    setSession({ role: data.role, name: data.name, email: data.email, eventId: data.eventId, judgeId: data.judgeId });
     return data;
   }
+
+  const establishInvitationSession = useCallback((data) => {
+    if (!data?.accessToken || data.role !== 'judge' || !data.eventId || !data.judgeId) {
+      throw new Error('The invitation did not return valid event access.');
+    }
+    setAccessToken(data.accessToken);
+    setSession({ role: 'judge', email: data.email, eventId: data.eventId, judgeId: data.judgeId });
+  }, []);
 
   async function signOut() {
     try { await api.post('/auth/logout'); } catch { /* Clear the browser session even when the network is unavailable. */ }
@@ -34,6 +42,6 @@ export function AuthProvider({ children }) {
     setSession(null);
   }
 
-  const value = useMemo(() => ({ session, loading, signIn, signOut }), [session, loading]);
+  const value = useMemo(() => ({ session, loading, signIn, signOut, establishInvitationSession }), [session, loading, establishInvitationSession]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

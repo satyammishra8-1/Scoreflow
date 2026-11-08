@@ -17,25 +17,15 @@ export default function Navbar() {
   return (
     <header className="site-header" id="home">
       <div className="container nav-wrap">
-        <a href="#home" className="brand" aria-label="ScoreFlow home">
+        <Link to="/" className="brand" aria-label="ScoreFlow home">
           <span className="brand-mark">S</span>
           <span>ScoreFlow</span>
-        </a>
+        </Link>
 
         <div className="nav-mobile-bar">
-          <div className="mobile-theme-toggle">
-            <ThemeToggle />
-          </div>
-          <button
-            type="button"
-            className="menu-toggle"
-            aria-label="Toggle menu"
-            aria-expanded={isOpen}
-            onClick={() => setIsOpen((open) => !open)}
-          >
-            <span />
-            <span />
-            <span />
+          <div className="mobile-theme-toggle"><ThemeToggle /></div>
+          <button type="button" className="menu-toggle" aria-label="Toggle menu" aria-expanded={isOpen} onClick={() => setIsOpen((open) => !open)}>
+            <span /><span /><span />
           </button>
         </div>
 
@@ -47,13 +37,8 @@ export default function Navbar() {
 
         <div className="nav-actions">
           <ThemeToggle />
-
-          <Link
-            to="/organizer/dashboard"
-            className="button button-primary nav-button"
-          >
-            Get Started
-          </Link>
+          <Link to="/login" className="nav-link-login">Login</Link>
+          <Link to="/signup" className="button button-primary nav-button">Get Started</Link>
         </div>
       </div>
     </header>

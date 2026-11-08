@@ -1,10 +1,11 @@
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 const OrganizerAccount = require('../models/OrganizerAccount');
 const RefreshSession = require('../models/RefreshSession');
 const Judge = require('../models/Judge');
+const OrganizerRegistration = require('../models/OrganizerRegistration');
+const emailService = require('../services/emailService');
 
 const ACCESS_TTL = '10m';
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,10 +16,13 @@ function normalizedAllowlist(value = process.env.ORGANIZER_EMAIL_ALLOWLIST || ''
   return [...new Set(value.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean))];
 }
 
-function safeEqual(left, right) {
-  const a = Buffer.from(String(left || ''));
-  const b = Buffer.from(String(right || ''));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+function isStrongPassword(password) {
+  return typeof password === 'string'
+    && password.length >= 12
+    && Buffer.byteLength(password, 'utf8') <= 72
+    && /[a-z]/.test(password)
+    && /[A-Z]/.test(password)
+    && /\d/.test(password);
 }
 
 function refreshTokenFromRequest(req) {
@@ -38,7 +42,11 @@ function clearRefreshCookie() {
 }
 
 function authConfigurationReady() {
-  return Boolean(process.env.JWT_ACCESS_SECRET && process.env.JWT_REFRESH_SECRET);
+  const accessSecret = process.env.JWT_ACCESS_SECRET || '';
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || '';
+  return Buffer.byteLength(accessSecret, 'utf8') >= 32
+    && Buffer.byteLength(refreshSecret, 'utf8') >= 32
+    && accessSecret !== refreshSecret;
 }
 
 function hashRefreshToken(token) {
@@ -46,46 +54,74 @@ function hashRefreshToken(token) {
   return crypto.createHmac('sha256', process.env.JWT_REFRESH_SECRET).update(token).digest('hex');
 }
 
-function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = Judge, RefreshModel = RefreshSession } = {}) {
-  function signAccess(user, role, email, eventId) {
-    return jwt.sign({ sub: String(user._id), role, email, ver: user.tokenVersion || 0, ...(eventId ? { eventId: String(eventId) } : {}) }, process.env.JWT_ACCESS_SECRET, {
+function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = Judge, RefreshModel = RefreshSession, RegistrationModel = OrganizerRegistration, sendOrganizerVerification = emailService.sendOrganizerVerification } = {}) {
+  function signAccess(user, role, email, eventId, sessionType) {
+    return jwt.sign({ sub: String(user._id), role, email, ver: user.tokenVersion || 0, sessionType, ...(eventId ? { eventId: String(eventId) } : {}) }, process.env.JWT_ACCESS_SECRET, {
       algorithm: 'HS256', expiresIn: ACCESS_TTL, issuer: 'scoreflow', audience: 'scoreflow-api',
     });
   }
 
-  async function issueSession(user, role, email, eventId, res, familyId = crypto.randomUUID()) {
+  async function issueSession(user, role, email, eventId, res, familyId = crypto.randomUUID(), sessionType = 'organizer') {
     if (!authConfigurationReady()) throw new Error('Authentication secrets are not configured.');
     const refresh = crypto.randomBytes(48).toString('base64url');
-    await RefreshModel.create({ userId: user._id, role, tokenHash: hashRefreshToken(refresh), familyId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) });
+    await RefreshModel.create({ userId: user._id, role, sessionType, tokenHash: hashRefreshToken(refresh), familyId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) });
     res.append('Set-Cookie', refreshCookie(refresh));
-    return { accessToken: signAccess(user, role, email, eventId), tokenType: 'Bearer', expiresIn: 600, role, email, ...(eventId ? { eventId, judgeId: String(user._id) } : {}) };
+    return { accessToken: signAccess(user, role, email, eventId, sessionType), tokenType: 'Bearer', expiresIn: 600, role, email, ...(role === 'organizer' ? { name: user.name } : {}), ...(eventId ? { eventId, judgeId: String(user._id) } : {}) };
   }
 
-  async function organizerSetup(req, res) {
+  async function issueJudgeInvitationSession(judge, res) {
+    return issueSession(judge, 'judge', judge.email, String(judge.eventId), res, crypto.randomUUID(), 'invitation');
+  }
+
+  async function organizerRegister(req, res) {
     try {
       if (!authConfigurationReady()) return res.status(503).json({ success: false, error: 'Authentication is not configured.' });
       const allowed = normalizedAllowlist();
-      if (allowed.length !== 2 || !allowed.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
-        return res.status(503).json({ success: false, error: 'Organizer setup is not configured.' });
-      }
-      const setupSecret = process.env.ORGANIZER_SETUP_TOKEN || '';
-      if (setupSecret.length < 32 || !safeEqual(req.get('x-organizer-setup-token'), setupSecret)) {
-        return res.status(403).json({ success: false, error: 'Organizer setup authorization failed.' });
+      if (allowed.length === 0 || !allowed.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+        return res.status(503).json({ success: false, error: 'Organizer registration is not configured.' });
       }
       const email = String(req.body?.email || '').trim().toLowerCase();
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
       const password = typeof req.body?.password === 'string' ? req.body.password : '';
-      if (!allowed.includes(email)) return res.status(403).json({ success: false, error: 'This email is not authorized to create an organizer account.' });
-      if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 72) return res.status(400).json({ success: false, error: 'Use a password of at least 12 characters and no more than 72 UTF-8 bytes.' });
-      const createdCount = await OrganizerModel.countDocuments({ email: { $in: allowed } });
-      if (createdCount >= allowed.length) return res.status(410).json({ success: false, error: 'Initial organizer setup is closed.' });
+      if (!name || name.length > 100) return res.status(400).json({ success: false, error: 'Enter your name (up to 100 characters).' });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+      if (!allowed.includes(email)) return res.status(202).json({ success: true, message: 'If the address is eligible, a verification link has been sent.' });
+      if (!isStrongPassword(password)) return res.status(400).json({ success: false, error: 'Use at least 12 characters with an uppercase letter, a lowercase letter, and a number.' });
+      const existing = await OrganizerModel.findOne({ email });
+      if (existing) return res.status(409).json({ success: false, error: 'An account for this authorized email already exists.' });
       const passwordHash = await bcrypt.hash(password, 12);
-      const user = await OrganizerModel.create({ email, passwordHash });
-      const data = await issueSession(user, 'organizer', email, null, res);
-      return res.status(201).json({ success: true, data });
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      await RegistrationModel.deleteMany({ email });
+      await RegistrationModel.create({ name, email, passwordHash, tokenHash, expiresAt });
+      const delivery = await sendOrganizerVerification({ email, name, token });
+      if (!delivery?.sent) {
+        await RegistrationModel.deleteOne({ email, tokenHash });
+        return res.status(503).json({ success: false, error: 'Verification email could not be sent. Please try again later.' });
+      }
+      return res.status(202).json({ success: true, message: 'If the address is eligible, a verification link has been sent.' });
     } catch (error) {
       if (error?.code === 11000) return res.status(409).json({ success: false, error: 'An account for this authorized email already exists.' });
-      console.error('Organizer setup failed:', error.message);
+      console.error('Organizer registration failed:', error.message);
       return res.status(500).json({ success: false, error: 'Organizer account setup failed.' });
+    }
+  }
+
+  async function verifyOrganizer(req, res) {
+    try {
+      if (!authConfigurationReady()) return res.status(503).json({ success: false, error: 'Authentication is not configured.' });
+      const token = String(req.body?.token || '');
+      if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return res.status(400).json({ success: false, error: 'This verification link is invalid or expired.' });
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const pending = await RegistrationModel.findOneAndDelete({ tokenHash, expiresAt: { $gt: new Date() } }).select('+passwordHash');
+      if (!pending || !normalizedAllowlist().includes(String(pending.email).toLowerCase())) return res.status(400).json({ success: false, error: 'This verification link is invalid or expired.' });
+      await OrganizerModel.create({ name: pending.name, email: pending.email, passwordHash: pending.passwordHash });
+      return res.status(200).json({ success: true, message: 'Email verified. Your organizer account is ready. Please log in.' });
+    } catch (error) {
+      if (error?.code === 11000) return res.status(409).json({ success: false, error: 'An account for this authorized email already exists.' });
+      console.error('Organizer verification failed:', error.message);
+      return res.status(500).json({ success: false, error: 'Unable to verify this account right now.' });
     }
   }
 
@@ -104,19 +140,14 @@ function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = 
     }
   }
 
-  async function judgeLogin(req, res) {
+  async function organizerMe(req, res) {
     try {
-      if (!authConfigurationReady()) return res.status(503).json({ success: false, error: 'Authentication is not configured.' });
-      const email = String(req.body?.email || '').trim().toLowerCase();
-      const eventId = String(req.body?.eventId || '').trim();
-      const password = typeof req.body?.password === 'string' ? req.body.password : '';
-      if (!mongoose.Types.ObjectId.isValid(eventId)) return res.status(400).json({ success: false, error: 'Enter a valid event ID.' });
-      const judge = await JudgeModel.findOne({ eventId, email, invitationStatus: 'accepted' }).select('+passwordHash');
-      if (!judge?.passwordHash || !await bcrypt.compare(password, judge.passwordHash)) return res.status(401).json({ success: false, error: 'Email, password or event ID is incorrect.' });
-      return res.status(200).json({ success: true, data: await issueSession(judge, 'judge', email, eventId, res) });
+      const user = await OrganizerModel.findById(req.auth.sub);
+      if (!user || user.active === false) return res.status(401).json({ success: false, error: 'Sign in again to continue.' });
+      return res.status(200).json({ success: true, data: { name: user.name, email: user.email, role: 'organizer' } });
     } catch (error) {
-      console.error('Judge login failed:', error.message);
-      return res.status(500).json({ success: false, error: 'Unable to sign in right now.' });
+      console.error('Organizer profile lookup failed:', error.message);
+      return res.status(500).json({ success: false, error: 'Unable to load your account right now.' });
     }
   }
 
@@ -127,11 +158,15 @@ function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = 
       const tokenHash = hashRefreshToken(raw);
       const existing = await RefreshModel.findOne({ tokenHash });
       if (!existing || existing.expiresAt <= new Date()) return res.status(401).json({ success: false, error: 'Sign in again to continue.' });
+      if (existing.role === 'judge' && existing.sessionType !== 'invitation') {
+        await RefreshModel.updateMany({ familyId: existing.familyId, revokedAt: null }, { $set: { revokedAt: new Date() } });
+        return res.status(401).json({ success: false, error: 'Judge access must come from an event invitation.' });
+      }
       if (existing.revokedAt) {
         await RefreshModel.updateMany({ familyId: existing.familyId, revokedAt: null }, { $set: { revokedAt: new Date() } });
         return res.status(401).json({ success: false, error: 'Refresh token reuse was detected. Sign in again.' });
       }
-      const claimed = await RefreshModel.findOneAndUpdate({ _id: existing._id, revokedAt: null, expiresAt: { $gt: new Date() } }, { $set: { revokedAt: new Date() } }, { new: true });
+      const claimed = await RefreshModel.findOneAndUpdate({ _id: existing._id, revokedAt: null, expiresAt: { $gt: new Date() } }, { $set: { revokedAt: new Date() } }, { returnDocument: 'after' });
       if (!claimed) return res.status(401).json({ success: false, error: 'Sign in again to continue.' });
       const user = existing.role === 'organizer'
         ? await OrganizerModel.findById(existing.userId)
@@ -141,7 +176,7 @@ function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = 
         await RefreshModel.updateMany({ familyId: existing.familyId, revokedAt: null }, { $set: { revokedAt: new Date() } });
         return res.status(401).json({ success: false, error: 'Sign in again to continue.' });
       }
-      return res.status(200).json({ success: true, data: await issueSession(user, existing.role, user.email, existing.role === 'judge' ? user.eventId : null, res, existing.familyId) });
+      return res.status(200).json({ success: true, data: await issueSession(user, existing.role, user.email, existing.role === 'judge' ? user.eventId : null, res, existing.familyId, existing.sessionType) });
     } catch (error) {
       console.error('Session refresh failed:', error.message);
       return res.status(500).json({ success: false, error: 'Unable to refresh your session.' });
@@ -178,7 +213,7 @@ function createAuthController({ OrganizerModel = OrganizerAccount, JudgeModel = 
     } });
   }
 
-  return { organizerSetup, organizerLogin, judgeLogin, refresh, logout, judgeEventProfile };
+  return { organizerRegister, verifyOrganizer, organizerLogin, organizerMe, issueJudgeInvitationSession, refresh, logout, judgeEventProfile };
 }
 
 module.exports = { ...createAuthController(), createAuthController, normalizedAllowlist, refreshTokenFromRequest, refreshCookie, authConfigurationReady, hashRefreshToken };
