@@ -21,14 +21,14 @@ export default function Features() {
   return (
     <section className="content-section" id="features">
       <div className="container">
-        <div className="section-heading narrow-heading">
+        <div className="section-heading narrow-heading scroll-reveal">
           <span className="eyebrow eyebrow-subtle">Features</span>
           <h2>Everything You Need for Better Evaluation</h2>
         </div>
 
         <div className="feature-grid">
           {features.map((feature) => (
-            <article className="feature-card" key={feature.title}>
+            <article className="feature-card scroll-reveal" key={feature.title}>
               <div className="feature-icon" aria-hidden="true">
                 <span />
               </div>

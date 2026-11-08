@@ -429,3 +429,158 @@
   color: #94a3b8;
 }
 
+/* Organizer pages use several page-specific stylesheets. Keep their surfaces
+   and text on the same dark palette as the shared dashboard shell. */
+[data-theme='dark'] .sf-dashboard.event-management {
+  --event-bg: #090d16;
+  --event-border: #1e293b;
+  --event-text: #f1f5f9;
+  --event-muted: #94a3b8;
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .event-topbar {
+  border-bottom-color: #1e293b;
+  background: rgba(16, 23, 38, 0.96);
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .event-admin strong,
+[data-theme='dark'] .sf-dashboard.event-management .event-information-heading h2,
+[data-theme='dark'] .sf-dashboard.event-management .event-field {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .event-search,
+[data-theme='dark'] .sf-dashboard.event-management .event-field input,
+[data-theme='dark'] .sf-dashboard.event-management .event-field select,
+[data-theme='dark'] .sf-dashboard.event-management .event-field textarea {
+  border-color: #334155;
+  color: #f8fafc;
+  background: #141c2c;
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .event-information-heading,
+[data-theme='dark'] .sf-dashboard.event-management .event-form-footer {
+  border-color: #29364b;
+}
+
+[data-theme='dark'] .sf-dashboard.event-management .event-field input::placeholder,
+[data-theme='dark'] .sf-dashboard.event-management .event-field textarea::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-welcome {
+  border-color: #1e293b;
+  background: radial-gradient(ellipse at 88% 15%, rgba(59, 130, 246, .16), transparent 36%), linear-gradient(115deg, #131a2a, #0e1422);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-welcome h1,
+[data-theme='dark'] .sf-dashboard.dashboard-home .section-title-row h2,
+[data-theme='dark'] .sf-dashboard.dashboard-home .overview-copy > strong,
+[data-theme='dark'] .sf-dashboard.dashboard-home .event-card h3,
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-empty-state h3 {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-welcome p,
+[data-theme='dark'] .sf-dashboard.dashboard-home .overview-copy > span,
+[data-theme='dark'] .sf-dashboard.dashboard-home .overview-copy small,
+[data-theme='dark'] .sf-dashboard.dashboard-home .section-title-row p,
+[data-theme='dark'] .sf-dashboard.dashboard-home .event-meta span,
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-empty-state p {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .overview-card,
+[data-theme='dark'] .sf-dashboard.dashboard-home .event-card {
+  border-color: #334155;
+  background: #101726;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .overview-card:hover,
+[data-theme='dark'] .sf-dashboard.dashboard-home .event-card:hover {
+  border-color: #475569;
+}
+
+[data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-empty-state {
+  border-color: #334155;
+  background: #101726;
+  color: #f1f5f9;
+}
+
+/* Authentication screens follow the selected application theme. */
+.auth-page {
+  background:
+    radial-gradient(ellipse at 8% 12%, color-mix(in srgb, var(--secondary) 18%, transparent), transparent 42%),
+    radial-gradient(ellipse at 94% 88%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 46%),
+    var(--bg);
+  color: var(--text);
+}
+
+.auth-card {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--text);
+}
+
+.auth-brand-copy small,
+.auth-switch,
+.auth-help { color: var(--muted); }
+.auth-field { color: var(--text); }
+.auth-field input,
+.auth-field select {
+  border-color: var(--border);
+  background: var(--surface-alt);
+  color: var(--text);
+}
+.auth-tabs { background: var(--surface-alt); }
+.auth-tabs button { color: var(--muted); }
+.auth-tabs button.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, .12), 0 0 0 1px var(--border);
+}
+.auth-submit { background: var(--primary-strong); }
+.auth-submit:hover { background: var(--primary); }
+
+[data-theme='dark'] .auth-card {
+  border-color: #29364b;
+  background: color-mix(in srgb, var(--surface) 94%, #19243a);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .4);
+}
+[data-theme='dark'] .auth-field input,
+[data-theme='dark'] .auth-field select { border-color: #334155; }
+[data-theme='dark'] .auth-password-toggle,
+[data-theme='dark'] .password-toggle { color: #a8b4c7; }
+
+/* Keep native controls readable when switching themes on every route. */
+[data-theme='dark'] input,
+[data-theme='dark'] textarea,
+[data-theme='dark'] select {
+  color-scheme: dark;
+}
+
+/* Common page panels share the same surfaces across organizer and judge routes. */
+[data-theme='dark'] .sf-dashboard [class*='card'],
+[data-theme='dark'] .sf-dashboard [class*='panel'],
+[data-theme='dark'] .sf-dashboard [class*='modal'],
+[data-theme='dark'] .sf-dashboard [class*='table-wrap'],
+[data-theme='dark'] .sf-dashboard [class*='empty-state'] {
+  border-color: #29364b;
+  background-color: #101726;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard table,
+[data-theme='dark'] .sf-dashboard tbody,
+[data-theme='dark'] .sf-dashboard tr { color: #f1f5f9; }
+
+[data-theme='dark'] .sf-dashboard input,
+[data-theme='dark'] .sf-dashboard textarea,
+[data-theme='dark'] .sf-dashboard select {
+  border-color: #334155;
+  background-color: #141c2c;
+  color: #f8fafc;
+}
+

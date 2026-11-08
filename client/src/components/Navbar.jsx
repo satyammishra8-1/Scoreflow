@@ -6,9 +6,7 @@ const navItems = [
   { label: 'Home', href: '#home' },
   { label: 'Features', href: '#features' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Contact', href: '#contact' },
-  { label: 'Login', to: '/login' },
-  { label: 'Get Started', to: '/signup' },
+  { label: 'About Us', href: '#about-us' },
 ];
 
 export default function Navbar() {
@@ -32,12 +30,17 @@ export default function Navbar() {
         <nav className={`main-nav ${isOpen ? 'open' : ''}`} aria-label="Main navigation">
           <ul>{navItems.map((item) => <li key={item.label}>{item.to
             ? <Link to={item.to} onClick={() => setIsOpen(false)}>{item.label}</Link>
-            : <a href={item.href} onClick={() => setIsOpen(false)}>{item.label}</a>}</li>)}</ul>
+            : <a href={item.href} onClick={(event) => {
+              setIsOpen(false);
+              if (item.href === '#home') {
+                event.preventDefault();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}>{item.label}</a>}</li>)}</ul>
         </nav>
 
         <div className="nav-actions">
           <ThemeToggle />
-          <Link to="/login" className="nav-link-login">Login</Link>
           <Link to="/signup" className="button button-primary nav-button">Get Started</Link>
         </div>
       </div>

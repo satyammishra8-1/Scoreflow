@@ -25,14 +25,14 @@ export default function HowItWorks() {
   return (
     <section className="content-section process-section" id="how-it-works">
       <div className="container">
-        <div className="section-heading">
+        <div className="section-heading scroll-reveal">
           <span className="eyebrow eyebrow-subtle">How it works</span>
           <h2>How ScoreFlow Works</h2>
         </div>
 
         <div className="steps-grid">
           {steps.map((step) => (
-            <article className="step-card" key={step.number}>
+            <article className="step-card scroll-reveal" key={step.number}>
               <span className="step-index">{step.number}</span>
               <h3>{step.title}</h3>
               <p>{step.text}</p>
