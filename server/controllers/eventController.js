@@ -152,18 +152,25 @@ exports.deleteEvent = async (req, res) => {
       return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
     }
 
-    const event = await Event.findOne({ _id: eventId, ownerId: req.auth.sub }).select('_id').lean();
-    if (!event) {
-      return res.status(404).json({ success: false, error: 'Event not found.' });
+    const session = await mongoose.startSession();
+    let deletedEvent = null;
+    try {
+      await session.withTransaction(async () => {
+        const event = await Event.findOne({ _id: eventId, ownerId: req.auth.sub }).select('_id').session(session).lean();
+        if (!event) return;
+
+        const scopedEventId = event._id;
+        await Team.deleteMany({ eventId: scopedEventId }, { session });
+        await Judge.deleteMany({ eventId: scopedEventId }, { session });
+        await EvaluationConfiguration.deleteMany({ eventId: String(scopedEventId) }, { session });
+        await Evaluation.deleteMany({ eventId: scopedEventId }, { session });
+
+        deletedEvent = await Event.findOneAndDelete({ _id: scopedEventId, ownerId: req.auth.sub }).session(session).select('_id').lean();
+      });
+    } finally {
+      await session.endSession();
     }
 
-    const scopedEventId = event._id;
-    await Team.deleteMany({ eventId: scopedEventId });
-    await Judge.deleteMany({ eventId: scopedEventId });
-    await EvaluationConfiguration.deleteMany({ eventId: String(scopedEventId) });
-    await Evaluation.deleteMany({ eventId: scopedEventId });
-
-    const deletedEvent = await Event.findOneAndDelete({ _id: scopedEventId, ownerId: req.auth.sub }).select('_id').lean();
     if (!deletedEvent) {
       return res.status(404).json({ success: false, error: 'Event not found.' });
     }

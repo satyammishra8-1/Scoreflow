@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('node:path');
+const mongoose = require('mongoose');
 
 dotenv.config({ path: path.join(__dirname, '.env') });
 
@@ -21,8 +22,6 @@ if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
 assertProductionConfiguration();
 
-connectDB();
-
 const allowedOrigins = (process.env.CLIENT_ORIGINS || process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((origin) => origin.trim()).filter(Boolean);
 app.use(cors({ origin(origin, callback) {
   if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -38,15 +37,28 @@ app.use('/api', announcementRoutes);
 app.use('/api', resultReportRoutes);
 app.use('/api', evaluationRoutes);
 
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     success: true,
     message: 'ScoreFlow API is running',
   });
 });
 
+app.get('/health', (_req, res) => {
+  const connected = mongoose.connection.readyState === 1;
+  return res.status(connected ? 200 : 503).json({ success: connected, database: connected ? 'connected' : 'unavailable' });
+});
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`ScoreFlow server running on http://localhost:${PORT}`);
+async function startServer() {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`ScoreFlow server listening on port ${PORT}`);
+  });
+}
+
+startServer().catch(() => {
+  console.error('ScoreFlow API failed to start because its database is unavailable.');
+  process.exit(1);
 });
