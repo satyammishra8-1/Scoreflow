@@ -4,23 +4,24 @@ ScoreFlow now has separate organizer and judge sign-in. Before deployment, confi
 
 ## Node API variables
 
-Copy `server/.env.example` to the server's private environment configuration and set:
+Set server variables in Render's service environment settings. Set `VITE_API_URL` in Vercel's build environment before building the frontend. Keep every real key and connection string in those environment settings; never commit populated `.env` files.
 
 - `MONGODB_URI`: production MongoDB connection string with a least-privilege database user.
+- Include the intended database name in the URI path (for example, `mongodb+srv://.../scoreflow?retryWrites=true`). Startup rejects URIs with no explicit database name because Mongoose otherwise defaults to `test`. Local development can use a named local database such as `scoreflow`; production must use TLS.
 - `NODE_ENV=production` and `PORT`.
-- `CLIENT_URL`: canonical public frontend URL used in invitation links.
-- `CLIENT_ORIGINS`: comma-separated exact browser origins allowed by CORS.
-- `ORGANIZER_EMAIL_ALLOWLIST`: one or more comma-separated authorized organizer email addresses. Only these addresses can begin organizer signup.
-
-Legacy events without an `ownerId` stay stored and are inaccessible to organizers until assigned. After the authorized organizer account exists, run from `server/` to preview the approved legacy mapping: `node scripts/migrateEventOwners.js satmis2024@gmail.com`. Add `--apply` only when ready to write; it assigns only currently unowned events. The script never changes event or related records.
+- `CLIENT_URL`: canonical public frontend HTTPS origin used in invitation links (no path, query, or fragment).
+- `CLIENT_ORIGINS`: comma-separated exact HTTPS browser origins allowed by CORS, with no paths or trailing slashes.
+- `VITE_API_URL`: public API base URL embedded in the frontend build. Use `/api` behind a same-origin reverse proxy, or the full HTTPS API URL.
 - `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`: independent random secrets of at least 32 bytes.
-- `AI_SERVICE_URL` and `AI_SERVICE_SHARED_SECRET`: private AI service URL and the shared secret also configured on FastAPI.
-- `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME`.
+- `AI_SERVICE_URL` and `AI_SERVICE_SHARED_SECRET`: private AI service URL and the shared secret also configured on FastAPI. Use an internal service URL where the platform supports private networking.
+- `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and optional `BREVO_SENDER_NAME`. Configure the Brevo sender identity and key in Render; do not place provider credentials in Vercel or browser variables.
 - `LLM_PROVIDER` and its provider key/model (`GEMINI_API_KEY`/`GEMINI_MODEL` or `OPENAI_API_KEY`/`OPENAI_MODEL`).
 
-Generate each random secret independently, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`. Restrict access to the values in the deployment secret manager.
+Legacy events without an `ownerId` stay stored and are inaccessible to organizers until assigned. After the organizer account exists, run from `server/` to preview the legacy mapping: `node scripts/migrateEventOwners.js organizer@example.com`. Add `--apply` only after reviewing the preview; it assigns only currently unowned events. The script never changes event or related records.
 
-Organizers enter their name, allowlisted email, and password on `/signup`. The form checks a 12-character minimum, mixed-case letters, and a number; the backend hashes the password with bcrypt and stores it only on a pending registration. Configure Brevo's API v3 key, sender email, and the public `CLIENT_URL`; the API sends a single-use email verification link that expires after 30 minutes. Opening the link activates the account and redirects to login. Pending registrations and hashed verification tokens expire automatically. No setup secret is sent to the browser. There is no password-reset endpoint.
+Generate the JWT and AI shared secrets independently, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`. Production startup requires distinct JWT secrets of at least 32 bytes and all service/provider settings. This repository does not configure external Render, Vercel, MongoDB, AI provider, or Brevo accounts; add their real values in each service's environment settings.
+
+Organizers enter their name, email, and password on `/signup`. The form checks a minimum of eight characters and password confirmation; the backend normalizes email, hashes the password with bcrypt, creates the account, and establishes a secure session immediately. No setup secret is sent to the browser. There is no password-reset endpoint.
 
 ## AI service variables
 
@@ -28,9 +29,9 @@ Copy `ai-service/.env.example` into the AI service's private environment. Set `A
 
 ## Authentication and access
 
-Organizer passwords and judge passwords are bcrypt hashed. Organizer identities must be in the environment allowlist. Judges receive invitation-scoped access by accepting a valid, unexpired invitation. Access tokens last ten minutes and remain in frontend memory. Refresh tokens are random, stored as keyed hashes in MongoDB, rotated on use, and sent only in HttpOnly, SameSite=Strict cookies. Logout revokes all refresh sessions for that account and invalidates access tokens.
+Organizer passwords and judge passwords are bcrypt hashed. Judges receive invitation-scoped access by accepting a valid, unexpired invitation. Access tokens last ten minutes and remain in frontend memory. Refresh tokens are random, stored as keyed hashes in MongoDB, rotated on use, and sent only in HttpOnly, SameSite=Strict cookies. Logout revokes all refresh sessions for that account and invalidates access tokens.
 
-The API requires organizer authentication for event creation/listing/changes, team mutations, judge management and invitations, evaluation configuration writes, announcements, results, result reports, analytics, email generation and report delivery. Judges can read only their event, their assigned teams, event evaluation configuration, and their own evaluations. Evaluation submissions replace the submitted judge ID with the authenticated identity after verifying the event and team assignment. Judge invitation preview and acceptance, organizer signup and email verification, login, refresh, logout, and health are the intentionally public endpoints.
+The API requires organizer authentication for event creation/listing/changes, team mutations, judge management and invitations, evaluation configuration writes, announcements, results, result reports, analytics, email generation and report delivery. Judges can read only their event, their assigned teams, event evaluation configuration, and their own evaluations. Evaluation submissions replace the submitted judge ID with the authenticated identity after verifying the event and team assignment. Judge invitation preview and acceptance, organizer signup, login, refresh, logout, and health are the intentionally public endpoints.
 
 ## Deployment constraints
 
