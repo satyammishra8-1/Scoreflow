@@ -7,7 +7,6 @@ const required = {
   MONGODB_URI: 'mongodb+srv://user:pass@cluster.example/scoreflow',
   JWT_ACCESS_SECRET: 'a'.repeat(48),
   JWT_REFRESH_SECRET: 'b'.repeat(48),
-  ORGANIZER_EMAIL_ALLOWLIST: 'owner@example.com,leader@example.com',
   CLIENT_ORIGINS: 'https://scoreflow.example.com',
   CLIENT_URL: 'https://scoreflow.example.com',
   AI_SERVICE_URL: 'https://ai.internal.example.com',
@@ -29,18 +28,12 @@ function withEnvironment(values, callback) {
   }
 }
 
-test('production config accepts independent secrets, allowlisted organizers and TLS MongoDB', () => {
+test('production config accepts independent secrets and TLS MongoDB without organizer allowlisting', () => {
   withEnvironment(required, () => assert.doesNotThrow(assertProductionConfiguration));
 });
 
 test('production config rejects MongoDB connections without TLS', () => {
   withEnvironment({ ...required, MONGODB_URI: 'mongodb://db.example/scoreflow' }, () => {
     assert.throws(assertProductionConfiguration, /MONGODB_URI \(TLS required in production\)/);
-  });
-});
-
-test('production config accepts an expanded organizer allowlist', () => {
-  withEnvironment({ ...required, ORGANIZER_EMAIL_ALLOWLIST: 'owner@example.com,leader@example.com,ops@example.com' }, () => {
-    assert.doesNotThrow(assertProductionConfiguration);
   });
 });

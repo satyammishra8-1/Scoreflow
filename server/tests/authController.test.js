@@ -23,15 +23,18 @@ function fixture() {
   const accounts = [];
   const judges = [];
   const refreshes = [];
-  const registrations = [];
-  let verificationToken = '';
   const organizerModel = {
     findOne: (query) => {
       const result = accounts.find((item) => item.email === query.email && (!query.active || item.active === query.active)) || null;
       return { select: async () => result, then: (resolve, reject) => Promise.resolve(result).then(resolve, reject) };
     },
     findById: async (id) => accounts.find((item) => String(item._id) === String(id)) || null,
-    create: async (value) => { const item = { _id: `org-${accounts.length + 1}`, tokenVersion: 0, active: true, ...value }; accounts.push(item); return item; },
+    create: async (value) => {
+      if (accounts.some((item) => item.email === value.email)) throw Object.assign(new Error('duplicate'), { code: 11000 });
+      const item = { _id: `org-${accounts.length + 1}`, tokenVersion: 0, active: true, ...value };
+      accounts.push(item);
+      return item;
+    },
     updateOne: async (query, update) => { const item = accounts.find((entry) => String(entry._id) === String(query._id)); if (item) item.tokenVersion += update.$inc.tokenVersion; },
   };
   const judgeModel = {
@@ -51,106 +54,81 @@ function fixture() {
       for (const item of refreshes) if ((query.familyId === undefined || item.familyId === query.familyId) && (query.userId === undefined || item.userId === query.userId) && !item.revokedAt) item.revokedAt = update.$set.revokedAt;
     },
   };
-  const registrationModel = {
-    deleteMany: async ({ email }) => { for (let i = registrations.length - 1; i >= 0; i -= 1) if (registrations[i].email === email) registrations.splice(i, 1); },
-    create: async (item) => { registrations.push(item); return item; },
-    deleteOne: async ({ email, tokenHash }) => { const i = registrations.findIndex((entry) => entry.email === email && entry.tokenHash === tokenHash); if (i >= 0) registrations.splice(i, 1); },
-    findOneAndDelete: ({ tokenHash, expiresAt }) => ({ select: async () => {
-      const i = registrations.findIndex((entry) => entry.tokenHash === tokenHash && entry.expiresAt > expiresAt.$gt);
-      return i < 0 ? null : registrations.splice(i, 1)[0];
-    } }),
-  };
-  const controller = createAuthController({ OrganizerModel: organizerModel, JudgeModel: judgeModel, RefreshModel: refreshModel, RegistrationModel: registrationModel, sendOrganizerVerification: async ({ token }) => { verificationToken = token; return { sent: true }; } });
+  const controller = createAuthController({ OrganizerModel: organizerModel, JudgeModel: judgeModel, RefreshModel: refreshModel });
   const response = () => ({ statusCode: 200, headers: {}, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; }, append(key, value) { this.headers[key] = value; } });
-  return { controller, accounts, judges, refreshes, registrations, response, get verificationToken() { return verificationToken; } };
+  return { controller, accounts, judges, refreshes, response };
 }
 
-test('organizer signup verifies allowlisted email ownership before creating an account', async (t) => {
-  const env = { allowlist: process.env.ORGANIZER_EMAIL_ALLOWLIST, access: process.env.JWT_ACCESS_SECRET, refresh: process.env.JWT_REFRESH_SECRET };
-  process.env.ORGANIZER_EMAIL_ALLOWLIST = 'owner@example.test,leader@example.test';
+function useTestSecrets(t) {
+  const previous = [process.env.JWT_ACCESS_SECRET, process.env.JWT_REFRESH_SECRET];
   process.env.JWT_ACCESS_SECRET = accessSecret;
   process.env.JWT_REFRESH_SECRET = refreshSecret;
-  t.after(() => {
-    for (const [key, value] of Object.entries({ ORGANIZER_EMAIL_ALLOWLIST: env.allowlist, JWT_ACCESS_SECRET: env.access, JWT_REFRESH_SECRET: env.refresh })) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
+  t.after(() => ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'].forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]));
+}
+
+test('organizer signup normalizes email, hashes password, and immediately establishes a session', async (t) => {
+  useTestSecrets(t);
   const fx = fixture();
-  const blocked = fx.response();
-  await fx.controller.organizerRegister({ body: { name: 'Attacker', email: 'attacker@example.test', password: 'a-strong-test-password' } }, blocked);
-  assert.equal(blocked.statusCode, 202);
-  assert.equal(fx.registrations.length, 0);
-  assert.equal(fx.verificationToken, '');
-  const missingName = fx.response();
-  await fx.controller.organizerRegister({ body: { email: 'owner@example.test', password: 'A-strong-test-password1' } }, missingName);
-  assert.equal(missingName.statusCode, 400);
-  const weakPassword = fx.response();
-  await fx.controller.organizerRegister({ body: { name: 'Owner', email: 'owner@example.test', password: 'short' } }, weakPassword);
-  assert.equal(weakPassword.statusCode, 400);
-  const requested = fx.response();
-  await fx.controller.organizerRegister({ body: { name: 'Owner', email: 'owner@example.test', password: 'A-strong-test-password1' } }, requested);
-  assert.equal(requested.statusCode, 202);
-  assert.equal(requested.body.data, undefined);
-  assert.equal(fx.accounts.length, 0);
-  assert.equal(fx.registrations.length, 1);
   const created = fx.response();
-  assert.notEqual(fx.registrations[0].passwordHash, 'A-strong-test-password1');
-  await fx.controller.verifyOrganizer({ body: { token: fx.verificationToken } }, created);
-  assert.equal(created.statusCode, 200);
-  assert.equal(created.body.data, undefined);
+  await fx.controller.organizerRegister({ body: { name: ' Owner ', email: ' Owner@Example.Test ', password: 'short-but-valid' , confirmPassword: 'frontend-only' } }, created);
+  assert.equal(created.statusCode, 201);
   assert.equal(fx.accounts.length, 1);
-  assert.notEqual(fx.accounts[0].passwordHash, 'A-strong-test-password1');
+  assert.equal(fx.accounts[0].email, 'owner@example.test');
   assert.equal(fx.accounts[0].name, 'Owner');
-  const replay = fx.response();
-  await fx.controller.verifyOrganizer({ body: { token: fx.verificationToken } }, replay);
-  assert.equal(replay.statusCode, 400);
+  assert.notEqual(fx.accounts[0].passwordHash, 'short-but-valid');
+  assert.ok(await bcrypt.compare('short-but-valid', fx.accounts[0].passwordHash));
+  assert.equal(Object.hasOwn(fx.accounts[0], 'confirmPassword'), false);
+  assert.equal(created.body.data.role, 'organizer');
+  assert.equal(created.body.data.email, 'owner@example.test');
+  assert.match(created.headers['Set-Cookie'], /HttpOnly/);
+
   const duplicate = fx.response();
-  await fx.controller.organizerRegister({ body: { name: 'Owner', email: 'owner@example.test', password: 'A-strong-test-password1' } }, duplicate);
+  await fx.controller.organizerRegister({ body: { name: 'Owner', email: 'OWNER@example.test', password: 'another-valid-password' } }, duplicate);
   assert.equal(duplicate.statusCode, 409);
 });
 
-test('organizer login rejects nonallowlisted identities and bad passwords', async (t) => {
-  const previous = [process.env.ORGANIZER_EMAIL_ALLOWLIST, process.env.JWT_ACCESS_SECRET, process.env.JWT_REFRESH_SECRET];
-  process.env.ORGANIZER_EMAIL_ALLOWLIST = 'owner@example.test,leader@example.test';
-  process.env.JWT_ACCESS_SECRET = accessSecret;
-  process.env.JWT_REFRESH_SECRET = refreshSecret;
-  t.after(() => {
-    ['ORGANIZER_EMAIL_ALLOWLIST', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'].forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]);
-  });
+test('organizer signup validates required fields, email, and eight character password minimum', async (t) => {
+  useTestSecrets(t);
   const fx = fixture();
-  const passwordHash = await bcrypt.hash('correct-password-here', 4);
-  fx.accounts.push({ _id: 'org-1', name: 'Owner', email: 'owner@example.test', passwordHash, tokenVersion: 0, active: true });
-  fx.accounts.push({ _id: 'org-2', email: 'leader@example.test', passwordHash, tokenVersion: 0, active: false });
-  const denied = fx.response();
-  await fx.controller.organizerLogin({ body: { email: 'other@example.test', password: 'correct-password-here' } }, denied);
-  assert.equal(denied.statusCode, 401);
-  const invalid = fx.response();
-  await fx.controller.organizerLogin({ body: { email: 'owner@example.test', password: 'wrong-password' } }, invalid);
-  assert.equal(invalid.statusCode, 401);
-  const disabled = fx.response();
-  await fx.controller.organizerLogin({ body: { email: 'leader@example.test', password: 'correct-password-here' } }, disabled);
-  assert.equal(disabled.statusCode, 401);
-  const missing = fx.response();
-  await fx.controller.organizerLogin({ body: {} }, missing);
-  assert.equal(missing.statusCode, 401);
-  const valid = fx.response();
-  await fx.controller.organizerLogin({ body: { email: 'owner@example.test', password: 'correct-password-here' } }, valid);
-  assert.equal(valid.statusCode, 200);
-  assert.equal(valid.body.data.role, 'organizer');
-  assert.equal(valid.body.data.name, 'Owner');
+  for (const [body, expectedStatus] of [
+    [{ email: 'a@example.test', password: 'password8' }, 400],
+    [{ name: 'Owner', email: 'bad-email', password: 'password8' }, 400],
+    [{ name: 'Owner', email: 'a@example.test', password: 'short' }, 400],
+  ]) {
+    const response = fx.response();
+    await fx.controller.organizerRegister({ body }, response);
+    assert.equal(response.statusCode, expectedStatus);
+  }
+  assert.equal(fx.accounts.length, 0);
 });
 
-test('there is no independent judge password login API', () => {
+test('organizer login normalizes email, compares bcrypt, and rejects bad or inactive credentials', async (t) => {
+  useTestSecrets(t);
+  const fx = fixture();
+  const hash = await bcrypt.hash('correct-password-here', 4);
+  fx.accounts.push({ _id: 'org-1', name: 'Owner', email: 'owner@example.test', passwordHash: hash, tokenVersion: 0, active: true });
+  fx.accounts.push({ _id: 'org-2', email: 'inactive@example.test', passwordHash: hash, tokenVersion: 0, active: false });
+  const invalid = fx.response();
+  await fx.controller.organizerLogin({ body: { email: ' owner@example.test ', password: 'wrong-password' } }, invalid);
+  assert.equal(invalid.statusCode, 401);
+  assert.equal(invalid.body.error, 'Email or password is incorrect.');
+  const inactive = fx.response();
+  await fx.controller.organizerLogin({ body: { email: 'inactive@example.test', password: 'correct-password-here' } }, inactive);
+  assert.equal(inactive.statusCode, 401);
+  const valid = fx.response();
+  await fx.controller.organizerLogin({ body: { email: ' OWNER@example.test ', password: 'correct-password-here' } }, valid);
+  assert.equal(valid.statusCode, 200);
+  assert.equal(valid.body.data.role, 'organizer');
+});
+
+test('there is no organizer verification flow or independent judge password login API', () => {
   const { controller } = fixture();
+  assert.equal(controller.verifyOrganizer, undefined);
   assert.equal(controller.judgeLogin, undefined);
 });
 
 test('refresh rotates opaque cookie tokens, detects reuse and logout revokes active sessions', async (t) => {
-  const previous = [process.env.ORGANIZER_EMAIL_ALLOWLIST, process.env.JWT_ACCESS_SECRET, process.env.JWT_REFRESH_SECRET];
-  process.env.ORGANIZER_EMAIL_ALLOWLIST = 'owner@example.test,leader@example.test';
-  process.env.JWT_ACCESS_SECRET = accessSecret;
-  process.env.JWT_REFRESH_SECRET = refreshSecret;
-  t.after(() => ['ORGANIZER_EMAIL_ALLOWLIST', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'].forEach((key, i) => previous[i] === undefined ? delete process.env[key] : process.env[key] = previous[i]));
+  useTestSecrets(t);
   const fx = fixture();
   fx.accounts.push({ _id: 'org-1', email: 'owner@example.test', passwordHash: await bcrypt.hash('correct-password-here', 4), tokenVersion: 0, active: true });
   const login = fx.response();

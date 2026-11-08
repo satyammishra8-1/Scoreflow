@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
-import { api } from '../auth/api';
+import { buildOrganizerSignupPayload } from '../auth/organizerSignup';
 import './Login.css';
 
 export default function Login({ initialMode = 'login' }) {
@@ -10,7 +10,7 @@ export default function Login({ initialMode = 'login' }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [verificationSent, setVerificationSent] = useState(false);
+  const [status, setStatus] = useState('');
   const submitting = useRef(false);
   const { session, loading, signIn } = useAuth();
   const location = useLocation();
@@ -22,7 +22,7 @@ export default function Login({ initialMode = 'login' }) {
 
   async function submit(event) {
     event.preventDefault();
-    if (submitting.current || verificationSent) return;
+    if (submitting.current) return;
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') || '').trim();
     const email = String(form.get('email') || '').trim();
@@ -40,9 +40,8 @@ export default function Login({ initialMode = 'login' }) {
       setError('Enter your password.');
       return;
     }
-    if (registering && (password.length < 12 || new TextEncoder().encode(password).length > 72
-      || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password))) {
-      setError('Use at least 12 characters with an uppercase letter, a lowercase letter, and a number.');
+    if (registering && (password.length < 8 || new TextEncoder().encode(password).length > 72)) {
+      setError('Use a password with at least 8 characters.');
       return;
     }
     if (registering && password !== confirmPassword) {
@@ -52,12 +51,14 @@ export default function Login({ initialMode = 'login' }) {
     submitting.current = true;
     setBusy(true);
     setError('');
+    setStatus('');
     try {
       if (registering) {
-        await api.post('/auth/organizer/register', { name, email, password });
-        setVerificationSent(true);
+        await signIn('/auth/organizer/register', buildOrganizerSignupPayload({ name, email, password }));
+        setStatus('Account created. Opening your dashboard…');
+        navigate('/organizer/dashboard', { replace: true });
       } else {
-        await signIn('/auth/organizer/login', { email, password });
+        await signIn('/auth/organizer/login', { email: email.toLowerCase(), password });
         const destination = location.state?.from;
         navigate(destination?.pathname?.startsWith('/organizer/') ? destination.pathname : '/organizer/dashboard', { replace: true });
       }
@@ -78,28 +79,27 @@ export default function Login({ initialMode = 'login' }) {
         </Link>
 
         <div className="auth-tabs" role="tablist" aria-label="Account access">
-          <button type="button" role="tab" aria-selected={!registering} className={!registering ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setVerificationSent(false); }}>Log in</button>
-          <button type="button" role="tab" aria-selected={registering} className={registering ? 'active' : ''} onClick={() => { setMode('register'); setError(''); }}>Create account</button>
+          <button type="button" role="tab" aria-selected={!registering} className={!registering ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setStatus(''); }}>Log in</button>
+          <button type="button" role="tab" aria-selected={registering} className={registering ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setStatus(''); }}>Create account</button>
         </div>
 
         <h1>{registering ? 'Create an organizer account' : 'Welcome back'}</h1>
-        {location.state?.verificationSuccess && !registering && <p className="auth-help" role="status">Email verified. Your organizer account is active. Log in with the email and password you used to sign up.</p>}
-        {registering && verificationSent && <p className="auth-help" role="status">If this email is eligible, a verification link has been sent. After verifying, log in with the email and password you entered here.</p>}
         <form className="auth-form" onSubmit={submit} noValidate>
           {registering && <label className="auth-field">Full Name<input type="text" name="name" autoComplete="name" maxLength={100} required /></label>}
           <label className="auth-field">Email Address<input type="email" name="email" autoComplete="email" required /></label>
           <label className="auth-field">
             <span className="auth-label-row"><span>Password</span></span>
-            <span className="password-input"><input type={showPassword ? 'text' : 'password'} name="password" autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 12 : undefined} required /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span>
+            <span className="password-input"><input type={showPassword ? 'text' : 'password'} name="password" autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 8 : undefined} required /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span>
           </label>
           {registering && <label className="auth-field">
             <span className="auth-label-row"><span>Confirm Password</span></span>
-            <span className="password-input"><input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" autoComplete="new-password" minLength={12} required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'} onClick={() => setShowConfirmPassword((visible) => !visible)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span>
+            <span className="password-input"><input type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" autoComplete="new-password" minLength={8} required /><button type="button" className="password-toggle" aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'} onClick={() => setShowConfirmPassword((visible) => !visible)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span>
           </label>}
           {error && <p className="auth-error" role="alert">{error}</p>}
-          <button className="auth-submit" type="submit" disabled={busy || (registering && verificationSent)}>{busy ? 'Please wait…' : registering ? 'Create account' : 'Log in'}</button>
+          {status && <p className="auth-help" role="status">{status}</p>}
+          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : registering ? 'Create account' : 'Log in'}</button>
         </form>
-        <p className="auth-switch">{registering ? 'Already have an account?' : 'Need to create an account?'} <button type="button" onClick={() => { setMode(registering ? 'login' : 'register'); setError(''); }}>{registering ? 'Log in' : 'Create an account'}</button></p>
+        <p className="auth-switch">{registering ? 'Already have an account?' : 'Need to create an account?'} <button type="button" onClick={() => { setMode(registering ? 'login' : 'register'); setError(''); setStatus(''); }}>{registering ? 'Log in' : 'Create an account'}</button></p>
       </section>
     </main>
   );

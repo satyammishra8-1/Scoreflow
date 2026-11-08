@@ -80,28 +80,6 @@ async function sendJudgeInvitation({ judge, event, token, emailDraft }) {
   }
 }
 
-async function sendOrganizerVerification({ email, name, token }) {
-  const { apiKey, senderEmail, senderName, clientUrl } = getBrevoConfig();
-  if (isSmtpCredential(apiKey) || !apiKey || !senderEmail || !clientUrl) return { sent: false };
-  const verificationUrl = `${clientUrl.replace(/\/+$/, '')}/organizer/verify/${encodeURIComponent(token)}`;
-  const safeName = escapeHtml(name || '');
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST', signal: AbortSignal.timeout(10000),
-    headers: { accept: 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      sender: { email: senderEmail, name: senderName }, to: [{ email, name }],
-      subject: 'Verify your ScoreFlow organizer account',
-      htmlContent: `<p>Hello ${safeName},</p><p>Use this one-time link to verify your email and finish creating your ScoreFlow organizer account. It expires in 30 minutes.</p><p><a href="${verificationUrl}">Verify email</a></p><p>If you did not request this, you can ignore this email.</p>`,
-      textContent: `Hello ${name},\n\nVerify your ScoreFlow organizer account within 30 minutes: ${verificationUrl}\n\nIf you did not request this, ignore this email.`,
-    }),
-  });
-  if (!response.ok) {
-    await logBrevoRejection('organizer verification', response, apiKey);
-    return { sent: false };
-  }
-  return { sent: true };
-}
-
 async function sendAnnouncementEmail({ recipientEmail, subject, message, eventName }) {
   const { apiKey, senderEmail, senderName } = getBrevoConfig();
   if (isSmtpCredential(apiKey)) {
@@ -180,4 +158,4 @@ async function sendResultReportEmail({ recipientEmail, recipientName, teamName, 
   }
 }
 
-module.exports = { sendJudgeInvitation, sendOrganizerVerification, sendAnnouncementEmail, sendResultReportEmail };
+module.exports = { sendJudgeInvitation, sendAnnouncementEmail, sendResultReportEmail };
