@@ -5,7 +5,6 @@ function assertProductionConfiguration() {
     ['MONGODB_URI', process.env.MONGODB_URI],
     ['JWT_ACCESS_SECRET', process.env.JWT_ACCESS_SECRET],
     ['JWT_REFRESH_SECRET', process.env.JWT_REFRESH_SECRET],
-    ['ORGANIZER_EMAIL_ALLOWLIST', process.env.ORGANIZER_EMAIL_ALLOWLIST],
     ['CLIENT_ORIGINS', process.env.CLIENT_ORIGINS],
     ['CLIENT_URL', process.env.CLIENT_URL],
     ['AI_SERVICE_URL', process.env.AI_SERVICE_URL],
@@ -16,11 +15,6 @@ function assertProductionConfiguration() {
   ]) if (!String(value || '').trim()) missing.push(name);
   for (const name of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'AI_SERVICE_SHARED_SECRET']) {
     if (process.env[name] && Buffer.byteLength(process.env[name], 'utf8') < 32) missing.push(`${name} (minimum 32 bytes)`);
-  }
-  const allowlist = (process.env.ORGANIZER_EMAIL_ALLOWLIST || '').split(',').map((email) => email.trim()).filter(Boolean);
-  if (allowlist.length === 0) missing.push('ORGANIZER_EMAIL_ALLOWLIST (one or more comma-separated emails)');
-  else if (allowlist.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || new Set(allowlist.map((email) => email.toLowerCase())).size !== allowlist.length) {
-    missing.push('ORGANIZER_EMAIL_ALLOWLIST (distinct valid emails)');
   }
   if (process.env.JWT_ACCESS_SECRET && process.env.JWT_ACCESS_SECRET === process.env.JWT_REFRESH_SECRET) missing.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
   const provider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();

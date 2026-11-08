@@ -36,7 +36,7 @@ api.interceptors.response.use((response) => response, async (error) => {
   const original = error.config;
   const path = original?.url || '';
   if (error.response?.status !== 401 || !original || original._retried
-    || /\/auth\/(?:refresh|logout|organizer\/(?:login|register|verify)|judge\/login)$/.test(path)) throw error;
+    || /\/auth\/(?:refresh|logout|organizer\/(?:login|register)|judge\/login)$/.test(path)) throw error;
   original._retried = true;
   try {
     await refreshAccessToken();
