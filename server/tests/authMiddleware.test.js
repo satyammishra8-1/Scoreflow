@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const Judge = require('../models/Judge');
 const Event = require('../models/Event');
 const jwt = require('jsonwebtoken');
-const { requireRole, requireEventAccess, requireOwnedEvent, authenticate, authorizeEvaluationSubmission } = require('../middleware/auth');
+const { requireRole, requireEventAccess, requireOwnedEvent, authenticate, authenticateOptional, authorizeEvaluationSubmission } = require('../middleware/auth');
 
 function response() {
   return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
@@ -52,6 +52,31 @@ test('judge sessions issued by the removed password login flow are rejected', as
   const res = response();
   await authenticate(req, res, () => assert.fail('A judge password session without invitation provenance was accepted.'));
   assert.equal(res.statusCode, 401);
+});
+
+test('organizer access tokens authenticate without a stale email allowlist dependency', async (t) => {
+  const OrganizerAccount = require('../models/OrganizerAccount');
+  const previousSecret = process.env.JWT_ACCESS_SECRET;
+  const originalFindById = OrganizerAccount.findById;
+  const secret = 'test-access-secret-that-is-long-enough-32-bytes';
+  process.env.JWT_ACCESS_SECRET = secret;
+  OrganizerAccount.findById = () => ({ select() { return this; }, lean: async () => ({
+    _id: '64b000000000000000000011', email: 'owner@example.test', tokenVersion: 0, active: true,
+  }) });
+  t.after(() => {
+    OrganizerAccount.findById = originalFindById;
+    if (previousSecret === undefined) delete process.env.JWT_ACCESS_SECRET; else process.env.JWT_ACCESS_SECRET = previousSecret;
+  });
+  const token = jwt.sign({ sub: '64b000000000000000000011', role: 'organizer', email: 'owner@example.test', ver: 0, sessionType: 'organizer' }, secret, { algorithm: 'HS256', issuer: 'scoreflow', audience: 'scoreflow-api', expiresIn: '1m' });
+  const req = { get: () => `Bearer ${token}` };
+  const res = response();
+  let continued = false;
+  await authenticate(req, res, () => { continued = true; });
+  assert.equal(continued, true);
+  assert.equal(req.auth.role, 'organizer');
+  const optionalReq = { get: () => `Bearer ${token}` };
+  await authenticateOptional(optionalReq, response(), () => {});
+  assert.equal(optionalReq.auth.role, 'organizer');
 });
 
 test('evaluation submissions replace a frontend judge ID with the authenticated judge identity', async (t) => {

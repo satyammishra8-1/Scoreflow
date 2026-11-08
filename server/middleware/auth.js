@@ -5,7 +5,6 @@ const Judge = require('../models/Judge');
 const Team = require('../models/Team');
 const Evaluation = require('../models/Evaluation');
 const Event = require('../models/Event');
-const { normalizedAllowlist } = require('../controllers/authController');
 
 function unauthorized(res, message = 'Authentication is required.') {
   return res.status(401).json({ success: false, error: message });
@@ -22,7 +21,7 @@ async function authenticate(req, res, next) {
     const user = claims.role === 'organizer'
       ? await OrganizerAccount.findById(claims.sub).select('email tokenVersion active').lean()
       : await Judge.findById(claims.sub).select('email eventId tokenVersion invitationStatus').lean();
-    if (!user || user.active === false || (claims.role === 'organizer' && !normalizedAllowlist().includes(String(user.email).toLowerCase()))
+    if (!user || user.active === false
       || (user.invitationStatus && user.invitationStatus !== 'accepted')
       || (user.tokenVersion || 0) !== (claims.ver || 0) || String(user.email).toLowerCase() !== claims.email) return unauthorized(res);
     if (claims.role === 'judge' && String(user.eventId) !== String(claims.eventId)) return unauthorized(res);
@@ -42,7 +41,7 @@ async function authenticateOptional(req, _res, next) {
       const UserModel = claims.role === 'organizer' ? OrganizerAccount : claims.role === 'judge' && claims.sessionType === 'invitation' ? Judge : null;
       const user = UserModel && mongoose.Types.ObjectId.isValid(claims.sub)
         ? await UserModel.findById(claims.sub).select('email eventId tokenVersion active invitationStatus').lean() : null;
-      if (user && user.active !== false && (claims.role !== 'organizer' || normalizedAllowlist().includes(String(user.email).toLowerCase()))
+      if (user && user.active !== false
         && (!user.invitationStatus || user.invitationStatus === 'accepted') && (user.tokenVersion || 0) === (claims.ver || 0)
         && String(user.email).toLowerCase() === claims.email
         && (claims.role !== 'judge' || String(user.eventId) === String(claims.eventId))) {
