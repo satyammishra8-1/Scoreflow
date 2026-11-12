@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api as API } from '../auth/api';
 import OrganizerLayout from './OrganizerLayout';
@@ -50,6 +50,7 @@ function OrganizerAnnouncements() {
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const announcementRequestId = useRef(null);
 
   async function loadHistory() {
     const result = await API.get(`/events/${encodeURIComponent(eventId)}/announcements`);
@@ -190,7 +191,7 @@ function OrganizerAnnouncements() {
           ...(invitationEmailDraft ? { emailDraft: invitationEmailDraft } : {}),
         });
         const result = response.data?.data;
-        const deliveryNotice = `${result?.message || 'Invitation processing finished.'} ${result?.sentCount ?? 0} sent, ${result?.failedCount ?? 0} failed.`;
+        const deliveryNotice = `${result?.message || 'Invitation processing finished.'} ${result?.acceptedCount ?? 0} accepted, ${result?.failedCount ?? 0} failed.`;
         if (result?.status === 'failed') setError(deliveryNotice);
         else setNotice(deliveryNotice);
         const judgeResponse = await API.get(`/events/${encodeURIComponent(eventId)}/judges`);
@@ -200,15 +201,17 @@ function OrganizerAnnouncements() {
         return;
       }
       const response = await API.post(`/events/${encodeURIComponent(eventId)}/announcements`, {
+        requestId: announcementRequestId.current || (announcementRequestId.current = globalThis.crypto?.randomUUID?.() || `announcement-${Date.now()}-${Math.random().toString(36).slice(2)}`),
         audienceType, recipientMode,
         ...(recipientMode === 'specific' ? { recipientIds: selectedIds } : {}),
         subject: announcementSubject.trim(), message: announcementMessage.trim(),
       });
       const delivery = response.data?.data;
-      const deliveryNotice = `${response.data?.deliveryMessage || 'Announcement processing finished.'} ${delivery?.sentCount ?? 0} sent, ${delivery?.failedCount ?? 0} failed.`;
-      if (delivery?.status === 'failed' || delivery?.status === 'partial') setError(deliveryNotice);
+      announcementRequestId.current = null;
+      const deliveryNotice = `${response.data?.deliveryMessage || 'Announcement processing finished.'} ${delivery?.acceptedCount ?? 0} accepted, ${delivery?.deliveredCount ?? 0} delivered, ${delivery?.failedCount ?? 0} failed.`;
+      if (delivery?.status === 'failed' || delivery?.status === 'partial' || delivery?.status === 'partial_accepted') setError(deliveryNotice);
       else setNotice(deliveryNotice);
-      if (delivery?.status === 'sent') {
+      if (delivery?.status === 'accepted' || delivery?.status === 'sent') {
         setSubject(''); setMessage(''); setHasGeneratedAnnouncementDraft(false); setSelectedIds([]); setRecipientMode('all');
       }
       await loadHistory();
@@ -338,7 +341,7 @@ function OrganizerAnnouncements() {
               {history.length ? <div className="announcement-history-list">{history.map((item) => <article className="announcement-history-item" key={item._id}>
                 <div className="announcement-history-title"><strong>{item.subject}</strong><span className={`announcement-status announcement-status-${item.status}`}>{item.status}</span></div>
                 <p>{item.audienceType === 'judges' ? 'Judges' : 'Teams'} · {item.recipientMode === 'all' ? 'All recipients' : 'Specific recipients'} · {item.recipientCount ?? item.sentCount + item.failedCount} recipients</p>
-                <small>{item.sentCount} sent · {item.failedCount} failed · {item.sentAt ? new Date(item.sentAt).toLocaleString() : new Date(item.createdAt).toLocaleString()}</small>
+                <small>{item.acceptedCount ?? item.sentCount} accepted · {item.deliveredCount ?? 0} delivered · {item.failedCount} failed · {item.sentAt ? new Date(item.sentAt).toLocaleString() : new Date(item.createdAt).toLocaleString()}</small>
               </article>)}</div> : <p className="announcement-empty">No announcements have been sent for this event.</p>}
             </section>
           </>}

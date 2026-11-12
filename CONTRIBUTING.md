@@ -18,12 +18,11 @@ Before starting, install:
 - Node.js
 - VS Code
 
-Check installation:
+How to run ai-service terminal:
 
 ```bash
-git --version
-node --version
-npm --version
+cd C:\Scoreflow\ai-service
+python -m uvicorn main:app --reload --port 8000
 ```
 
 ---

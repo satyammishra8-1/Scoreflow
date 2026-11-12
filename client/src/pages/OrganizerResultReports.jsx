@@ -158,8 +158,9 @@ function OrganizerResultReports() {
         });
         return next;
       });
-      const failures = response.data.data.filter((result) => result.status !== 'Sent').length;
-      if (failures && selectedTeamContext.current === selectedTeamAtStart) setActionError(`${failures} selected team${failures === 1 ? '' : 's'} could not be fully delivered. Review each team’s delivery status.`);
+      const failures = response.data.data.filter((result) => ['Failed', 'Bounced', 'Partially Bounced'].includes(result.status)).length;
+      const pending = response.data.data.filter((result) => ['Accepted', 'Partially Accepted', 'Unknown'].includes(result.status)).length;
+      if ((failures || pending) && selectedTeamContext.current === selectedTeamAtStart) setActionError(`${failures} selected team${failures === 1 ? '' : 's'} had a delivery failure; ${pending} have acceptance or delivery still unconfirmed. Review each team’s status.`);
       setSelectedTeamIds([]);
     } catch (requestError) {
       if (requestEventId.current !== eventAtStart) return;
@@ -213,7 +214,12 @@ function OrganizerResultReports() {
                 const delivery = deliveryStatuses[teamId];
                 const deliveryMatchesReport = isDeliveryCurrentForReport(delivery, savedReport);
                 const isSending = sendingTeamIds.includes(teamId) || bulkSending && selectedTeamIds.includes(teamId) && delivery?.status === 'Sending';
-                const deliveryLabel = { Sent: 'Sent', 'Partially Sent': 'Partially Sent', Failed: 'Failed', Sending: 'Sending' }[delivery?.status] || 'Not Sent';
+                const deliveryLabel = {
+                  Accepted: 'Accepted; delivery not confirmed', Sent: 'Sent by provider; delivery not confirmed', Delivered: 'Delivered',
+                  'Partially Accepted': 'Partially accepted', 'Partially Delivered': 'Partially delivered',
+                  Bounced: 'Bounced', 'Partially Bounced': 'Partially bounced', Deferred: 'Deferred', Unknown: 'Status unknown',
+                  Failed: 'Failed', Sending: 'Sending',
+                }[delivery?.status] || 'Not sent';
                 const recipientStatus = delivery && savedReport && !deliveryMatchesReport ? `${deliveryLabel} (previous report)` : deliveryLabel;
                 return <article className={`rr-team-card${selectedTeamId === teamId ? ' rr-team-card-selected' : ''}`} key={teamId} aria-current={selectedTeamId === teamId ? 'true' : undefined}>
                   <div className="rr-team-topline">

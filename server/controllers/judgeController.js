@@ -480,24 +480,29 @@ exports.sendJudgeInvitations = async (req, res) => {
           return await issueJudgeInvitation(judge, event, emailDraft);
         } catch (error) {
           console.error('Failed to issue a judge invitation:', error.message);
-          return { sent: false, message: 'Unable to prepare this invitation.' };
+          return { accepted: false, status: 'failed', message: 'Unable to prepare this invitation.' };
         }
       }));
       outcomes.push(...batch);
     }
 
-    const sentCount = outcomes.filter((outcome) => outcome?.sent).length;
-    const failedCount = outcomes.length - sentCount;
-    const status = sentCount === 0 ? 'failed' : failedCount === 0 ? 'sent' : 'partial';
+    const acceptedCount = outcomes.filter((outcome) => outcome?.accepted).length;
+    const failedCount = outcomes.length - acceptedCount;
+    const status = acceptedCount === 0 ? 'failed' : failedCount === 0 ? 'accepted' : 'partial_accepted';
     return res.status(200).json({
       success: true,
       data: {
-        sentCount,
+        acceptedCount,
         failedCount,
         status,
-        message: status === 'sent' ? 'Judge invitations sent.'
-          : status === 'partial' ? 'Some invitations were sent; some could not be delivered.'
-            : (outcomes.find((outcome) => outcome?.message)?.message || 'No invitations could be delivered.'),
+        message: status === 'accepted' ? 'Brevo accepted all invitation emails; delivery is not yet confirmed.'
+          : status === 'partial_accepted' ? 'Brevo accepted some invitation emails; other submissions failed or have an unknown result.'
+            : (outcomes.find((outcome) => outcome?.message)?.message || 'No invitations were accepted by Brevo.'),
+        recipients: outcomes.map((outcome, index) => ({
+          accepted: Boolean(outcome?.accepted), status: outcome?.status || 'failed',
+          messageId: outcome?.messageId || '', message: outcome?.message || '',
+          judgeId: String(judges[index]?._id || ''),
+        })),
       },
     });
   } catch (error) {

@@ -10,7 +10,18 @@ const Event = require('../models/Event');
 const Judge = require('../models/Judge');
 const RefreshSession = require('../models/RefreshSession');
 const emailService = require('../services/emailService');
-const actualSendJudgeInvitation = emailService.sendJudgeInvitation;
+const { createEmailService } = emailService;
+const deliveryRows = [];
+const deliveryModel = {
+  create: async (record) => { const saved = { ...record, _id: `delivery-${deliveryRows.length + 1}` }; deliveryRows.push(saved); return saved; },
+  findOne: () => ({ select: async () => null }),
+  updateOne: async (query, update) => {
+    const row = deliveryRows.find((item) => item._id === query._id);
+    if (row) Object.assign(row, update.$set);
+    return { modifiedCount: row ? 1 : 0 };
+  },
+};
+const actualSendJudgeInvitation = createEmailService({ DeliveryModel: deliveryModel, fetchImpl: (...args) => global.fetch(...args) }).sendJudgeInvitation;
 let sendCalls = [];
 let savedHashes = new Map();
 let acceptanceJudge = null;
@@ -47,7 +58,7 @@ Judge.updateOne = async (query) => {
 };
 emailService.sendJudgeInvitation = async (args) => {
   sendCalls.push(args);
-  return { sent: true };
+  return { accepted: true, status: 'accepted' };
 };
 const invitationService = require('../services/invitationService');
 const { buildJudgeInvitationEmail } = require('../services/emailTemplates');
@@ -98,7 +109,7 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     };
     try {
       const result = await actualSendJudgeInvitation({ judge: judgeA, event, token: 'secure-token-fixture' });
-      assert.equal(result.sent, true);
+      assert.equal(result.accepted, true);
       assert.match(requestBody.htmlContent, /https:\/\/scoreflow\.example\/judge\/invite\/secure-token-fixture/);
       assert.equal(requestBody.to[0].email, judgeA.email);
       assert.equal(/\/judge\/invite\/[^" ]+\/(?:64b[0-9a-f]+)?/.test(requestBody.htmlContent), false);
@@ -139,10 +150,10 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
   await t.test('email delivery failure removes the unusable invitation token', async () => {
     reset();
     const previousSender = emailService.sendJudgeInvitation;
-    emailService.sendJudgeInvitation = async () => ({ sent: false, message: 'mail unavailable' });
+    emailService.sendJudgeInvitation = async () => ({ accepted: false, status: 'failed', message: 'mail unavailable' });
     try {
       const result = await invitationService.issueJudgeInvitation(judgeA, event);
-      assert.equal(result.sent, false);
+      assert.equal(result.accepted, false);
       assert.equal(savedHashes.has(judgeA._id), false);
     } finally {
       emailService.sendJudgeInvitation = previousSender;
@@ -203,7 +214,7 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
       body: { recipientMode: 'specific', judgeIds: [judgeA._id, judgeB._id], emailDraft: { subject: 'Please join our review panel', body: 'Your experience would help our students.' } },
     }, res);
     assert.equal(res.statusCode, 200);
-    assert.equal(res.body.data.sentCount, 2);
+    assert.equal(res.body.data.acceptedCount, 2);
     assert.deepEqual(sendCalls.map((call) => call.judge.name).sort(), ['Asha Dev', 'Rahul Rao']);
     assert.equal(new Set(sendCalls.map((call) => call.token)).size, 2);
     assert.ok(sendCalls.every((call) => String(call.event._id) === eventId));

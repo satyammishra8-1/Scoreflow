@@ -48,7 +48,7 @@ test('handles an empty event and zero assignments without invalid percentages', 
   assert.deepEqual(response.body.data, {
     eventId, totalTeams: 0, totalJudges: 0, totalAssignments: 0, completedEvaluations: 0,
     pendingEvaluations: 0, evaluationProgressPercent: 0, completedJudges: 0, pendingJudges: 0,
-    judgesWithAssignments: 0, judgeProgressPercent: 0, reportsGenerated: 0, emailsSent: 0,
+    judgesWithAssignments: 0, judgeProgressPercent: 0, reportsGenerated: 0, emailsAccepted: 0,
   });
 });
 
@@ -79,13 +79,13 @@ test('calculates completed progress and includes only saved report and successfu
   const { controller, response } = setup({
     teams: 2, judges: 2,
     evaluations: [{ totalAssignments: 4, completedEvaluations: 4, completedJudges: 2, judgesWithAssignments: 2 }],
-    reports: 2, reportEmails: [{ sent: 3 }], announcementEmails: [{ sent: 4 }],
+    reports: 2, reportEmails: [{ accepted: 3 }], announcementEmails: [{ accepted: 4 }],
   });
   await controller.getEventAnalytics({ params: { eventId } }, response);
   assert.equal(response.body.data.evaluationProgressPercent, 100);
   assert.equal(response.body.data.judgeProgressPercent, 100);
   assert.equal(response.body.data.reportsGenerated, 2);
-  assert.equal(response.body.data.emailsSent, 7);
+  assert.equal(response.body.data.emailsAccepted, 7);
 });
 
 test('scopes all counts to the selected event', async () => {
@@ -100,13 +100,13 @@ test('scopes all counts to the selected event', async () => {
 test('counts completed assignments only and includes only confirmed successful email outcomes', async () => {
   const { controller, response, filters } = setup({
     evaluations: [{ totalAssignments: 2, completedEvaluations: 1, completedJudges: 0, judgesWithAssignments: 2 }],
-    reportEmails: [{ sent: 1 }], announcementEmails: [{ sent: 2 }],
+    reportEmails: [{ accepted: 1 }], announcementEmails: [{ accepted: 2 }],
   });
   await controller.getEventAnalytics({ params: { eventId } }, response);
   const evaluationLookup = filters.judges.find((stage) => stage.$lookup?.from === 'evaluations').$lookup;
   assert.ok(evaluationLookup.pipeline.some((stage) => stage.$match?.$expr?.$and?.some((term) => term.$eq?.[1] === 'COMPLETED')));
-  assert.ok(filters.deliveries.some((stage) => stage.$match?.['members.status'] === 'Sent'));
-  assert.ok(filters.announcements.some((stage) => stage.$group?.sent?.$sum?.$ifNull?.[0] === '$sentCount'));
-  assert.equal(response.body.data.emailsSent, 3);
+  assert.ok(filters.deliveries.some((stage) => stage.$match?.['members.status']?.$in?.includes('Accepted')));
+  assert.ok(filters.announcements.some((stage) => stage.$group?.accepted?.$sum?.$add?.[0]?.$ifNull?.[0] === '$acceptedCount'));
+  assert.equal(response.body.data.emailsAccepted, 3);
 });
 

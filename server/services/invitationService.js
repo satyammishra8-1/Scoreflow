@@ -27,7 +27,7 @@ async function issueJudgeInvitation(judge, event, emailDraft) {
     },
     { returnDocument: 'after', runValidators: true },
   );
-  if (!updatedJudge) return { sent: false, message: 'This judge can no longer receive an invitation.' };
+  if (!updatedJudge) return { accepted: false, status: 'failed', message: 'This judge can no longer receive an invitation.' };
   const clearUndeliveredToken = () => Judge.updateOne(
     { _id: judge._id, eventId: judge.eventId, invitationTokenHash: tokenHash },
     { $unset: { invitationTokenHash: 1, invitationExpiresAt: 1 }, $set: { invitationStatus: 'pending' } },
@@ -39,7 +39,7 @@ async function issueJudgeInvitation(judge, event, emailDraft) {
     await clearUndeliveredToken();
     throw error;
   }
-  if (!delivery?.sent) {
+  if (!delivery?.accepted) {
     await clearUndeliveredToken();
   }
   return delivery;

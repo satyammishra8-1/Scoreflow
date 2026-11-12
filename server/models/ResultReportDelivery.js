@@ -3,7 +3,9 @@ const mongoose = require('mongoose');
 const memberDeliverySchema = new mongoose.Schema({
   memberIndex: { type: Number, required: true, min: 0 },
   memberName: { type: String, trim: true, default: 'Team member' },
-  status: { type: String, enum: ['Sent', 'Failed'], required: true },
+  status: { type: String, enum: ['Accepted', 'Delivered', 'Bounced', 'Deferred', 'Unknown', 'Suppressed', 'Failed', 'Sent'], required: true },
+  trackingId: { type: String, default: '' },
+  providerMessageId: { type: String, default: '' },
   reason: { type: String, trim: true, default: '' },
 }, { _id: false });
 
@@ -12,7 +14,7 @@ const resultReportDeliverySchema = new mongoose.Schema({
   team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true, index: true },
   report: { type: mongoose.Schema.Types.ObjectId, ref: 'ResultReport', required: true },
   requestId: { type: String, required: true, maxlength: 100 },
-  status: { type: String, enum: ['Sending', 'Sent', 'Partially Sent', 'Failed'], required: true, default: 'Sending' },
+  status: { type: String, enum: ['Sending', 'Accepted', 'Partially Accepted', 'Unknown', 'Delivered', 'Partially Delivered', 'Bounced', 'Partially Bounced', 'Sent', 'Partially Sent', 'Failed'], required: true, default: 'Sending' },
   members: { type: [memberDeliverySchema], default: [] },
   completedAt: { type: Date, default: null },
 }, { timestamps: true });

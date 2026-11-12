@@ -312,8 +312,8 @@ function OrganizerJudgesEvent({ eventId }) {
       const created = toUiJudge(response.data.data);
       setJudges((next) => [...next, created]);
       setIsAddOpen(false);
-      setPageNotice(response.data.invitation?.sent
-        ? `Invitation sent to ${created.email}.`
+      setPageNotice(response.data.invitation?.accepted
+        ? `Brevo accepted the invitation to ${created.email}; delivery is not yet confirmed.`
         : response.data.invitation?.message || 'Judge added. The invitation email could not be sent yet. Use Resend Invitation to try again.');
       return { ok: true };
     } catch (error) {
@@ -341,8 +341,8 @@ function OrganizerJudgesEvent({ eventId }) {
       setJudges((next) => next.map((item) => item.id === judgePayload.id ? updated : item));
       setEditingJudge(null);
       if (response.data.invitation) {
-        setPageNotice(response.data.invitation.sent
-          ? `Updated invitation sent to ${updated.email}.`
+        setPageNotice(response.data.invitation.accepted
+          ? `Brevo accepted the updated invitation to ${updated.email}; delivery is not yet confirmed.`
           : response.data.invitation.message);
       }
       return { ok: true };
@@ -359,8 +359,8 @@ function OrganizerJudgesEvent({ eventId }) {
       const response = await API.post(`/judges/${encodeURIComponent(judgeId)}/invitation/resend`, null, { params: { eventId } });
       const updated = toUiJudge(response.data.data);
       setJudges((current) => current.map((judge) => judge.id === judgeId ? updated : judge));
-      setPageNotice(response.data.invitation?.sent
-        ? `Invitation resent to ${updated.email}. The previous link is now invalid.`
+      setPageNotice(response.data.invitation?.accepted
+        ? `Brevo accepted the invitation to ${updated.email}; delivery is not yet confirmed. The previous link is now invalid.`
         : response.data.invitation?.message || 'The invitation could not be sent. Please try again.');
     } catch (error) {
       setPageError(getApiErrorMessage(error, 'Failed to resend the invitation.'));

@@ -99,7 +99,7 @@ function OrganizerEventWorkspace() {
                       <article className="event-analytics-card"><span>Judge Progress</span><strong>{eventAnalytics.completedJudges} / {eventAnalytics.totalJudges}</strong><small>{eventAnalytics.judgesWithAssignments} judges have assignments · {eventAnalytics.pendingJudges} still have evaluations pending</small></article>
                       <article className="event-analytics-card event-analytics-report-email"><span>Reports &amp; Emails</span>
                         <div><strong>{eventAnalytics.reportsGenerated}</strong><small>Reports generated</small></div>
-                        <div><strong>{eventAnalytics.emailsSent}</strong><small>Emails sent · inbox delivery not confirmed</small></div>
+                        <div><strong>{eventAnalytics.emailsAccepted}</strong><small>Emails accepted by provider · delivery status tracked separately</small></div>
                       </article>
                     </div>
                     <div className="event-analytics-charts">

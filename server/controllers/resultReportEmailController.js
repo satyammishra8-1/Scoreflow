@@ -7,6 +7,7 @@ const Evaluation = require('../models/Evaluation');
 const EvaluationConfiguration = require('../models/EvaluationConfiguration');
 const ResultReport = require('../models/ResultReport');
 const ResultReportDelivery = require('../models/ResultReportDelivery');
+const EmailDelivery = require('../models/EmailDelivery');
 const { sendResultReportEmail } = require('../services/emailService');
 const { reportIsQualitative } = require('../services/resultReportContent');
 const { buildReportEvidence, evidenceFingerprint } = require('./resultReportController');
@@ -32,11 +33,13 @@ function deliveryData(value) {
     reportId: idString(delivery.report),
     requestId: delivery.requestId,
     status: delivery.status,
-    members: (delivery.members || []).map((member) => ({
+      members: (delivery.members || []).map((member) => ({
       memberIndex: member.memberIndex,
       memberName: member.memberName || 'Team member',
       status: member.status,
       reason: member.reason || '',
+        trackingId: member.trackingId || '',
+        providerMessageId: member.providerMessageId || '',
     })),
     createdAt: delivery.createdAt,
     completedAt: delivery.completedAt,
@@ -51,6 +54,7 @@ function createResultReportEmailController({
   ConfigModel = EvaluationConfiguration,
   ReportModel = ResultReport,
   DeliveryModel = ResultReportDelivery,
+  EmailDeliveryModel = EmailDelivery,
   sendEmail = sendResultReportEmail,
   isValidId = validId,
 } = {}) {
@@ -162,10 +166,16 @@ function createResultReportEmailController({
           teamName: loaded.team.teamName,
           eventName: loaded.event.name,
           report: loaded.report.report,
+          eventId: loaded.event._id,
+          contextId: loaded.team._id,
+          referenceId: loaded.report._id,
         });
-        results.push(outcome?.sent
-          ? { memberIndex, memberName, status: 'Sent', reason: '' }
-          : { memberIndex, memberName, status: 'Failed', reason: outcome?.message || 'Email delivery failed. Please try again.' });
+        results.push({
+          memberIndex, memberName,
+          status: outcome?.accepted ? 'Accepted' : ['unknown', 'suppressed'].includes(outcome?.status) ? (outcome.status === 'unknown' ? 'Unknown' : 'Suppressed') : 'Failed',
+          trackingId: outcome?.trackingId || '', providerMessageId: outcome?.messageId || '',
+          reason: outcome?.accepted ? '' : (outcome?.message || 'Email submission failed.'),
+        });
       } catch {
         results.push({ memberIndex, memberName, status: 'Failed', reason: 'The email service is temporarily unavailable.' });
       }
@@ -174,8 +184,11 @@ function createResultReportEmailController({
       results.push({ memberIndex: 0, memberName: 'Team member', status: 'Failed', reason: 'No team members are registered for this team.' });
     }
 
-    const sentCount = results.filter((member) => member.status === 'Sent').length;
-    const status = sentCount === 0 ? 'Failed' : sentCount === results.length ? 'Sent' : 'Partially Sent';
+    const acceptedCount = results.filter((member) => member.status === 'Accepted').length;
+    const unknownCount = results.filter((member) => member.status === 'Unknown').length;
+    const status = acceptedCount === results.length ? 'Accepted'
+      : acceptedCount > 0 ? 'Partially Accepted'
+        : unknownCount > 0 ? 'Unknown' : 'Failed';
     const completedAt = new Date();
     const saved = await DeliveryModel.findOneAndUpdate(
       { _id: delivery._id },
@@ -240,9 +253,40 @@ function createResultReportEmailController({
       if (!isValidId(eventId)) return res.status(400).json({ success: false, error: 'A valid eventId is required.' });
       const event = await EventModel.findById(eventId).select('_id').lean();
       if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
-      const records = await DeliveryModel.find({ event: event._id }).sort({ createdAt: -1, _id: -1 }).lean();
+      const [records, emailRows] = await Promise.all([
+        DeliveryModel.find({ event: event._id }).sort({ createdAt: -1, _id: -1 }).lean(),
+        EmailDeliveryModel.find({ eventId: event._id, category: 'result_report' }).select('+recipientEmail').sort({ createdAt: -1 }).lean(),
+      ]);
       const latest = new Map();
       records.forEach((record) => { if (!latest.has(String(record.team))) latest.set(String(record.team), deliveryData(record)); });
+      const latestByRecipient = new Map();
+      emailRows.forEach((row) => {
+        const key = `${row.referenceId}:${String(row.recipientEmail || '').toLowerCase()}`;
+        if (!latestByRecipient.has(key)) latestByRecipient.set(key, row);
+      });
+      const statusByProvider = {
+        accepted: 'Accepted', sent: 'Sent', delivered: 'Delivered', soft_bounced: 'Bounced', hard_bounced: 'Bounced', bounced: 'Bounced',
+        deferred: 'Deferred', failed: 'Failed', blocked: 'Suppressed', spam: 'Suppressed', invalid: 'Suppressed', unsubscribed: 'Suppressed', unknown: 'Unknown', sending: 'Sending',
+      };
+      for (const [teamId, delivery] of latest) {
+        const team = await TeamModel.findOne({ _id: teamId, eventId: event._id }).lean();
+        if (!team) continue;
+        const members = delivery.members.map((member) => {
+          const email = emailOf(team.members?.[member.memberIndex]?.email);
+          const row = email && latestByRecipient.get(`${delivery.reportId}:${email.toLowerCase()}`);
+          return row ? {
+            ...member, status: statusByProvider[row.status] || 'Unknown', reason: row.reason || '',
+            trackingId: row.trackingId || member.trackingId, providerMessageId: row.providerMessageId || member.providerMessageId,
+          } : member;
+        });
+        const states = members.map((member) => member.status);
+        const resolved = states.length && states.every((status) => status === 'Delivered') ? 'Delivered'
+          : states.some((status) => ['Bounced', 'Failed', 'Suppressed'].includes(status)) ? (states.some((status) => status === 'Delivered') ? 'Partially Bounced' : 'Bounced')
+            : states.some((status) => status === 'Unknown' || status === 'Sending') ? 'Unknown'
+              : states.every((status) => status === 'Sent' || status === 'Delivered') ? 'Sent'
+                : states.some((status) => status === 'Delivered') ? 'Partially Delivered' : 'Accepted';
+        latest.set(teamId, { ...delivery, status: resolved, members });
+      }
       return res.status(200).json({ success: true, data: Object.fromEntries(latest) });
     } catch (error) {
       console.error('Failed to retrieve result report delivery status:', error.message);

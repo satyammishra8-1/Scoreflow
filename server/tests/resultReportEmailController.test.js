@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { createResultReportEmailController } = require('../controllers/resultReportEmailController');
 const { evidenceFingerprint } = require('../controllers/resultReportController');
 const { buildResultReportEmail } = require('../services/emailTemplates');
-const emailService = require('../services/emailService');
+const { createEmailService } = require('../services/emailService');
 
 const eventId = '64b000000000000000000001';
 const otherEventId = '64b000000000000000000002';
@@ -74,14 +74,17 @@ function fixture({ teams, reportTeams, evaluationStatus = 'COMPLETED', failEmail
   const sendEmail = async (payload) => {
     sent.push(payload);
     if (sendEmailImpl) return sendEmailImpl(payload);
-    return failEmails.includes(payload.recipientEmail)
-      ? { sent: false, code: 'delivery_failed', message: 'Brevo could not deliver this email. Please try again.' }
-      : { sent: true, code: 'sent' };
+      return failEmails.includes(payload.recipientEmail)
+      ? { accepted: false, status: 'failed', code: 'provider_rejected', message: 'Brevo rejected this email.' }
+      : { accepted: true, status: 'accepted', trackingId: `tracking-${sent.length}`, messageId: `provider-${sent.length}` };
+  };
+  const emailDeliveryModel = {
+    find: () => ({ select() { return this; }, sort() { return this; }, lean: async () => [] }),
   };
   const controller = createResultReportEmailController({
     EventModel: eventModel, TeamModel: teamModel, JudgeModel: judgeModel,
     EvaluationModel: evaluationModel, ConfigModel: configModel, ReportModel: reportModel,
-    DeliveryModel: deliveryModel, sendEmail,
+    DeliveryModel: deliveryModel, EmailDeliveryModel: emailDeliveryModel, sendEmail,
   });
   return { controller, sent, deliveries, reports };
 }
@@ -99,20 +102,20 @@ test('sends a separate personalized message to each member and reports individua
   const fx = fixture();
   const res = await post(fx);
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.data.status, 'Sent');
+  assert.equal(res.body.data.status, 'Accepted');
   assert.deepEqual(fx.sent.map(({ recipientEmail }) => recipientEmail), ['asha@example.test', 'ben@example.test']);
   assert.ok(fx.sent.every(({ recipientEmail }) => typeof recipientEmail === 'string'));
   fx.sent.forEach(({ report }) => assert.deepEqual(report, reportContent));
-  assert.deepEqual(res.body.data.members.map(({ memberName, status }) => [memberName, status]), [['Asha', 'Sent'], ['Ben', 'Sent']]);
+  assert.deepEqual(res.body.data.members.map(({ memberName, status }) => [memberName, status]), [['Asha', 'Accepted'], ['Ben', 'Accepted']]);
   assert.equal(JSON.stringify(res.body).includes('asha@example.test'), false);
 });
 
 test('partial delivery failure does not prevent later member delivery', async () => {
   const fx = fixture({ failEmails: ['asha@example.test'] });
   const res = await post(fx);
-  assert.equal(res.body.data.status, 'Partially Sent');
+  assert.equal(res.body.data.status, 'Partially Accepted');
   assert.equal(fx.sent.length, 2);
-  assert.deepEqual(res.body.data.members.map((member) => member.status), ['Failed', 'Sent']);
+  assert.deepEqual(res.body.data.members.map((member) => member.status), ['Failed', 'Accepted']);
 });
 
 test('stale reports are rejected before any team member receives email', async () => {
@@ -130,9 +133,9 @@ test('missing and invalid member addresses are preserved as individual failures'
     ],
   }] });
   const res = await post(fx);
-  assert.equal(res.body.data.status, 'Partially Sent');
+  assert.equal(res.body.data.status, 'Partially Accepted');
   assert.equal(fx.sent.length, 1);
-  assert.deepEqual(res.body.data.members.map((member) => member.status), ['Failed', 'Failed', 'Sent']);
+  assert.deepEqual(res.body.data.members.map((member) => member.status), ['Failed', 'Failed', 'Accepted']);
 });
 
 test('team with no valid member email addresses is not sent', async () => {
@@ -181,7 +184,7 @@ test('bulk sends are isolated by team and one failure does not stop other teams'
   const res = response();
   await fx.controller.sendReportsBulk({ params: { eventId }, body: { teamIds: [teamOneId, teamTwoId], requestId: 'bulk-request-123456' } }, res);
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body.data.map((item) => item.status), ['Sent', 'Failed']);
+  assert.deepEqual(res.body.data.map((item) => item.status), ['Accepted', 'Failed']);
   assert.deepEqual(fx.sent.map(({ recipientEmail }) => recipientEmail), ['asha@example.test']);
 });
 
@@ -189,7 +192,7 @@ test('same request ID is idempotent while a new request ID permits an intentiona
   const fx = fixture();
   const first = await post(fx, teamOneId, 'request-idempotent-01');
   const repeated = await post(fx, teamOneId, 'request-idempotent-01');
-  assert.equal(first.body.data.status, 'Sent');
+  assert.equal(first.body.data.status, 'Accepted');
   assert.equal(repeated.body.replayed, true);
   assert.equal(fx.sent.length, 2);
   await post(fx, teamOneId, 'request-idempotent-02');
@@ -201,7 +204,7 @@ test('a concurrent repeated click with a different request ID cannot start a sec
   let notifyStarted;
   const started = new Promise((resolve) => { notifyStarted = resolve; });
   const gate = new Promise((resolve) => { release = resolve; });
-  const fx = fixture({ sendEmailImpl: async () => { notifyStarted(); await gate; return { sent: true }; } });
+  const fx = fixture({ sendEmailImpl: async () => { notifyStarted(); await gate; return { accepted: true, status: 'accepted' }; } });
   const firstPromise = post(fx, teamOneId, 'request-concurrent-001');
   await started;
   const repeated = await post(fx, teamOneId, 'request-concurrent-002');
@@ -209,7 +212,7 @@ test('a concurrent repeated click with a different request ID cannot start a sec
   assert.equal(repeated.body.replayed, true);
   assert.equal(fx.sent.length, 1);
   release();
-  assert.equal((await firstPromise).body.status, 'Sent');
+  assert.equal((await firstPromise).body.status, 'Accepted');
 });
 
 test('delivery status endpoint is event-scoped and returns the latest member results', async () => {
@@ -217,7 +220,7 @@ test('delivery status endpoint is event-scoped and returns the latest member res
   await post(fx);
   const res = response();
   await fx.controller.listDeliveryStatusByEvent({ params: { eventId } }, res);
-  assert.equal(res.body.data[teamOneId].status, 'Sent');
+  assert.equal(res.body.data[teamOneId].status, 'Accepted');
   assert.equal(res.body.data[teamOneId].members.length, 2);
 });
 
@@ -240,6 +243,17 @@ test('existing Brevo service sends one transactional message and safely handles 
   const keys = ['BREVO_API_KEY', 'BREVO_SENDER_EMAIL', 'BREVO_SENDER_NAME'];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   const oldFetch = global.fetch;
+  const deliveryRows = [];
+  const testDeliveryModel = {
+    create: async (record) => { const saved = { ...record, _id: `delivery-${deliveryRows.length + 1}` }; deliveryRows.push(saved); return saved; },
+    findOne: () => ({ select: async () => null }),
+    updateOne: async (query, update) => {
+      const row = deliveryRows.find((item) => item._id === query._id);
+      if (row) Object.assign(row, update.$set);
+      return { modifiedCount: row ? 1 : 0 };
+    },
+  };
+  const service = createEmailService({ DeliveryModel: testDeliveryModel, fetchImpl: (...args) => global.fetch(...args) });
   const setConfig = (values) => {
     keys.forEach((key) => { if (values[key] === undefined) delete process.env[key]; else process.env[key] = values[key]; });
   };
@@ -248,7 +262,7 @@ test('existing Brevo service sends one transactional message and safely handles 
       setConfig({});
       let called = false;
       global.fetch = async () => { called = true; };
-      const result = await emailService.sendResultReportEmail({ recipientEmail: 'asha@example.test', recipientName: 'Asha', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
+      const result = await service.sendResultReportEmail({ recipientEmail: 'asha@example.test', recipientName: 'Asha', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
       assert.equal(result.code, 'not_configured');
       assert.equal(called, false);
     });
@@ -257,8 +271,9 @@ test('existing Brevo service sends one transactional message and safely handles 
       setConfig({ BREVO_API_KEY: key, BREVO_SENDER_EMAIL: 'noreply@example.test', BREVO_SENDER_NAME: 'ScoreFlow' });
       let call;
       global.fetch = async (url, options) => { call = { url, options, body: JSON.parse(options.body) }; return { ok: true, status: 201 }; };
-      const result = await emailService.sendResultReportEmail({ recipientEmail: 'asha@example.test', recipientName: 'Asha', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
-      assert.equal(result.sent, true);
+      const result = await service.sendResultReportEmail({ recipientEmail: 'asha@example.test', recipientName: 'Asha', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
+      assert.equal(result.accepted, true);
+      assert.equal(result.status, 'accepted');
       assert.equal(call.url, 'https://api.brevo.com/v3/smtp/email');
       assert.equal(call.options.headers['api-key'], key);
       assert.deepEqual(call.body.to, [{ email: 'asha@example.test', name: 'Asha' }]);
@@ -273,12 +288,12 @@ test('existing Brevo service sends one transactional message and safely handles 
       console.error = () => {};
       try {
         global.fetch = async () => ({ ok: false, status: 401, text: async () => `Rejected ${key}` });
-        const rejected = await emailService.sendResultReportEmail({ recipientEmail: 'asha@example.test', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
-        assert.equal(rejected.code, 'delivery_failed');
+        const rejected = await service.sendResultReportEmail({ recipientEmail: 'asha@example.test', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
+        assert.equal(rejected.code, 'provider_rejected');
         assert.equal(JSON.stringify(rejected).includes(key), false);
         global.fetch = async () => { throw new Error('connection unavailable'); };
-        const network = await emailService.sendResultReportEmail({ recipientEmail: 'asha@example.test', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
-        assert.equal(network.code, 'service_unavailable');
+        const network = await service.sendResultReportEmail({ recipientEmail: 'asha@example.test', teamName: 'NovaTech', eventName: 'TechNova Showcase', report: reportContent });
+        assert.equal(network.code, 'provider_unreachable');
         assert.equal(JSON.stringify(network).includes(key), false);
       } finally {
         console.error = oldError;

@@ -14,6 +14,7 @@ const Event = require('../models/Event');
 const Judge = require('../models/Judge');
 const Team = require('../models/Team');
 const Announcement = require('../models/Announcement');
+const EmailDelivery = require('../models/EmailDelivery');
 const emailService = require('../services/emailService');
 
 let judges = [judgeOne, judgeTwo, outsideJudge];
@@ -36,18 +37,28 @@ function queryRows(rows, query) {
 Judge.find = (query) => queryRows(judges, query);
 Team.find = (query) => queryRows(teams, query);
 Announcement.create = async (record) => {
+  if (saved.some((item) => String(item.eventId) === String(record.eventId) && item.requestId === record.requestId)) {
+    const error = new Error('duplicate key'); error.code = 11000; throw error;
+  }
   const value = { ...record, _id: `saved-${saved.length + 1}`, createdAt: new Date(), toObject() { return { ...this }; } };
   saved.push(value);
   return value;
 };
+Announcement.findOne = (query) => ({ lean: async () => saved.find((item) => String(item.eventId) === String(query.eventId) && item.requestId === query.requestId) || null });
+Announcement.findOneAndUpdate = (query, update) => ({ lean: async () => {
+  const item = saved.find((record) => String(record._id) === String(query._id));
+  if (item) Object.assign(item, update.$set);
+  return item || null;
+} });
 Announcement.find = (query) => ({
   select() { return this; },
   sort() { return this; },
   lean: async () => history.filter((item) => String(item.eventId) === String(query.eventId)),
 });
+EmailDelivery.find = () => ({ sort() { return this; }, lean: async () => [] });
 emailService.sendAnnouncementEmail = async ({ recipientEmail }) => {
   sentEmails.push(recipientEmail);
-  return forceEmailFailure ? { sent: false, message: 'Mock Brevo rejection.' } : { sent: true };
+  return forceEmailFailure ? { accepted: false, status: 'failed', message: 'Mock Brevo rejection.' } : { accepted: true, status: 'accepted', trackingId: `track-${recipientEmail}` };
 };
 const controller = require('../controllers/announcementController');
 
@@ -60,7 +71,7 @@ function response() {
 }
 async function post(body) {
   const res = response();
-  await controller.createAnnouncement({ params: { eventId }, body }, res);
+  await controller.createAnnouncement({ params: { eventId }, body: { requestId: 'announcement-request-1', ...body } }, res);
   return res;
 }
 function reset() { sentEmails = []; saved = []; forceEmailFailure = false; }
@@ -71,7 +82,8 @@ test('announcement controller validates recipient resolution, isolation, deliver
     const res = await post({ audienceType: 'judges', recipientMode: 'all', subject: ' Hello ', message: ' Update ' });
     assert.equal(res.statusCode, 201);
     assert.deepEqual(sentEmails, ['judge@example.test']);
-    assert.equal(res.body.data.status, 'sent');
+    assert.equal(res.body.data.status, 'accepted');
+    assert.equal(res.body.data.acceptedCount, 1);
     assert.equal(res.body.data.recipientCount, 1);
   });
   await t.test('specific judges sends only selected event judges', async () => {
@@ -136,8 +148,18 @@ test('announcement controller validates recipient resolution, isolation, deliver
     const res = await post({ audienceType: 'judges', recipientMode: 'specific', recipientIds: [judgeOne._id], subject: 'Update', message: 'Hi' });
     assert.equal(res.statusCode, 201);
     assert.equal(res.body.data.status, 'failed');
-    assert.equal(res.body.data.sentCount, 0);
+    assert.equal(res.body.data.acceptedCount, 0);
     assert.equal(res.body.data.failedCount, 1);
     assert.match(res.body.deliveryMessage, /Mock Brevo rejection/);
+  });
+  await t.test('the same request ID cannot submit a bulk announcement twice', async () => {
+    reset();
+    const body = { audienceType: 'judges', recipientMode: 'all', subject: 'Update', message: 'Hi' };
+    const first = await post(body);
+    const replay = await post(body);
+    assert.equal(first.statusCode, 201);
+    assert.equal(replay.statusCode, 200);
+    assert.equal(replay.body.replayed, true);
+    assert.equal(sentEmails.length, 1);
   });
 });

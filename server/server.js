@@ -15,6 +15,7 @@ const judgeRoutes = require('./routes/judges');
 const announcementRoutes = require('./routes/announcements');
 const resultReportRoutes = require('./routes/resultReports');
 const authRoutes = require('./routes/auth');
+const emailDeliveryRoutes = require('./routes/emailDeliveries');
 const { assertProductionConfiguration, securityHeaders } = require('./security/configuration');
 
 const app = express();
@@ -30,6 +31,7 @@ app.use(cors({ origin(origin, callback) {
 app.use(securityHeaders);
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', authRoutes);
+app.use('/api', emailDeliveryRoutes);
 app.use('/api', eventRoutes);
 app.use('/api', teamRoutes);
 app.use('/api', judgeRoutes);
