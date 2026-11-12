@@ -7,7 +7,7 @@ const connectDB = async () => {
     assertMongoConfiguration(uri);
     await mongoose.connect(uri);
     console.log('MongoDB connected successfully');
-  } catch {
+  } catch (error) {
     console.error('MongoDB connection failed; check the URI and network configuration.');
     throw error;
   }
