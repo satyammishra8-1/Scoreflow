@@ -13,7 +13,7 @@ python -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
-The development provider is Gemini. Set `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, and `GEMINI_MODEL=gemini-3.5-flash-lite` in `ai-service/.env`. The service requests JSON matching the existing Pydantic report schema and validates the returned content before responding. `/health` reports the selected provider, model, and whether its key is configured without calling the provider.
+The development provider is Gemini. Set `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, and `GEMINI_MODEL=gemini-3.5-flash-lite` in `ai-service/.env`. Set `AI_SERVICE_SHARED_SECRET` there and set the exact same value in `server/.env`; the Node API sends it in `X-ScoreFlow-Service-Token`, which FastAPI checks on every route except `/health`. Use a random secret of at least 32 bytes. The service requests JSON matching the existing Pydantic report schema and validates the returned content before responding. `/health` reports the selected provider, model, and whether its key is configured without calling the provider.
 
 The existing OpenAI implementation remains available by setting `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, and optionally `OPENAI_MODEL` (default `gpt-4o-mini`). Start the service with:
 

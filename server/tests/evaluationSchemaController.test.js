@@ -23,7 +23,7 @@ function responseRecorder() {
   };
 }
 
-function fixture({ event = { _id: eventId, name: 'Showcase', type: 'Project Competition', description: 'A community project event.' }, config = { model: 'criteria-based', criteriaBased: { criteria: [{ name: 'Innovation', maxMarks: 50, weight: 100 }] } }, fetchImpl = async () => ({ ok: true, json: async () => ({ evaluationSchema: schema, model: 'gemini-test', promptVersion: 'evaluation-schema-v1' }) }) } = {}) {
+function fixture({ event = { _id: eventId, name: 'Showcase', type: 'Project Competition', description: 'A community project event.' }, config = { model: 'criteria-based', criteriaBased: { criteria: [{ name: 'Innovation', maxMarks: 50, weight: 100 }] } }, serviceSecret = 'test-node-ai-service-secret', fetchImpl = async () => ({ ok: true, json: async () => ({ evaluationSchema: schema, model: 'gemini-test', promptVersion: 'evaluation-schema-v1' }) }) } = {}) {
   let saved = false;
   let configLookup = null;
   const EventModel = { findById: (id) => ({ lean: async () => id === eventId ? event : null }) };
@@ -34,7 +34,7 @@ function fixture({ event = { _id: eventId, name: 'Showcase', type: 'Project Comp
     },
     findOneAndUpdate: async () => { saved = true; },
   };
-  const handler = createEvaluationSchemaController({ EventModel, ConfigModel, fetchImpl, serviceUrl: 'http://ai.test', isValidId: (id) => id === eventId });
+  const handler = createEvaluationSchemaController({ EventModel, ConfigModel, fetchImpl, serviceSecret, serviceUrl: 'http://ai.test', isValidId: (id) => id === eventId });
   const validationHandler = createEvaluationSchemaValidationController({ EventModel, ConfigModel, isValidId: (id) => id === eventId });
   return { handler, validationHandler, wasSaved: () => saved, configLookup: () => configLookup };
 }
@@ -76,6 +76,26 @@ test('generation sends accepted AI field names but excludes section labels and f
   assert.equal(outbound.existingConfiguration, undefined);
 });
 
+test('requires service authentication configuration and sends the shared secret to FastAPI', async () => {
+  let called = false;
+  const missing = fixture({ serviceSecret: '', fetchImpl: async () => { called = true; throw new Error('must not call'); } });
+  const missingResponse = responseRecorder();
+  await missing.handler({ params: { eventId }, body: { prompt: 'Design additional project evaluation fields.' } }, missingResponse);
+  assert.equal(missingResponse.statusCode, 503);
+  assert.equal(missingResponse.body.code, 'AI_SERVICE_AUTH_NOT_CONFIGURED');
+  assert.equal(called, false);
+
+  let sentSecret;
+  const configured = fixture({ fetchImpl: async (_url, options) => {
+    sentSecret = options.headers['X-ScoreFlow-Service-Token'];
+    return { ok: true, json: async () => ({ evaluationSchema: schema, model: 'gemini-test' }) };
+  } });
+  const success = responseRecorder();
+  await configured.handler({ params: { eventId }, body: { prompt: 'Design additional project evaluation fields.' } }, success);
+  assert.equal(success.statusCode, 200);
+  assert.equal(sentSecret, 'test-node-ai-service-secret');
+});
+
 test('rejects invalid event ids and unknown events before calling the AI service', async () => {
   const fx = fixture({ fetchImpl: async () => { throw new Error('should not call'); } });
   const invalid = responseRecorder();
@@ -115,11 +135,33 @@ test('differentiates evaluation AI timeout, configuration, and invalid request f
   assert.match(unconfigured.body.error, /not configured/i);
   assert.doesNotMatch(unconfigured.body.error, /GEMINI_API_KEY/);
 
+  const mismatch = fixture({ fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({ detail: 'Unauthorized service request' }) }) });
+  const unauthorized = responseRecorder();
+  await mismatch.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, unauthorized);
+  assert.equal(unauthorized.statusCode, 503);
+  assert.equal(unauthorized.body.code, 'AI_INVALID_SERVICE_SECRET');
+  assert.match(unauthorized.body.error, /same AI_SERVICE_SHARED_SECRET/i);
+
   const invalidRequest = fixture({ fetchImpl: async () => ({ ok: false, status: 422, json: async () => ({ detail: [{ loc: ['body'], msg: 'bad request' }] }) }) });
   const rejected = responseRecorder();
   await invalidRequest.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, rejected);
   assert.equal(rejected.statusCode, 400);
   assert.equal(rejected.body.code, 'AI_SCHEMA_REQUEST_INVALID');
+
+  const unsupportedProviderRequest = fixture({ fetchImpl: async () => ({ ok: false, status: 502, json: async () => ({ detail: { code: 'invalid_request', reason: 'private provider detail' } }) }) });
+  const providerRejected = responseRecorder();
+  await unsupportedProviderRequest.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, providerRejected);
+  assert.equal(providerRejected.statusCode, 502);
+  assert.equal(providerRejected.body.code, 'AI_INVALID_REQUEST');
+  assert.match(providerRejected.body.error, /structured rubric request/i);
+  assert.doesNotMatch(providerRejected.body.error, /private provider detail/);
+
+  const genericNotFound = fixture({ fetchImpl: async () => ({ ok: false, status: 502, json: async () => ({ detail: { code: 'provider_error', reason: 'private 404 provider detail' } }) }) });
+  const genericFailure = responseRecorder();
+  await genericNotFound.handler({ params: { eventId }, body: { prompt: 'Design evaluation questions for the event.' } }, genericFailure);
+  assert.equal(genericFailure.body.code, 'AI_PROVIDER_ERROR');
+  assert.doesNotMatch(genericFailure.body.error, /model unavailable/i);
+  assert.doesNotMatch(genericFailure.body.error, /private 404/);
 });
 
 test('rejects invalid or duplicate AI output before returning it', async () => {

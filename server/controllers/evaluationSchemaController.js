@@ -23,7 +23,7 @@ function listExistingCriteria(config, { includeDynamicSchema = false } = {}) {
   return names;
 }
 
-function createEvaluationSchemaController({ EventModel = Event, ConfigModel = EvaluationConfiguration, fetchImpl = global.fetch, serviceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000', isValidId = mongoose.Types.ObjectId.isValid } = {}) {
+function createEvaluationSchemaController({ EventModel = Event, ConfigModel = EvaluationConfiguration, fetchImpl = global.fetch, serviceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000', serviceSecret = process.env.AI_SERVICE_SHARED_SECRET || '', isValidId = mongoose.Types.ObjectId.isValid } = {}) {
   return async function generateEvaluationSchema(req, res) {
     try {
       const eventId = typeof req.params.eventId === 'string' ? req.params.eventId.trim() : '';
@@ -34,10 +34,15 @@ function createEvaluationSchemaController({ EventModel = Event, ConfigModel = Ev
       if (!event) return res.status(404).json({ success: false, error: 'Event not found.' });
       const config = await ConfigModel.findOne({ eventId: String(event._id) }).lean();
       const existingCriteria = listExistingCriteria(config, { includeDynamicSchema: true });
+      if (!serviceSecret.trim()) return res.status(503).json({
+        success: false,
+        error: 'AI service authentication is not configured. Set the same AI_SERVICE_SHARED_SECRET in the Node backend and AI service, then restart both services.',
+        code: 'AI_SERVICE_AUTH_NOT_CONFIGURED',
+      });
       let response;
       try {
         response = await fetchImpl(serviceUrl.replace(/\/$/, '') + '/evaluation-schema/generate', {
-          method: 'POST', headers: { 'content-type': 'application/json', 'X-ScoreFlow-Service-Token': process.env.AI_SERVICE_SHARED_SECRET || '' },
+          method: 'POST', headers: { 'content-type': 'application/json', 'X-ScoreFlow-Service-Token': serviceSecret },
           body: JSON.stringify({ prompt, eventName: event.name, eventType: event.type, eventDescription: event.description || '', evaluationModel: config?.model || null, existingCriteria }),
           signal: AbortSignal.timeout(210000),
         });
@@ -53,9 +58,14 @@ function createEvaluationSchemaController({ EventModel = Event, ConfigModel = Ev
         if (response.status === 422) return res.status(400).json({ success: false, error: 'The AI service rejected this evaluation request. Check the description and event context, then try again.', code: 'AI_SCHEMA_REQUEST_INVALID' });
         let code = '';
         try { code = (await response.json())?.detail?.code || ''; } catch { /* Keep provider errors private. */ }
+        if (response.status === 401 && !code) code = 'invalid_service_secret';
         const safeErrors = {
+          missing_service_secret: 'AI service authentication is not configured. Set the same AI_SERVICE_SHARED_SECRET in the Node backend and AI service, then restart both services.',
+          invalid_service_secret: 'Node and AI service authentication settings do not match. Set the same AI_SERVICE_SHARED_SECRET in both services, then restart them.',
           missing_api_key: 'AI evaluation generation is not configured. Ask your administrator to add the AI provider key.',
           invalid_api_key: 'The AI provider rejected its configured key. Ask your administrator to check the AI configuration.',
+          permission_denied: 'The AI provider denied access to the configured model. Ask your administrator to check model and API permissions.',
+          invalid_request: 'The AI provider rejected the structured rubric request. Try shortening or simplifying the evaluation description.',
           invalid_provider: 'AI provider configuration is invalid. Ask your administrator to check the AI configuration.',
           quota_exhausted: 'The AI provider is temporarily out of capacity. Please try again later.',
           model_unavailable: 'The configured AI model is unavailable. Ask your administrator to check the AI configuration.',
@@ -64,7 +74,8 @@ function createEvaluationSchemaController({ EventModel = Event, ConfigModel = Ev
           malformed_response: 'The AI could not create a valid evaluation structure after one repair attempt. Try simplifying the description.',
           provider_error: 'The AI provider could not complete this request. Please try again later.',
         };
-        return res.status(response.status === 503 ? 503 : 502).json({
+        const configurationFailure = ['missing_service_secret', 'invalid_service_secret'].includes(code);
+        return res.status(response.status === 503 || configurationFailure ? 503 : 502).json({
           success: false,
           error: safeErrors[code] || 'AI could not generate a valid evaluation schema. Try a more specific description.',
           code: code ? 'AI_' + code.toUpperCase() : 'AI_SCHEMA_GENERATION_FAILED',

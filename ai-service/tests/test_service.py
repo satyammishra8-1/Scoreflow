@@ -1,4 +1,5 @@
 import os
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -87,6 +88,15 @@ INVITATION_DRAFT_REQUEST = {
 
 
 class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_service_secret_returns_actionable_configuration_error(self):
+        with patch.dict(os.environ, {}, clear=True):
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/evaluation-schema/generate", json=SCHEMA_REQUEST)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"]["code"], "missing_service_secret")
+        self.assertIn("same AI_SERVICE_SHARED_SECRET", response.json()["detail"]["reason"])
+
     async def test_generation_endpoint_rejects_missing_or_invalid_node_secret(self):
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -219,7 +229,7 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
         for error, expected in [
             (RuntimeError("API key is invalid"), "invalid_api_key"),
             (RuntimeError("RESOURCE_EXHAUSTED: quota exceeded"), "quota_exhausted"),
-            (RuntimeError("model not found"), "model_unavailable"),
+            (RuntimeError("models/gemini-test is not found for generateContent"), "model_unavailable"),
             (TimeoutError("timed out"), "timeout"),
             (ConnectionError("network unavailable"), "network_error"),
         ]:
@@ -238,14 +248,30 @@ class ResultReportServiceTests(unittest.IsolatedAsyncioTestCase):
             close.assert_awaited_once()
 
     def test_gemini_http_status_codes_are_classified(self):
-        class StatusError(RuntimeError):
-            def __init__(self, status):
-                super().__init__("Provider request failed")
-                self.code = status
+        class ApiError(RuntimeError):
+            def __init__(self, http_status, provider_status, message, reasons=None):
+                super().__init__(message)
+                self.code = http_status
+                self.status = provider_status
+                self.details = {"error": {"code": http_status, "status": provider_status, "message": message,
+                                           "details": [{"reason": reason} for reason in (reasons or [])]}}
 
-        self.assertEqual(main._classify_gemini_error(StatusError(401))[0], "invalid_api_key")
-        self.assertEqual(main._classify_gemini_error(StatusError(429))[0], "quota_exhausted")
-        self.assertEqual(main._classify_gemini_error(StatusError(404))[0], "model_unavailable")
+        self.assertEqual(main._classify_gemini_error(ApiError(401, "UNAUTHENTICATED", "API key not valid"))[0], "invalid_api_key")
+        self.assertEqual(main._classify_gemini_error(ApiError(403, "PERMISSION_DENIED", "Permission denied"))[0], "permission_denied")
+        self.assertEqual(main._classify_gemini_error(ApiError(429, "RESOURCE_EXHAUSTED", "Quota exceeded"))[0], "quota_exhausted")
+        self.assertEqual(main._classify_gemini_error(ApiError(400, "INVALID_ARGUMENT", "Unsupported response parameter"))[0], "invalid_request")
+        model_error = ApiError(404, "NOT_FOUND", "models/gemini-example is not found for generateContent", ["MODEL_NOT_FOUND"])
+        self.assertEqual(main._classify_gemini_error(model_error)[0], "model_unavailable")
+        generic_404 = ApiError(404, "NOT_FOUND", "The requested resource was not found")
+        self.assertEqual(main._classify_gemini_error(generic_404)[0], "provider_error")
+
+        with self.assertLogs(main.logger, level="WARNING") as captured:
+            main._safe_provider_error(ApiError(404, "NOT_FOUND", "models/x not found; sensitive prompt and unit-test-key", ["MODEL_NOT_FOUND"]), "LLM evaluation schema")
+        output = " ".join(captured.output)
+        self.assertIn("http_status=404", output)
+        self.assertIn("MODEL_NOT_FOUND", output)
+        self.assertNotIn("sensitive prompt", output)
+        self.assertNotIn("unit-test-key", output)
 
     async def test_health_reports_gemini_configuration_without_calling_provider(self):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "unit-test-key"}, clear=True):
@@ -366,6 +392,8 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         messages = build_evaluation_schema_messages(SCHEMA_REQUEST)
         self.assertIn("do not duplicate existing criteria or any field name elsewhere", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
         self.assertIn("do not default to hackathon criteria", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("one required question field", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
+        self.assertIn("scoring guidance", EVALUATION_SCHEMA_SYSTEM_PROMPT.lower())
         self.assertIn("subcriteria", messages[1]["content"].lower())
         self.assertIn("Innovation", messages[1]["content"])
         self.assertIn("Project Showcase", messages[1]["content"])
@@ -378,7 +406,14 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("score weights totaling exactly 100", messages[1]["content"])
 
     async def test_malformed_schema_gets_exactly_one_controlled_repair_attempt(self):
-        parsed = main.EvaluationSchema.model_validate(SCHEMA)
+        repair_schema = main.EvaluationSchema.model_validate(SCHEMA).model_dump()
+        repair_schema["sections"][0]["fields"][0]["description"] = "Score observable reliability in the submitted solution."
+        repair_schema["sections"][0]["fields"][0]["rationale"] = "Reliability matters for safe, repeatable use."
+        repair_schema["sections"][0]["fields"].append({
+            "id": "reliability_question", "type": "question", "label": "Reliability question",
+            "description": "What evidence demonstrates reliable behavior?", "rationale": "Collect evidence for the score.", "required": True,
+        })
+        parsed = main.EvaluationSchema.model_validate(repair_schema)
         failure = main.ProviderResponseError("malformed_response", "Invalid output")
         generate = AsyncMock(side_effect=[failure, (parsed, "test-model")])
         request = main.EvaluationSchemaRequest(**SCHEMA_REQUEST)
@@ -443,6 +478,24 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
             main.EvaluationSchemaRequest(**{**request_base, "prompt": "Evaluate a startup pitch using sections for Problem, Solution, Innovation, Business Model, Market and Presentation. Business Model should contain revenue model and feasibility. Market should contain target audience and scalability. Include numeric scoring, weights, required judge questions and final qualitative feedback."}),
         ]
         results = [*domain_outputs, simple, medium, complex_schema]
+        def add_rubric_guidance(schema):
+            payload = schema.model_dump()
+            def complete(fields):
+                additions = []
+                for field in list(fields):
+                    if field["type"] == "score":
+                        field["description"] = field["description"] or f"Score observable evidence for {field['label'].lower()}."
+                        field["rationale"] = field["rationale"] or f"{field['label']} is relevant to this event."
+                        additions.append({"id": f"q_{field['id'][:47]}", "type": "question", "label": f"{field['label']} question",
+                                          "description": f"What evidence demonstrates {field['label'].lower()}?",
+                                          "rationale": "Collect evidence for the matching score.", "required": True})
+                    elif field["type"] == "group":
+                        complete(field.get("children") or [])
+                fields.extend(additions)
+            for section in payload["sections"]:
+                complete(section["fields"])
+            return main.EvaluationSchema.model_validate(payload)
+        results = [add_rubric_guidance(result) for result in results]
         generator = AsyncMock(side_effect=[(result, "schema-test") for result in results])
         with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}), patch.object(main, "_generate_schema_with_gemini", new=generator):
             generated = []
@@ -453,8 +506,9 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
                 generated.append(schema)
         self.assertEqual([item.title for item in generated[:8]], [f"{domain} review" for domain in domains])
         self.assertFalse(any(field.type == "group" for section in generated[8].sections for field in section.fields))
-        self.assertEqual(len(generated[10].sections[3].fields[0].children), 2)
-        self.assertEqual([child.label for child in generated[10].sections[3].fields[0].children], ["Revenue model", "Feasibility"])
+        business_children = generated[10].sections[3].fields[0].children
+        self.assertEqual(sum(child.type == "score" for child in business_children), 2)
+        self.assertEqual([child.label for child in business_children if child.type == "score"], ["Revenue model", "Feasibility"])
         self.assertEqual(generated[10].sections[4].fields[0].children[0].label, "Target audience")
         self.assertTrue(any(field.type == "question" for section in generated[10].sections for field in section.fields))
 
@@ -476,6 +530,29 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
                 response = await client.post("/evaluation-schema/generate", json={**SCHEMA_REQUEST, "unknown": "value"})
         self.assertEqual(response.status_code, 422)
         generate.assert_not_awaited()
+
+    async def test_missing_gemini_key_returns_actionable_schema_configuration_error(self):
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "AI_SERVICE_SHARED_SECRET": "test-service-secret"}, clear=True):
+            transport = httpx.ASGITransport(app=main.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-ScoreFlow-Service-Token": "test-service-secret"}) as client:
+                response = await client.post("/evaluation-schema/generate", json=SCHEMA_REQUEST)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"]["code"], "missing_api_key")
+        self.assertEqual(response.json()["detail"]["reason"], "GEMINI_API_KEY is not configured")
+
+    async def test_gemini_malformed_json_is_rejected_as_malformed_response(self):
+        generate_content = AsyncMock(return_value=SimpleNamespace(text='{"title":'))
+        close = AsyncMock()
+        fake_client = SimpleNamespace(aio=SimpleNamespace(
+            models=SimpleNamespace(generate_content=generate_content), aclose=close
+        ))
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "unit-test-key"}), patch.object(main.genai, "Client", return_value=fake_client):
+            with self.assertRaises(main.ProviderResponseError) as raised:
+                await main.generate_evaluation_schema(main.EvaluationSchemaRequest(**SCHEMA_REQUEST))
+        self.assertEqual(raised.exception.code, "malformed_response")
+        self.assertNotIn("unit-test-key", str(raised.exception))
+        self.assertEqual(generate_content.await_count, 2)
+        self.assertEqual(close.await_count, 2)
 
     async def test_provider_failure_does_not_return_a_fake_schema(self):
         failure = main.ProviderResponseError("malformed_response", "The model returned an invalid schema")
@@ -503,6 +580,68 @@ class EvaluationSchemaServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(generate_content.call_args.kwargs["config"].response_mime_type, "application/json")
         self.assertIs(generate_content.call_args.kwargs["config"].response_schema, main.GeminiEvaluationSchema)
         close.assert_awaited_once()
+
+    async def test_five_event_categories_use_domain_context_and_return_complete_rubrics(self):
+        categories = [
+            ("Healthcare innovation hackathon", "Clinical safety", "How does the solution protect patient safety?"),
+            ("Cybersecurity challenge", "Threat analysis", "What evidence supports the threat analysis?"),
+            ("Startup investor pitch competition", "Market opportunity", "What validates the target market opportunity?"),
+            ("Product design competition", "Accessibility", "How does the design support accessible use?"),
+            ("Robotics competition", "Autonomous control", "How reliably does the robot act autonomously?"),
+        ]
+        responses = []
+        requests = []
+        for index, (event_name, criterion, question) in enumerate(categories):
+            requests.append(main.EvaluationSchemaRequest(
+                prompt=f"Create an event-specific rubric for {event_name}.", eventName=event_name,
+                eventType=event_name, eventDescription=f"Teams compete in {event_name}.",
+                evaluationModel="criteria-based", existingCriteria=[],
+            ))
+            responses.append(SimpleNamespace(text=json.dumps({
+                "title": f"{event_name} rubric", "description": "Event-specific judge evaluation.",
+                "sections": [{"id": f"domain_{index}", "name": "Evaluation", "description": "",
+                              "fields": [
+                                  {"id": f"criterion_{index}", "type": "score", "label": criterion,
+                                   "description": f"Score observable evidence for {criterion.lower()}.",
+                                   "rationale": f"{criterion} is central to this event.", "required": True,
+                                   "maxMarks": 10, "weight": 40},
+                                  {"id": f"question_{index}", "type": "question", "label": f"{criterion} question",
+                                   "description": question, "rationale": "Collect evidence for the matching score.",
+                                   "required": True},
+                                  {"id": f"second_{index}", "type": "score", "label": f"Evidence quality for {criterion}",
+                                   "description": f"Score the quality of evidence for {criterion.lower()}.",
+                                   "rationale": f"Evidence supports consistent assessment of {criterion.lower()}.",
+                                   "required": True, "maxMarks": 10, "weight": 59},
+                                  {"id": f"second_question_{index}", "type": "question", "label": f"Evidence quality for {criterion} question",
+                                   "description": f"What evidence demonstrates {criterion.lower()}?",
+                                   "rationale": "Collect evidence for the matching score.", "required": True},
+                              ]}]
+            })))
+
+        generate_content = AsyncMock(side_effect=responses)
+        close = AsyncMock()
+        fake_client = SimpleNamespace(aio=SimpleNamespace(
+            models=SimpleNamespace(generate_content=generate_content), aclose=close
+        ))
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "unit-test-key", "GEMINI_MODEL": "gemini-test"}), patch.object(main.genai, "Client", return_value=fake_client):
+            generated = [await main.generate_evaluation_schema(request) for request in requests]
+
+        for index, ((schema, model), (event_name, criterion, _)) in enumerate(zip(generated, categories)):
+            fields = [field for section in schema.sections for field in section.fields]
+            scores = [field for field in fields if field.type == "score"]
+            questions = [field for field in fields if field.type == "question"]
+            self.assertEqual(model, "gemini-test")
+            self.assertIn(criterion, schema.model_dump_json())
+            self.assertEqual(sum(field.weight for field in scores), 100.0)
+            self.assertEqual(len(questions), len(scores))
+            for score in scores:
+                self.assertTrue(score.description.strip())
+                self.assertTrue(score.rationale.strip())
+                matching = [question for question in questions if question.label.casefold().startswith(score.label.casefold())]
+                self.assertEqual(len(matching), 1, event_name)
+                self.assertTrue(matching[0].required)
+            self.assertIn(event_name, generate_content.call_args_list[index].kwargs["contents"])
+        self.assertEqual(close.await_count, len(categories))
 
 
 class EmailDraftServiceTests(unittest.IsolatedAsyncioTestCase):

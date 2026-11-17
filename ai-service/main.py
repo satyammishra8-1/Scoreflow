@@ -1,5 +1,6 @@
 import os
 import logging
+import math
 import re
 import hmac
 from typing import Annotated, Literal
@@ -308,17 +309,40 @@ class ProviderResponseError(Exception):
         self.reason = reason
 
 
-def _safe_provider_error(error: Exception) -> None:
-    provider_code = getattr(error, "code", None)
-    provider_type = getattr(error, "type", None)
-    safe_code = provider_code if isinstance(provider_code, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", provider_code) else "unknown"
-    safe_type = provider_type if isinstance(provider_type, str) and re.fullmatch(r"[a-zA-Z0-9_.-]{1,60}", provider_type) else "unknown"
+def _gemini_error_metadata(error: Exception) -> dict[str, object]:
+    """Extract only provider error identifiers; never log its raw message/details."""
+    details = getattr(error, "details", None)
+    root = details.get("error", details) if isinstance(details, dict) else {}
+    raw_reasons = root.get("details", []) if isinstance(root, dict) else []
+    reasons = []
+    for item in raw_reasons if isinstance(raw_reasons, list) else []:
+        reason = item.get("reason") if isinstance(item, dict) else None
+        if isinstance(reason, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,60}", reason):
+            reasons.append(reason)
+    status_code = getattr(error, "status_code", None)
+    if not isinstance(status_code, int):
+        code = getattr(error, "code", None)
+        status_code = code if isinstance(code, int) else None
+    provider_status = getattr(error, "status", None)
+    if not isinstance(provider_status, str) and isinstance(root, dict):
+        provider_status = root.get("status")
+    if not isinstance(provider_status, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{1,60}", provider_status):
+        provider_status = "unknown"
+    return {"http_status": status_code, "provider_status": provider_status, "provider_reasons": sorted(set(reasons)), "details": details}
+
+
+def _safe_provider_error(error: Exception, operation: str = "LLM report") -> None:
+    metadata = _gemini_error_metadata(error)
+    reasons = ",".join(metadata["provider_reasons"]) or "unknown"
+    category, _ = _classify_gemini_error(error)
     logger.warning(
-        "LLM report request failed (exception=%s, status=%s, provider_code=%s, provider_type=%s)",
+        "%s request failed (exception=%s, http_status=%s, provider_status=%s, provider_reasons=%s, category=%s)",
+        operation,
         type(error).__name__,
-        getattr(error, "status_code", getattr(error, "code", None)),
-        safe_code,
-        safe_type,
+        metadata["http_status"],
+        metadata["provider_status"],
+        reasons,
+        category,
     )
 
 
@@ -405,21 +429,32 @@ def _sanitize_report_content(raw: ReportContentFields) -> ReportContent:
 
 
 def _classify_gemini_error(error: Exception) -> tuple[str, str]:
-    status = getattr(error, "status_code", None) or getattr(error, "code", None)
-    code = getattr(error, "code", None)
-    message = str(error).lower()
-    if status == 401 or status == 403 or "api key" in message or "unauthenticated" in message or "permission denied" in message:
+    metadata = _gemini_error_metadata(error)
+    status = metadata["http_status"]
+    provider_status = str(metadata["provider_status"])
+    details = metadata["details"]
+    root = details.get("error", details) if isinstance(details, dict) else {}
+    provider_message = root.get("message", "") if isinstance(root, dict) else ""
+    message = (provider_message or str(error)).lower() if isinstance(provider_message, str) else str(error).lower()
+    reasons = set(metadata["provider_reasons"])
+    if status == 401 or "api key not valid" in message or "api key is invalid" in message or "invalid api key" in message or provider_status == "UNAUTHENTICATED":
         return "invalid_api_key", "Gemini rejected the configured API key"
-    if status == 429 or "quota" in message or "rate limit" in message or "resource_exhausted" in message:
+    if status == 403 or provider_status == "PERMISSION_DENIED":
+        return "permission_denied", "Gemini denied permission for this model or API key"
+    if status == 429 or provider_status == "RESOURCE_EXHAUSTED" or reasons.intersection({"QUOTA_EXCEEDED", "RATE_LIMIT_EXCEEDED"}) or "quota" in message or "rate limit" in message or "resource_exhausted" in message:
         return "quota_exhausted", "Gemini quota exhausted or rate limit reached"
-    if status == 404 or "model" in message and ("not found" in message or "unavailable" in message):
-        return "model_unavailable", "The configured Gemini model is unavailable"
     if isinstance(error, TimeoutError) or "timeout" in message or "timed out" in message:
         return "timeout", "The Gemini request timed out"
     if isinstance(error, (ConnectionError, OSError)) or "network" in message or "connection" in message:
         return "network_error", "Could not connect to Gemini"
-    if isinstance(code, int) and code == 429:
-        return "quota_exhausted", "Gemini quota exhausted or rate limit reached"
+    if status == 400 or provider_status == "INVALID_ARGUMENT":
+        return "invalid_request", "Gemini rejected the structured generation request"
+    model_reference = bool(re.search(r"\bmodels?[/\s][a-z0-9_.-]+", message))
+    model_missing = model_reference and any(phrase in message for phrase in ("not found", "unavailable", "not supported", "does not exist"))
+    if (status == 404 and model_missing) or "MODEL_NOT_FOUND" in reasons or (status is None and model_missing):
+        return "model_unavailable", "The configured Gemini model is unavailable"
+    if status == 404:
+        return "provider_error", "Gemini returned HTTP 404 for a resource other than the configured model"
     return "provider_error", "Gemini could not complete the report request"
 
 
@@ -445,7 +480,7 @@ async def _generate_schema_with_openai(data: EvaluationSchemaRequest, *, repair_
             text_format=EvaluationSchema,
         )
     except Exception as error:
-        _safe_provider_error(error)
+        _safe_provider_error(error, "LLM evaluation schema")
         raise ProviderResponseError("provider_error", "The language model request failed") from error
     if response.output_parsed is None:
         raise ProviderResponseError("malformed_response", "The language model returned no evaluation schema")
@@ -461,8 +496,9 @@ async def _generate_schema_with_gemini(data: EvaluationSchemaRequest, *, repair_
         raise ProviderConfigurationError("missing_api_key", "GEMINI_API_KEY is not configured")
     model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
     messages = build_evaluation_schema_messages(data.model_dump(), repair_attempt=repair_attempt)
-    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
+    client = None
     try:
+        client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
         response = await client.aio.models.generate_content(
             model=model,
             contents=messages[1]["content"],
@@ -473,15 +509,17 @@ async def _generate_schema_with_gemini(data: EvaluationSchemaRequest, *, repair_
             ),
         )
     except Exception as error:
-        _safe_provider_error(error)
+        _safe_provider_error(error, "LLM evaluation schema")
         code, reason = _classify_gemini_error(error)
         raise ProviderResponseError(code, reason) from error
     finally:
-        await client.aio.aclose()
+        if client is not None:
+            await client.aio.aclose()
     try:
         if not response.text:
             raise ValueError("Empty structured response")
-        schema = EvaluationSchema.model_validate_json(response.text)
+        draft = GeminiEvaluationSchema.model_validate_json(response.text)
+        schema = EvaluationSchema.model_validate(_normalize_score_weights(draft.model_dump()))
     except ValidationError as error:
         issues = [
             {"field": ".".join(str(part) for part in issue["loc"]), "type": issue["type"], "message": issue["msg"]}
@@ -497,8 +535,6 @@ async def _generate_schema_with_gemini(data: EvaluationSchemaRequest, *, repair_
 
 def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationSchemaRequest) -> EvaluationSchema:
     existing = {item.strip().lower() for item in data.existingCriteria}
-    if not existing:
-        return schema
     payload = schema.model_dump()
 
     def remove_duplicates(fields):
@@ -545,6 +581,55 @@ def _remove_existing_schema_criteria(schema: EvaluationSchema, data: EvaluationS
         raise ProviderResponseError("malformed_response", "The model returned no valid additional criteria") from error
 
 
+def _normalize_score_weights(payload: dict[str, object]) -> dict[str, object]:
+    score_fields: list[dict[str, object]] = []
+
+    def collect(fields):
+        for field in fields:
+            if field.get("type") == "score":
+                score_fields.append(field)
+            elif field.get("type") == "group":
+                collect(field.get("children") or [])
+
+    for section in payload.get("sections", []):
+        collect(section.get("fields", []))
+    weights = [field.get("weight") for field in score_fields]
+    if not score_fields or any(not isinstance(weight, (int, float)) or not math.isfinite(weight) or weight < 0 for weight in weights):
+        return payload
+    total = sum(weights)
+    if total <= 0:
+        normalized = [round(100 / len(score_fields), 2)] * len(score_fields)
+    else:
+        normalized = [round(weight * 100 / total, 2) for weight in weights]
+    normalized[-1] = round(100 - sum(normalized[:-1]), 2)
+    for field, weight in zip(score_fields, normalized):
+        field["weight"] = weight
+    return payload
+
+
+def _validate_generated_schema_quality(schema: EvaluationSchema) -> None:
+    score_fields: list[EvaluationSchemaField] = []
+    question_fields: list[EvaluationSchemaField] = []
+
+    def visit(fields: list[EvaluationSchemaField]):
+        for field in fields:
+            if field.type == "score":
+                score_fields.append(field)
+            elif field.type == "question":
+                question_fields.append(field)
+            elif field.type == "group":
+                visit(field.children or [])
+
+    for section in schema.sections:
+        visit(section.fields)
+    for score in score_fields:
+        if not score.description.strip() or not score.rationale.strip():
+            raise ProviderResponseError("malformed_response", "Every score criterion needs specific scoring guidance and rationale")
+        matching_questions = [question for question in question_fields if question.label.casefold().startswith(score.label.casefold())]
+        if len(matching_questions) != 1:
+            raise ProviderResponseError("malformed_response", "Every score criterion needs one clearly matching judge question")
+
+
 async def generate_evaluation_schema(data: EvaluationSchemaRequest) -> tuple[EvaluationSchema, str]:
     provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
     for repair_attempt in (False, True):
@@ -555,7 +640,9 @@ async def generate_evaluation_schema(data: EvaluationSchemaRequest) -> tuple[Eva
                 schema, model = await _generate_schema_with_openai(data, repair_attempt=repair_attempt)
             else:
                 raise ProviderConfigurationError("invalid_provider", "LLM_PROVIDER must be gemini or openai")
-            return _remove_existing_schema_criteria(schema, data), model
+            schema = _remove_existing_schema_criteria(schema, data)
+            _validate_generated_schema_quality(schema)
+            return schema, model
         except ProviderResponseError as error:
             if not repair_attempt and error.code == "malformed_response":
                 logger.info("Retrying malformed evaluation schema once with validation guidance")
@@ -612,9 +699,9 @@ async def generate_email_draft(messages: list[dict[str, str]]) -> tuple[EmailDra
             raise ValueError("Empty structured response")
         return EmailDraft.model_validate_json(response.text), model
     except ValidationError as error:
-        raise ProviderResponseError("malformed_response", "Gemini returned an invalid email draft") from error
+        raise ProviderResponseError("malformed_response", "Gemini returned an invalid evaluation schema") from error
     except (ValueError, TypeError) as error:
-        raise ProviderResponseError("malformed_response", "Gemini returned an invalid email draft") from error
+        raise ProviderResponseError("malformed_response", "Gemini returned an invalid evaluation schema") from error
 
 
 async def generate_announcement_email_draft(data: AnnouncementEmailDraftRequest) -> tuple[EmailDraft, str]:
@@ -636,7 +723,11 @@ async def require_node_service_auth(request: Request, call_next):
         configured = os.getenv("AI_SERVICE_SHARED_SECRET", "").strip()
         supplied = request.headers.get("x-scoreflow-service-token", "")
         if not configured:
-            return JSONResponse(status_code=503, content={"detail": "AI service authentication is not configured"})
+            logger.error("AI service authentication is unavailable: AI_SERVICE_SHARED_SECRET is not configured")
+            return JSONResponse(status_code=503, content={"detail": {
+                "code": "missing_service_secret",
+                "reason": "Set the same AI_SERVICE_SHARED_SECRET in the Node backend and AI service, then restart both services.",
+            }})
         if not hmac.compare_digest(supplied.encode(), configured.encode()):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized service request"})
     return await call_next(request)

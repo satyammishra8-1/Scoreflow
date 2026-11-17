@@ -1,5 +1,12 @@
 function assertProductionConfiguration() {
-  if (process.env.NODE_ENV !== 'production') return;
+  if (process.env.NODE_ENV !== 'production') {
+    const secret = String(process.env.AI_SERVICE_SHARED_SECRET || '').trim();
+    if (!secret) throw new Error('AI_SERVICE_SHARED_SECRET is required; set the same value in server/.env and ai-service/.env.');
+    if (Buffer.byteLength(secret, 'utf8') < 32 || new Set(secret).size < 16) {
+      throw new Error('AI_SERVICE_SHARED_SECRET must be at least 32 bytes and use a strong random value.');
+    }
+    return;
+  }
   const missing = [];
   for (const [name, value] of [
     ['MONGODB_URI', process.env.MONGODB_URI],
