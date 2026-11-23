@@ -211,14 +211,13 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     const res = response();
     await controller.sendJudgeInvitations({
       params: { eventId },
-      body: { recipientMode: 'specific', judgeIds: [judgeA._id, judgeB._id], emailDraft: { subject: 'Please join our review panel', body: 'Your experience would help our students.' } },
+      body: { recipientMode: 'specific', judgeIds: [judgeA._id, judgeB._id] },
     }, res);
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.data.acceptedCount, 2);
     assert.deepEqual(sendCalls.map((call) => call.judge.name).sort(), ['Asha Dev', 'Rahul Rao']);
     assert.equal(new Set(sendCalls.map((call) => call.token)).size, 2);
     assert.ok(sendCalls.every((call) => String(call.event._id) === eventId));
-    assert.ok(sendCalls.every((call) => call.emailDraft?.subject === 'Please join our review panel'));
 
     const previousFetch = global.fetch;
     const previousEnv = {
@@ -249,9 +248,9 @@ test('professional judge invitations reuse secure event-bound invitations', asyn
     assert.ok(links.every((link) => link.startsWith('https://scoreflow.example/judge/invite/')));
     assert.ok(payloads.some((payload) => payload.htmlContent.includes('Dear Rahul Rao')));
     assert.ok(payloads.some((payload) => payload.htmlContent.includes('Dear Asha Dev')));
-    assert.ok(payloads.every((payload) => payload.subject === 'Please join our review panel'));
-    assert.ok(payloads.every((payload) => payload.htmlContent.includes('Your experience would help our students.')));
-    assert.ok(payloads.every((payload) => payload.textContent.includes('Your experience would help our students.')));
+    assert.ok(payloads.every((payload) => payload.subject === 'Invitation to Judge — Mini Project Evaluation'));
+    assert.ok(payloads.every((payload) => payload.htmlContent.includes('Please click the button below to accept your invitation')));
+    assert.ok(payloads.every((payload) => payload.textContent.includes('Please click the button below to accept your invitation')));
   });
 
   await t.test('bulk invite rejects IDs from another event', async () => {

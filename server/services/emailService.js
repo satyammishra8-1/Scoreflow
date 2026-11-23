@@ -143,13 +143,13 @@ function createEmailService({ DeliveryModel = EmailDelivery, fetchImpl = (...arg
     };
   }
 
-  async function sendJudgeInvitation({ judge, event, token, emailDraft }) {
+  async function sendJudgeInvitation({ judge, event, token }) {
     const { clientUrl } = configProvider();
     const baseUrl = publicClientUrl(clientUrl);
     if (!baseUrl) return { accepted: false, status: 'failed', code: 'public_client_url_required', message: 'Judge invitation email requires CLIENT_URL to be a public HTTPS frontend URL.' };
     const email = buildJudgeInvitationEmail({
       judgeName: judge.name, eventName: event.name, eventDate: event.date,
-      invitationUrl: `${baseUrl}/judge/invite/${encodeURIComponent(token)}`, emailDraft,
+      invitationUrl: `${baseUrl}/judge/invite/${encodeURIComponent(token)}`,
     });
     return sendTransactionalEmail({
       category: 'judge_invitation', recipientEmail: judge.email, recipientName: judge.name,
