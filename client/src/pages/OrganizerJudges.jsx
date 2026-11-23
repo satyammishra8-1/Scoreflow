@@ -6,7 +6,7 @@ import './OrganizerDashboard.css';
 import './OrganizerJudges.css';
 
 function getTeamId(team) {
-  return String(team.teamId || team.id || team.number);
+  return String(team._id || team.id || team.teamId || team.number || '');
 }
 
 function getJudgeCompletedTeamIds(judge, evaluationSessions = []) {

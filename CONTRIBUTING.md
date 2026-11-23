@@ -1,499 +1,157 @@
-# ScoreFlow — Contribution Guide
+# How to Contribute to ScoreFlow
 
-Welcome to the ScoreFlow team!
+Follow these steps to contribute to the project.
 
-This guide explains how to get the project, create your own branch, work on your task, and raise a Pull Request.
-
-**Important:** If you are doing Git/GitHub for the first time, follow the steps exactly.
-
----
-
-## 1. One-Time Setup
-
-### Install these
-
-Before starting, install:
-
-- Git
-- Node.js
-- VS Code
-
-How to run ai-service terminal:
-
-```bash
-cd C:\Scoreflow\ai-service
-python -m uvicorn main:app --reload --port 8000
-```
-
----
-
-# 2. Clone the Repository
-
-Open PowerShell or VS Code Terminal.
-
-Go to the location where you want to keep the project.
-
-Example:
-
-```bash
-cd C:\
-```
-
-Clone the repository:
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/satyammishra8-1/Scoreflow.git
-```
-
-Go inside the project:
-
-```bash
 cd Scoreflow
 ```
 
----
-
-# 3. Check the Branch
-
-The project uses two important branches:
-
-```text
-main → stable/final code
-dev  → team development
-```
-
-**Never directly work on `main`.**
-
-Switch to `dev`:
-
-```bash
-git checkout dev
-```
-
-Get the latest code:
-
-```bash
-git pull origin dev
-```
-
----
-
-# 4. Create Your Own Feature Branch
-
-Every task must have its own branch.
-
-Example:
-
-```bash
-git checkout -b feature/login-page
-```
-
-Other examples:
-
-```bash
-feature/judge-dashboard
-feature/team-import
-feature/event-api
-feature/ai-feedback
-feature/email-service
-```
-
-### Branch naming
-
-Use:
-
-```text
-feature/<short-task-name>
-```
-
-Examples:
-
-```text
-feature/login
-feature/event-management
-feature/judge-form
-feature/results
-```
-
----
-
-# 5. Start Your Work
-
-First make sure you are on your feature branch:
-
-```bash
-git branch
-```
-
-You should see:
-
-```text
-* feature/login
-  dev
-  main
-```
-
-The `*` shows your current branch.
-
-Now work only on the task assigned to you.
-
----
-
-# 6. Before Starting Work Each Day
-
-Always get the latest `dev` code.
-
-If you are already on your feature branch:
+### 2. Switch to Dev Branch
 
 ```bash
 git checkout dev
 git pull origin dev
-git checkout feature/your-branch-name
 ```
 
-This helps you work with the latest team code.
-
----
-
-# 7. Save Your Work
-
-After completing a small part of your task:
-
-Check what changed:
+### 3. Create Your Own Branch
 
 ```bash
-git status
+git checkout -b feature/your-task-name
 ```
 
-Add your changes:
+Example: `feature/judge-dashboard`
+
+### 4. Make Your Changes
+
+Complete your assigned task and test your code.
+
+### 5. Commit Your Changes
 
 ```bash
 git add .
+git commit -m "feat: describe your changes"
 ```
 
-Create a commit:
+### 6. Push Your Branch
 
 ```bash
-git commit -m "feat: add login page"
+git push -u origin feature/your-task-name
 ```
 
-### Commit message format
+### 7. Create a Pull Request
 
-Use:
+- Open the ScoreFlow repository on GitHub.
+- Click **Compare & Pull Request**.
+- Select `dev` as the base branch.
+- Select your feature branch as the compare branch.
+- Add a short description and click **Create Pull Request**.
 
-```text
-feat:    → new feature
-fix:     → bug fix
-chore:   → setup/configuration
-docs:    → documentation
-refactor: → code improvement
+### Important Rules
+
+- Never push directly to `main` or `dev`.
+- Always create your own feature branch.
+- Never commit `.env` files or API keys.
+- Wait for the team lead to review and merge your PR.
+
+**Workflow:** Clone → Dev → Feature Branch → Code → Commit → Push → Pull Request → Review.
+
+## How to Run ScoreFlow Locally
+
+ScoreFlow has three parts that run separately:
+
+1. Frontend (React + Vite)
+2. Backend (Node.js + Express)
+3. AI Service (Python + FastAPI)
+
+**Important:** Open three separate terminals in VS Code. Keep all three running while using ScoreFlow.
+
+### 1. Open the Project
+
+Open VS Code and open the `Scoreflow` project folder.
+
+Open the terminal:
+
+`Terminal → New Terminal`
+
+### 2. Run the Backend
+
+Open the first terminal:
+
+```powershell
+cd C:\Scoreflow\server
+npm install
+npm run dev
 ```
 
-Examples:
+The backend will start on port `5000` (if configured in your environment).
 
-```bash
-git commit -m "feat: add judge evaluation form"
-git commit -m "fix: resolve login validation"
-git commit -m "chore: update project configuration"
-git commit -m "docs: update API documentation"
+### 3. Run the Frontend
+
+Open a second terminal using the `+` button in the terminal panel.
+
+```powershell
+cd C:\Scoreflow\client
+npm install
+npm run dev
 ```
 
----
+Open the frontend URL displayed in the terminal, usually:
 
-# 8. Push Your Branch
+`http://localhost:5173`
 
-First time:
+### 4. Run the AI Service
 
-```bash
-git push -u origin feature/your-branch-name
+Open a third terminal.
+
+Go to the AI service folder:
+
+```powershell
+cd C:\Scoreflow\ai-service
 ```
 
-Example:
+Activate the Python virtual environment:
 
-```bash
-git push -u origin feature/login
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
-After the first push, you can simply use:
+Install dependencies (only required during initial setup or after dependency changes):
 
-```bash
-git push
+```powershell
+pip install -r requirements.txt
 ```
 
----
+Start the AI service:
 
-# 9. Create a Pull Request
-
-Go to the ScoreFlow GitHub repository.
-
-GitHub will usually show:
-
-**Compare & pull request**
-
-Click it.
-
-Set:
-
-```text
-base: dev
-compare: feature/your-branch
+```powershell
+python -m uvicorn main:app --reload --port 8000
 ```
 
-### IMPORTANT
+The AI service runs at:
 
-Your Pull Request must be:
+`http://127.0.0.1:8000`
 
-```text
-feature/your-branch
-        ↓
-       dev
-```
+You can check whether it is running by opening:
 
-**NOT:**
+`http://127.0.0.1:8000/health`
 
-```text
-feature/your-branch
-        ↓
-       main
-```
+### 5. All Services Running
 
----
+Keep all three terminals open:
 
-# 10. Pull Request Description
+| Service | Port |
+|---|---:|
+| Frontend | 5173 |
+| Backend | 5000 |
+| AI Service | 8000 |
 
-Explain briefly:
+**Remember:**
+- Do not close the terminals while using the application.
+- If you stop a service, restart it using its respective command.
+- Press `Ctrl + C` to stop a running service.
+- Never share or commit your `.env` files or API keys.
 
-### What did you change?
-
-Example:
-
-```text
-Added login page with email and password fields.
-```
-
-### What did you test?
-
-Example:
-
-```text
-Tested login form validation locally.
-```
-
-### Screenshots
-
-If you changed the UI, add screenshots.
-
----
-
-# 11. Wait for Review
-
-After creating the Pull Request:
-
-**Do not merge it yourself.**
-
-The team lead will review the code.
-
-Possible results:
-
-```text
-Approved → Merge
-Changes requested → Fix → Push again
-```
-
-If changes are requested:
-
-```bash
-# Make the requested changes
-
-git add .
-git commit -m "fix: address review comments"
-git push
-```
-
-The same Pull Request will automatically update.
-
----
-
-# 12. After Your PR Is Merged
-
-Once your Pull Request is merged into `dev`:
-
-Switch back:
-
-```bash
-git checkout dev
-```
-
-Get the latest code:
-
-```bash
-git pull origin dev
-```
-
-Now create your next branch:
-
-```bash
-git checkout -b feature/next-task
-```
-
----
-
-# 13. Golden Rules
-
-### Rule 1
-
-Never push directly to `main`.
-
-### Rule 2
-
-Never push directly to `dev`.
-
-### Rule 3
-
-Every task gets its own feature branch.
-
-### Rule 4
-
-Always pull the latest `dev` before starting new work.
-
-### Rule 5
-
-Make small, meaningful commits.
-
-### Rule 6
-
-Test your code before creating a Pull Request.
-
-### Rule 7
-
-Never commit:
-
-```text
-.env
-API keys
-passwords
-MongoDB credentials
-secrets
-```
-
-### Rule 8
-
-Don't modify another person's feature without discussing it first.
-
-### Rule 9
-
-If you are stuck, ask the team instead of randomly changing code.
-
----
-
-# 14. Complete Workflow
-
-Remember this:
-
-```text
-Clone
-  ↓
-checkout dev
-  ↓
-pull latest code
-  ↓
-create feature branch
-  ↓
-write code
-  ↓
-test
-  ↓
-git add .
-  ↓
-git commit
-  ↓
-git push
-  ↓
-Create Pull Request
-  ↓
-Team Lead Review
-  ↓
-Fix if required
-  ↓
-Merge into dev
-  ↓
-Pull latest dev
-  ↓
-Start next task
-```
-
----
-
-# 15. Example — Complete Flow
-
-Suppose your task is:
-
-**Create Judge Dashboard**
-
-Start:
-
-```bash
-git checkout dev
-git pull origin dev
-git checkout -b feature/judge-dashboard
-```
-
-Work on the dashboard.
-
-Then:
-
-```bash
-git status
-git add .
-git commit -m "feat: add judge dashboard"
-git push -u origin feature/judge-dashboard
-```
-
-Go to GitHub → Create Pull Request:
-
-```text
-feature/judge-dashboard → dev
-```
-
-Wait for review.
-
-After approval, the team lead merges it.
-
-Then:
-
-```bash
-git checkout dev
-git pull origin dev
-```
-
-You are ready for your next task.
-
----
-
-# 16. If You Make a Mistake
-
-**Don't panic and don't delete random files.**
-
-Tell the team lead what happened.
-
-For example:
-
-```text
-I accidentally committed something wrong.
-```
-
-or:
-
-```text
-I have a Git merge conflict.
-```
-
-We will fix it together.
-
----
-
-# ScoreFlow Team Rule
-
-**Small task → Feature branch → Test → Commit → Push → Pull Request → Review → Merge**
-
-Follow this process for every contribution.
+**Note:** Run `npm install` and `pip install` during initial setup or when dependencies change, not every time you start ScoreFlow.
