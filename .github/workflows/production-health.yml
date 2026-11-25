@@ -1,0 +1,69 @@
+
+name: Production Health Checks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Verify Production Services
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Wait for deployments
+        run: sleep 45
+
+      - name: Check frontend
+        run: |
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error \
+              https://scoreflow-client.vercel.app/ -o /dev/null; then
+              echo "Frontend is healthy"
+              exit 0
+            fi
+            echo "Frontend not ready. Attempt $attempt/20"
+            sleep 15
+          done
+          echo "Frontend health check failed"
+          exit 1
+
+      - name: Check backend and database
+        run: |
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error \
+              https://scoreflow-backend-5pyv.onrender.com/health; then
+              echo "Backend and database are healthy"
+              exit 0
+            fi
+            echo "Backend not ready. Attempt $attempt/20"
+            sleep 15
+          done
+          echo "Backend health check failed"
+          exit 1
+
+      - name: Check AI service
+        if: ${{ vars.AI_SERVICE_HEALTH_URL != '' }}
+        env:
+          AI_HEALTH_URL: ${{ vars.AI_SERVICE_HEALTH_URL }}
+        run: |
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error \
+              "$AI_HEALTH_URL" -o /dev/null; then
+              echo "AI service is healthy"
+              exit 0
+            fi
+            echo "AI service not ready. Attempt $attempt/20"
+            sleep 15
+          done
+          echo "AI service health check failed"
+          exit 1
