@@ -44,7 +44,7 @@ test('result report page contains no AI attribution labels', async () => {
 
 test('result report page scopes management actions and previews to one selected team', async () => {
   const page = await readFile(new URL('../src/pages/OrganizerResultReports.jsx', import.meta.url), 'utf8');
-  for (const label of ['View Report', 'Send Report', 'Send to Selected Teams', 'Not sent', 'Sending', 'Sent', 'Partially Sent', 'Failed']) {
+  for (const label of ['View Report', 'Send Report', 'Send to Selected Teams', 'Not sent', 'Sending', 'Sent', 'Partially Delivered', 'Failed']) {
     assert.ok(page.includes(label), `missing report delivery UI label: ${label}`);
   }
   assert.match(page, /const \[selectedTeamId, setSelectedTeamId\]/);
