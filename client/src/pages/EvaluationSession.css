@@ -17,8 +17,6 @@
 .evaluation-session-logout { border: 0; padding: 8px 10px; border-radius: 6px; color: #526078; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
 .evaluation-session-return:hover, .evaluation-session-logout:hover { color: #3158c9; }
 
-
-
 .evaluation-session-heading {
 
   display: flex;
@@ -33,8 +31,6 @@
 
 }
 
-
-
 .evaluation-session-heading h1 {
 
   margin: 0;
@@ -44,8 +40,6 @@
   font-size: 28px;
 
 }
-
-
 
 .evaluation-session-timer {
   display: grid;
@@ -150,7 +144,6 @@
   background: #f8fafc;
 }
 
-
 .evaluation-panel {
 
   display: grid;
@@ -160,8 +153,6 @@
   gap: 18px;
 
 }
-
-
 
 .evaluation-card {
 
@@ -177,8 +168,6 @@
 
 }
 
-
-
 .evaluation-card h2 {
 
   margin: 0;
@@ -188,8 +177,6 @@
   font-size: 18px;
 
 }
-
-
 
 .evaluation-section-header {
 
@@ -204,8 +191,6 @@
   margin-bottom: 18px;
 
 }
-
-
 
 .evaluation-status-badge {
 
@@ -233,8 +218,6 @@
 
 }
 
-
-
 .evaluation-badge-blue {
 
   background: #edf3ff;
@@ -243,8 +226,6 @@
 
 }
 
-
-
 .evaluation-badge-muted {
 
   background: #f1f4fa;
@@ -252,8 +233,6 @@
   color: #697791;
 
 }
-
-
 
 .team-overview dl {
 
@@ -265,8 +244,6 @@
 
 }
 
-
-
 .team-overview dl div {
 
   display: grid;
@@ -274,8 +251,6 @@
   gap: 6px;
 
 }
-
-
 
 .team-overview dt {
 
@@ -291,8 +266,6 @@
 
 }
 
-
-
 .team-overview dd {
 
   margin: 0;
@@ -304,8 +277,6 @@
   line-height: 1.5;
 
 }
-
-
 
 .team-member-list {
 
@@ -321,8 +292,6 @@
 
 }
 
-
-
 .team-member-list li {
 
   display: grid;
@@ -332,8 +301,6 @@
   min-width: 0;
 
 }
-
-
 
 .team-member-list strong {
 
@@ -345,8 +312,6 @@
 
 }
 
-
-
 .team-member-list span {
 
   color: #7a8497;
@@ -356,8 +321,6 @@
   overflow-wrap: anywhere;
 
 }
-
-
 
 .team-resource-link {
 
@@ -385,15 +348,11 @@
 
 }
 
-
-
 .team-resource-link:hover {
 
   background: #edf3ff;
 
 }
-
-
 
 .member-attendance-panel {
 
@@ -404,8 +363,6 @@
   border-top: 1px solid #eef1f6;
 
 }
-
-
 
 .member-attendance-header {
 
@@ -421,8 +378,6 @@
 
 }
 
-
-
 .member-attendance-header > div {
 
   display: grid;
@@ -430,8 +385,6 @@
   gap: 4px;
 
 }
-
-
 
 .member-attendance-header h3 {
 
@@ -442,8 +395,6 @@
   font-size: 14px;
 
 }
-
-
 
 .member-attendance-header p {
 
@@ -457,8 +408,6 @@
 
 }
 
-
-
 .member-attendance-summary {
 
   flex-shrink: 0;
@@ -471,8 +420,6 @@
 
 }
 
-
-
 .member-attendance-list {
 
   display: grid;
@@ -480,8 +427,6 @@
   gap: 8px;
 
 }
-
-
 
 .member-attendance-row {
 
@@ -505,8 +450,6 @@
 
 }
 
-
-
 .member-info {
 
   display: grid;
@@ -517,8 +460,6 @@
 
 }
 
-
-
 .member-info strong {
 
   color: #2d3b54;
@@ -526,8 +467,6 @@
   font-size: 12px;
 
 }
-
-
 
 .member-info small {
 
@@ -539,8 +478,6 @@
 
 }
 
-
-
 .attendance-controls {
 
   display: flex;
@@ -550,8 +487,6 @@
   gap: 8px;
 
 }
-
-
 
 .attendance-option {
 
@@ -579,8 +514,6 @@
 
 }
 
-
-
 .member-status {
 
   display: inline-flex;
@@ -603,8 +536,6 @@
 
 }
 
-
-
 .member-status.present {
 
   background: #eaf8f2;
@@ -613,8 +544,6 @@
 
 }
 
-
-
 .member-status.absent {
 
   background: #fff4e2;
@@ -622,8 +551,6 @@
   color: #a06b1d;
 
 }
-
-
 
 .attendance-option.selected {
 
@@ -637,8 +564,6 @@
 
 }
 
-
-
 .attendance-option:last-child.selected {
 
   border-color: #f0d39b;
@@ -651,8 +576,6 @@
 
 }
 
-
-
 .attendance-empty {
 
   margin: 0;
@@ -663,8 +586,6 @@
 
 }
 
-
-
 .attendance-option:disabled {
 
   cursor: not-allowed;
@@ -672,8 +593,6 @@
   opacity: 0.8;
 
 }
-
-
 
 .evaluation-summary-grid {
 
@@ -686,8 +605,6 @@
   margin-bottom: 16px;
 
 }
-
-
 
 .summary-stat {
 
@@ -705,8 +622,6 @@
 
 }
 
-
-
 .summary-stat span {
 
   color: #7a8497;
@@ -721,8 +636,6 @@
 
 }
 
-
-
 .summary-stat strong {
 
   color: #24314d;
@@ -732,8 +645,6 @@
   line-height: 1.2;
 
 }
-
-
 
 .progress-block {
 
@@ -746,8 +657,6 @@
   padding: 12px 0 0;
 
 }
-
-
 
 .progress-label-row {
 
@@ -767,8 +676,6 @@
 
 }
 
-
-
 .progress-track {
 
   overflow: hidden;
@@ -783,8 +690,6 @@
 
 }
 
-
-
 .progress-track span {
 
   display: block;
@@ -796,8 +701,6 @@
   background: linear-gradient(90deg, #4169df 0%, #6f8ef7 100%);
 
 }
-
-
 
 .evaluation-meta-row {
 
@@ -817,15 +720,11 @@
 
 }
 
-
-
 .evaluation-meta-row strong {
 
   color: #2d3b54;
 
 }
-
-
 
 .evaluation-meta-row select {
 
@@ -843,8 +742,6 @@
 
 }
 
-
-
 .scores-card,
 
 .feedback-card {
@@ -853,8 +750,6 @@
 
 }
 
-
-
 .score-grid {
 
   display: grid;
@@ -862,8 +757,6 @@
   gap: 12px;
 
 }
-
-
 
 .score-row {
 
@@ -885,8 +778,6 @@
 
 }
 
-
-
 .score-row-copy {
 
   display: grid;
@@ -898,8 +789,6 @@
   min-width: 0;
 
 }
-
-
 
 .score-row-header {
 
@@ -913,8 +802,6 @@
 
 }
 
-
-
 .score-row-header strong {
 
   display: block;
@@ -924,8 +811,6 @@
   font-size: 13px;
 
 }
-
-
 
 .score-row-header span,
 
@@ -941,8 +826,6 @@
 
 }
 
-
-
 .score-row small {
 
   display: block;
@@ -954,8 +837,6 @@
   line-height: 1.5;
 
 }
-
-
 
 .score-meta-row {
 
@@ -970,8 +851,6 @@
   margin-top: 2px;
 
 }
-
-
 
 .score-meta-chip {
 
@@ -997,8 +876,6 @@
 
 }
 
-
-
 .score-controls {
 
   display: flex;
@@ -1011,8 +888,6 @@
 
 }
 
-
-
 .score-controls label {
 
   display: grid;
@@ -1020,8 +895,6 @@
   gap: 6px;
 
 }
-
-
 
 .score-controls label span {
 
@@ -1036,8 +909,6 @@
   text-transform: uppercase;
 
 }
-
-
 
 .score-controls input {
 
@@ -1059,8 +930,6 @@
 
 }
 
-
-
 .score-controls span {
 
   color: #68758b;
@@ -1070,8 +939,6 @@
   font-weight: 600;
 
 }
-
-
 
 .feedback-card textarea {
 
@@ -1095,8 +962,6 @@
 
 }
 
-
-
 .evaluation-submit-panel {
 
   display: flex;
@@ -1119,8 +984,6 @@
 
 }
 
-
-
 .evaluation-submit-panel.is-completed {
 
   border-color: #ecd7a7;
@@ -1128,8 +991,6 @@
   background: #fffaf0;
 
 }
-
-
 
 .evaluation-submit-copy {
 
@@ -1139,8 +1000,6 @@
 
 }
 
-
-
 .evaluation-submit-copy strong {
 
   color: #1f2d40;
@@ -1149,8 +1008,6 @@
 
 }
 
-
-
 .evaluation-submit-copy span {
 
   color: #68758b;
@@ -1158,8 +1015,6 @@
   font-size: 12px;
 
 }
-
-
 
 .evaluation-actions {
 
@@ -1173,8 +1028,6 @@
 
 }
 
-
-
 .evaluation-actions button:disabled {
 
   opacity: 0.6;
@@ -1183,8 +1036,6 @@
 
 }
 
-
-
 .judges-alert-success {
 
   color: #1f7b5c;
@@ -1192,8 +1043,6 @@
   background: #ebf9f3;
 
 }
-
-
 
 .evaluation-locked-banner {
 
@@ -1215,15 +1064,11 @@
 
 }
 
-
-
 .evaluation-locked-banner strong {
 
   font-size: 14px;
 
 }
-
-
 
 .evaluation-locked-banner span,
 
@@ -1234,8 +1079,6 @@
   font-size: 11px;
 
 }
-
-
 
 .evaluation-session-empty {
 
@@ -1253,8 +1096,6 @@
 
 }
 
-
-
 .evaluation-session-empty h1 {
 
   margin: 0;
@@ -1263,15 +1104,11 @@
 
 }
 
-
-
 .evaluation-session-empty p {
 
   color: #68758b;
 
 }
-
-
 
 @media (max-width: 860px) {
 
@@ -1281,15 +1118,11 @@
 
   }
 
-
-
   .evaluation-summary-grid {
 
     grid-template-columns: 1fr 1fr;
 
   }
-
-
 
   .score-row {
 
@@ -1299,8 +1132,6 @@
 
   }
 
-
-
   .member-attendance-row {
 
     flex-direction: column;
@@ -1309,23 +1140,17 @@
 
   }
 
-
-
   .attendance-controls {
 
     width: 100%;
 
   }
 
-
-
   .attendance-option {
 
     flex: 1;
 
   }
-
-
 
   .score-controls {
 
@@ -1335,8 +1160,6 @@
 
   }
 
-
-
   .evaluation-submit-panel {
 
     flex-direction: column;
@@ -1344,8 +1167,6 @@
     align-items: flex-start;
 
   }
-
-
 
   .evaluation-session-heading {
 
@@ -1357,8 +1178,6 @@
 
 }
 
-
-
 @media (max-width: 640px) {
 
   .evaluation-session-main {
@@ -1367,15 +1186,11 @@
 
   }
 
-
-
   .evaluation-summary-grid {
 
     grid-template-columns: 1fr;
 
   }
-
-
 
   .score-row-header,
 
@@ -1432,8 +1247,12 @@
   background: #f4f6fb;
   cursor: not-allowed;
 }
+/* =========================================================
+   RESPONSIVE LAYOUT
+   Keep the original component styles above; these rules
+   only correct layout at tablet and phone widths.
+========================================================= */
 
-/* Keep the judge session usable on narrow screens, including nested rubrics. */
 .evaluation-session-page,
 .evaluation-session-page *,
 .evaluation-session-page *::before,
@@ -1442,13 +1261,25 @@
 }
 
 .evaluation-session-page {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   overflow-x: clip;
 }
 
-.evaluation-session-main,
-.evaluation-panel,
+.evaluation-session-main {
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.evaluation-session-main > *,
+.evaluation-panel > *,
 .evaluation-card,
+.team-overview,
+.evaluation-summary-grid,
+.summary-stat,
 .score-grid,
 .score-row,
 .score-row-copy,
@@ -1459,7 +1290,7 @@
   max-width: 100%;
 }
 
-.evaluation-session-page :is(h1, h2, h3, h4, p, dd, dt, strong, span, small, a, legend) {
+.evaluation-session-page :is(h1, h2, h3, p, dd, dt, strong, span, small, a, label) {
   overflow-wrap: anywhere;
 }
 
@@ -1469,97 +1300,208 @@
 }
 
 .evaluation-session-page :is(button, a, input, select, textarea):focus-visible {
-  outline: 3px solid #4169df;
+  outline: 2px solid #4169df;
   outline-offset: 2px;
 }
 
-.evaluation-session-page .attendance-option,
-.evaluation-session-page .evaluation-timer-button {
-  min-height: 44px;
+/* Tablet: stack the team details and summary panels. */
+@media (max-width: 860px) {
+  .evaluation-session-main {
+    padding: 20px 22px 32px;
+  }
+
+  .evaluation-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evaluation-session-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .evaluation-session-timer {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .evaluation-timer-actions {
+    justify-content: flex-start;
+  }
+
+  .evaluation-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .score-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .score-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .member-attendance-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .attendance-controls {
+    width: 100%;
+  }
+
+  .attendance-option {
+    flex: 1 1 0;
+  }
+
+  .evaluation-submit-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .evaluation-actions {
+    justify-content: flex-start;
+  }
 }
 
-.evaluation-session-page .score-controls input,
-.evaluation-session-page .dynamic-field-label select {
-  min-height: 44px;
-}
-
-.evaluation-session-page .feedback-card textarea {
-  width: 100%;
-  max-width: 100%;
-  min-height: 140px;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 900px) {
+/* Phones: one-column summary prevents values being clipped. */
+@media (max-width: 640px) {
   .evaluation-session-main {
     width: 100%;
-    padding: 0 24px 36px;
+    padding: 14px 12px 28px;
   }
 
-  .evaluation-session-main > .evaluation-session-heading,
-  .evaluation-session-main > .event-topbar { margin-top: 22px; }
-
-  .evaluation-session-page .event-topbar {
-    position: static;
-    display: block;
-    height: auto;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
+  .evaluation-session-nav {
+    min-height: 58px;
+    gap: 8px;
+    padding: 0 12px;
   }
-}
 
-@media (max-width: 640px) {
-  .evaluation-session-nav { min-height: 58px; gap: 8px; padding: 0 12px; }
-  .evaluation-session-brand { font-size: 14px; }
-  .evaluation-session-return { font-size: 12px; }
-  .evaluation-session-logout { padding: 8px 4px; }
-  .evaluation-session-main {
-    padding: 0 12px 28px;
+  .evaluation-session-brand {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  .evaluation-session-return {
+    min-width: 0;
+    margin-left: auto;
+    font-size: 11px;
+  }
+
+  .evaluation-session-logout {
+    flex: 0 0 auto;
+    padding: 8px 5px;
+    font-size: 11px;
   }
 
   .evaluation-session-heading {
     width: 100%;
     gap: 12px;
+    margin: 18px 0;
   }
 
   .evaluation-session-heading h1 {
-    font-size: 22px;
+    font-size: clamp(21px, 6vw, 25px);
     line-height: 1.3;
   }
 
   .evaluation-session-timer {
     width: 100%;
     min-width: 0;
-    padding: 12px;
+    padding: 13px;
+  }
+
+  .evaluation-session-timer strong {
+    font-size: 25px;
+  }
+
+  .evaluation-timer-topline {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .evaluation-timer-actions {
     display: flex;
+    width: 100%;
     gap: 8px;
   }
 
-  .evaluation-session-page .evaluation-timer-button {
+  .evaluation-timer-button {
+    flex: 1 1 0;
     min-width: 0;
-    flex: 1;
+    min-height: 42px;
+  }
+
+  .evaluation-panel {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
   }
 
   .evaluation-card {
+    width: 100%;
     padding: 14px;
+    border-radius: 11px;
+  }
+
+  .evaluation-section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .evaluation-summary-grid {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .summary-stat {
+    width: 100%;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .summary-stat strong {
+    font-size: 17px;
+    line-height: 1.35;
+  }
+
+  .progress-label-row,
+  .score-row-header,
+  .score-meta-row,
+  .evaluation-meta-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .score-row {
+    width: 100%;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .score-row-copy {
+    width: 100%;
   }
 
   .score-controls {
-    justify-content: flex-start;
+    display: flex;
+    width: 100%;
     gap: 10px;
   }
 
   .score-controls label {
-    width: min(150px, 65%);
+    width: min(100%, 160px);
   }
 
   .score-controls input {
     width: 100%;
+    min-height: 44px;
   }
 
   .member-attendance-header {
@@ -1567,54 +1509,104 @@
     flex-direction: column;
   }
 
-  .member-info,
-  .team-member-list li {
-    min-width: 0;
-  }
-
-  .member-info small,
-  .team-member-list span,
-  .team-resource-link {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .evaluation-submit-panel,
-  .evaluation-actions {
+  .member-attendance-row {
     width: 100%;
+    padding: 10px;
+  }
+
+  .attendance-controls {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .attendance-option {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .evaluation-submit-panel {
+    position: static;
+    width: 100%;
+    padding: 14px;
+    gap: 13px;
   }
 
   .evaluation-actions {
     display: grid;
+    width: 100%;
     grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+    gap: 9px;
   }
 
-  .evaluation-actions :is(a, button) {
+  .evaluation-actions :is(button, a) {
     width: 100%;
-    min-height: 44px;
+    min-width: 0;
+    min-height: 46px;
     justify-content: center;
+  }
+
+  .feedback-card textarea,
+  .model-textarea {
+    width: 100%;
+    min-height: 130px;
+    font-size: 14px;
   }
 
   .dynamic-evaluation-group,
   .dynamic-select-options {
-    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 }
 
-@media (max-width: 360px) {
+/* Very narrow phones. */
+@media (max-width: 380px) {
   .evaluation-session-main {
     padding-right: 10px;
     padding-left: 10px;
+  }
+
+  .evaluation-session-nav {
+    gap: 5px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .evaluation-session-brand {
+    font-size: 12px;
+  }
+
+  .evaluation-session-return,
+  .evaluation-session-logout {
+    font-size: 10px;
   }
 
   .evaluation-card {
     padding: 12px;
   }
 
-  .evaluation-timer-topline {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
+  .evaluation-session-heading h1 {
+    font-size: 21px;
+  }
+
+  .evaluation-session-timer strong {
+    font-size: 23px;
+  }
+
+  .summary-stat strong {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluation-session-page *,
+  .evaluation-session-page *::before,
+  .evaluation-session-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
