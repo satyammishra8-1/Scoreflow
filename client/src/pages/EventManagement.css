@@ -366,18 +366,25 @@
 .saved-event-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px 30px;
+  gap: 14px;
   padding-top: 24px;
   margin: 0;
 }
 
 .saved-event-details > div {
+  display: grid;
+  align-content: start;
+  min-height: 76px;
   min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid #e7ebf2;
+  border-radius: 10px;
+  background: #f8faff;
 }
 
 .saved-event-details dt {
   margin-bottom: 7px;
-  color: #7a8497;
+  color: #66748a;
   font-size: 11px;
 }
 
@@ -392,8 +399,8 @@
 
 .saved-event-description {
   grid-column: 1 / -1;
-  padding-top: 18px;
-  border-top: 1px solid #eff1f5;
+  min-height: 0 !important;
+  border-color: #e7ebf2 !important;
 }
 
 .event-feedback {

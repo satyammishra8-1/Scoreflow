@@ -487,11 +487,24 @@
   border: 1px solid #e7ebf2;
   border-radius: 7px;
   cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.judges-team-option:hover {
+  transform: translateY(-1px);
+  border-color: #b7c6ee;
+  background: #fbfcff;
+  box-shadow: 0 4px 12px rgba(35, 55, 105, .07);
 }
 
 .judges-team-option:has(input:checked) {
   border-color: #9db2f5;
   background: #f7f9ff;
+}
+
+.judges-team-option:focus-within {
+  outline: 3px solid rgba(65, 105, 223, .18);
+  outline-offset: 2px;
 }
 
 .judges-team-option input {
@@ -509,6 +522,7 @@
 .judges-team-option strong {
   color: #344158;
   font-size: 11px;
+  line-height: 1.4;
 }
 
 .judges-team-option small {
@@ -523,6 +537,11 @@
   color: #8993a4;
   font-size: 11px;
   line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .judges-team-option { transition: none; }
+  .judges-team-option:hover { transform: none; }
 }
 
 .judges-details {

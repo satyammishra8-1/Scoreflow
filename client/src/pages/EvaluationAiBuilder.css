@@ -10,11 +10,13 @@
 .ai-schema-saved strong { color: #344158; }
 .ai-builder-backdrop { position: fixed; z-index: 1100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(18,28,48,.52); }
 .ai-builder-dialog { display: grid; gap: 18px; width: min(820px,100%); max-height: min(90vh,900px); overflow: auto; padding: 24px; border: 1px solid #dce3ef; border-radius: 18px; background: #fff; box-shadow: 0 24px 80px rgba(13,25,48,.25); }
-.ai-builder-dialog-header,.ai-schema-review-heading,.ai-schema-section-tools,.ai-schema-field-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.ai-builder-dialog-header,.ai-schema-review-heading,.ai-schema-section-tools,.ai-schema-field-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .ai-builder-dialog-header > div > span,.ai-schema-review-heading > div > span { color: #5b70c8; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
 .ai-builder-dialog-header h2 { margin: 5px 0; color: #1d2940; font-size: 24px; letter-spacing: -.035em; }
 .ai-builder-dialog-header p { color: #758198; font-size: 12px; }
-.ai-builder-dialog-header > button { width: 36px; height: 36px; border: 1px solid #e2e7f0; border-radius: 9px; background: #fff; color: #526079; font-size: 22px; cursor: pointer; }
+.ai-builder-dialog-header > button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; min-width: 68px; min-height: 38px; padding: 7px 12px; border: 1px solid #dce3ef; border-radius: 9px; background: #fff; color: #526079; font: inherit; font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.ai-builder-dialog-header > button:hover { transform: translateY(-2px); border-color: #91a6ed; background: #f1f4ff; color: #3454c5; box-shadow: 0 6px 14px rgba(51, 78, 160, .14); }
+.ai-builder-dialog-header > button:focus-visible { outline: 3px solid rgba(75, 112, 232, .3); outline-offset: 2px; }
 .ai-builder-context { display: grid; gap: 5px; padding: 14px 16px; border: 1px solid #e4e9f3; border-radius: 11px; background: #f8faff; }
 .ai-builder-context strong { color: #344158; font-size: 12px; }
 .ai-builder-context span { color: #25334d; font-size: 13px; font-weight: 700; }
@@ -49,6 +51,25 @@
 .ai-schema-weight.valid { background: #e9f7ef; color: #26734c; }
 .ai-schema-scoring-note { color: #758198; font-size: 11px; line-height: 1.5; }
 .ai-builder-error { padding: 10px 12px; border-radius: 8px; background: #fff0f1; color: #a33c48; font-size: 12px; }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-entry, .ai-builder-dialog, .ai-builder-context, .ai-schema-section, .ai-schema-field, .ai-schema-preview-card, .ai-schema-preview-field) { border-color: #29364b; background: #111a2a; color: #dbe5f3; }
+[data-theme='dark'] .sf-dashboard .ai-builder-entry { background: linear-gradient(120deg, #152039, #111a2a); }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-entry-copy strong, .ai-builder-dialog-header h2, .ai-builder-context strong, .ai-builder-context span, .ai-schema-review-heading h3, .ai-schema-field-heading > strong, .ai-schema-preview-card > h4, .ai-schema-preview-copy strong) { color: #f1f5f9; }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-entry-copy span, .ai-builder-dialog-header p, .ai-builder-context p, .ai-builder-context small, .ai-schema-section-tools > strong, .ai-schema-edit-grid > label, .ai-schema-rationale, .ai-schema-scoring-note, .ai-schema-preview-card > p, .ai-schema-preview-section > div > p, .ai-schema-preview-copy > span, .ai-schema-preview-meta small) { color: #a4b2c8; }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-prompt, .ai-schema-title, .ai-schema-section > label, .ai-schema-required, .ai-schema-saved) { color: #c2cee0; }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-dialog-header > button, .ai-builder-secondary, .ai-schema-saved button, .ai-schema-field-heading button, .ai-schema-section-tools button, .ai-builder-add-field, .ai-builder-add-section) { border-color: #34435c; background: #1a263a; color: #dbe5f3; }
+[data-theme='dark'] .sf-dashboard .ai-builder-dialog-header > button:hover { border-color: #6687e8; background: #263b67; color: #fff; box-shadow: 0 7px 18px rgba(0, 0, 0, .28); }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-prompt textarea, .ai-schema-title input, .ai-schema-title textarea, .ai-schema-section > label input, .ai-schema-edit-grid input, .ai-schema-edit-grid select, .ai-schema-edit-grid textarea) { border-color: #34435c; background: #151f30; color: #f1f5f9; }
+[data-theme='dark'] .sf-dashboard :is(.ai-builder-dialog-actions, .ai-schema-saved) { border-color: #29364b; }
+[data-theme='dark'] .sf-dashboard :is(.ai-schema-preview-section, .ai-schema-children) { border-color: #34435c; }
+[data-theme='dark'] .sf-dashboard .ai-schema-preview-field.nested { background: #18243a; }
+[data-theme='dark'] .sf-dashboard .ai-schema-preview-score { color: #a9bbff; }
+[data-theme='dark'] .sf-dashboard .ai-schema-weight { border: 1px solid #66512b; background: #2b2417; color: #f2cc78; }
+[data-theme='dark'] .sf-dashboard .ai-schema-weight.valid { border-color: #255b49; background: #142a24; color: #7de0b4; }
+[data-theme='dark'] .sf-dashboard .ai-builder-error { border: 1px solid #63363c; background: #321d23; color: #ffb4b8; }
+[data-theme='dark'] .sf-dashboard .ai-builder-backdrop { background: rgba(3, 8, 18, .76); backdrop-filter: blur(4px); }
+.ai-schema-field, .ai-schema-section, .ai-schema-preview-card { transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.ai-schema-field:hover, .ai-schema-preview-card:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(24, 38, 70, .08); }
+@media (prefers-reduced-motion: reduce) { .ai-builder-dialog-header > button, .ai-schema-field, .ai-schema-section, .ai-schema-preview-card { transition: none; } .ai-builder-dialog-header > button:hover, .ai-schema-field:hover, .ai-schema-preview-card:hover { transform: none; } }
 @media (max-width: 640px) {
   .ai-builder-backdrop { align-items: end; padding: 0; }
   .ai-builder-dialog { width: 100%; max-height: 94vh; padding: 19px 16px; border-radius: 18px 18px 0 0; }

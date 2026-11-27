@@ -210,11 +210,16 @@
 }
 
 [data-theme='dark'] .topbar-logout {
-  color: #94a3b8;
+  border-color: #34435c;
+  color: #d0dbed;
+  background: #1a263a;
 }
 
 [data-theme='dark'] .topbar-logout:hover {
-  color: #60a5fa;
+  border-color: #5877cf;
+  color: #e8efff;
+  background: #23375d;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .25), 0 0 0 1px rgba(96, 130, 225, .16);
 }
 
 [data-theme='dark'] .event-workspace-nav {
@@ -276,6 +281,12 @@
 [data-theme='dark'] .sf-dashboard.event-management .workspace-event-details > div:not(.workspace-description) {
   background: #141c2c;
   border-color: #1e293b;
+}
+[data-theme='dark'] .sf-dashboard.event-management .workspace-event-details dt {
+  color: #a7b5cb;
+}
+[data-theme='dark'] .sf-dashboard.event-management .workspace-event-details dd {
+  color: #edf3fc;
 }
 
 [data-theme='dark'] .sf-dashboard .evaluation-simple-list-item {
@@ -448,6 +459,19 @@
 [data-theme='dark'] .sf-dashboard.event-management .event-field {
   color: #f1f5f9;
 }
+[data-theme='dark'] .sf-dashboard.event-management .saved-event-details dt {
+  color: #a7b5cb;
+}
+[data-theme='dark'] .sf-dashboard.event-management .saved-event-details dd {
+  color: #edf3fc;
+}
+[data-theme='dark'] .sf-dashboard.event-management .saved-event-details > div {
+  border-color: #29364b;
+  background: #141c2c;
+}
+[data-theme='dark'] .sf-dashboard.event-management .saved-event-description {
+  border-color: #29364b !important;
+}
 
 [data-theme='dark'] .sf-dashboard.event-management .event-search,
 [data-theme='dark'] .sf-dashboard.event-management .event-field input,
@@ -488,7 +512,7 @@
 [data-theme='dark'] .sf-dashboard.dashboard-home .section-title-row p,
 [data-theme='dark'] .sf-dashboard.dashboard-home .event-meta span,
 [data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-empty-state p {
-  color: #94a3b8;
+  color: #b4c1d4;
 }
 
 [data-theme='dark'] .sf-dashboard.dashboard-home .overview-card,
@@ -504,8 +528,8 @@
 }
 
 [data-theme='dark'] .sf-dashboard.dashboard-home .dashboard-empty-state {
-  border-color: #334155;
-  background: #101726;
+  border-color: #34435c;
+  background: radial-gradient(ellipse at 50% 0%, rgba(72, 103, 175, .14), transparent 60%), linear-gradient(135deg, #111a2a, #0f1725);
   color: #f1f5f9;
 }
 
@@ -582,5 +606,210 @@
   border-color: #334155;
   background-color: #141c2c;
   color: #f8fafc;
+}
+
+/* Final shared dark theme pass: keep page-specific panels and summaries on the
+   same layered navy palette instead of allowing isolated light surfaces. */
+[data-theme='dark'] .sf-dashboard {
+  color: #e7edf8;
+  --dashboard-bg: #0b101a;
+  --dashboard-card: #111a2a;
+  --dashboard-border: #29364b;
+  --dashboard-text: #f1f5f9;
+  --dashboard-muted: #a4b2c8;
+}
+
+[data-theme='dark'] .sf-dashboard :is(
+  .progress-card, .progress-panel, .progress-summary, .results-empty-state,
+  .teams-empty-state, .judges-empty-state, .announcement-empty-state,
+  .evaluation-progress-card, .judge-progress-card, .results-summary-card,
+  .event-progress-card, .event-summary-card, .evaluation-criteria-card,
+  .evaluation-criteria-form, .evaluation-creation-mode-options,
+  .evaluation-simple-field, .evaluation-wizard-card, .evaluation-criterion-card,
+  .team-result-empty, .judge-result-empty, .result-empty-state,
+  .event-form-card, .form-section, .table-toolbar, .teams-table-toolbar,
+  .judges-table-toolbar, .results-empty, .team-no-score,
+  .evaluation-creation-mode, .evaluation-criterion-editor,
+  .evaluation-toggle-row, .evaluation-simple-list-item
+) {
+  color: #e7edf8;
+  background: #111a2a;
+  border-color: #29364b;
+}
+
+[data-theme='dark'] .sf-dashboard .evaluation-creation-mode-options label,
+[data-theme='dark'] .sf-dashboard .evaluation-creation-mode-options label.selected {
+  border-color: #34435c;
+  background: #151f30;
+}
+[data-theme='dark'] .sf-dashboard .evaluation-creation-mode-options label.selected {
+  border-color: #6687f4;
+  background: #192747;
+}
+[data-theme='dark'] .sf-dashboard .evaluation-weight-total {
+  border: 1px solid #66512b;
+  background: #2b2417;
+  color: #f2cc78;
+}
+[data-theme='dark'] .sf-dashboard .evaluation-weight-total.valid {
+  border-color: #255b49;
+  background: #142a24;
+  color: #7de0b4;
+}
+
+[data-theme='dark'] .sf-dashboard :is(h1, h2, h3, h4, strong, b, legend) {
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard :is(
+  p, label, small, .muted, .helper-text, .section-description,
+  .teams-page-heading p, .judges-page-heading p, .event-page-heading p,
+  .results-page-header p, .evaluation-wizard-header p
+) {
+  color: #a4b2c8;
+}
+
+[data-theme='dark'] .sf-dashboard :is(th, td) {
+  border-color: #29364b;
+  color: #dbe5f3;
+}
+
+[data-theme='dark'] .sf-dashboard :is(thead, .table-header, .table-toolbar) {
+  background: #151f31;
+}
+
+/* Light controls remain useful as accents, while large content areas stay dark. */
+[data-theme='dark'] .sf-dashboard :is(input, textarea, select) {
+  color-scheme: dark;
+  border-color: #34435c;
+  background-color: #151f30;
+  color: #f1f5f9;
+}
+
+[data-theme='dark'] .sf-dashboard :is(input, textarea)::placeholder {
+  color: #8292ac;
+}
+
+[data-theme='dark'] .sf-dashboard :is(.evaluation-secondary-button, .button-secondary, .teams-secondary-button, .judges-secondary-button) {
+  border-color: #34435c;
+  background: #1a263a;
+  color: #dbe5f3;
+}
+
+[data-theme='dark'] .sf-dashboard :is(.teams-table tbody tr:hover, .judges-table tbody tr:hover) {
+  background: #172338;
+}
+
+[data-theme='dark'] .sf-dashboard :is(.evaluation-wizard-header, .teams-page-heading, .judges-page-heading, .event-page-heading, .results-page-header) {
+  background: radial-gradient(ellipse at 90% 8%, rgba(72, 103, 175, .2), transparent 38%), linear-gradient(120deg, #121c2d, #0f1725);
+}
+
+/* Event analytics, announcement composer, and results have dedicated page CSS,
+   so set their dark states explicitly after those light defaults. */
+[data-theme='dark'] .sf-dashboard :is(.event-analytics-card, .event-analytics-chart, .results-event-summary, .team-result-card, .judge-summary-table-wrap, .results-state, .results-empty, .team-no-score, .announcement-panel, .announcement-side-note) {
+  border-color: #29364b !important;
+  background: #111a2a !important;
+  color: #e7edf8 !important;
+}
+[data-theme='dark'] .sf-dashboard .teams-upload-panel {
+  border-color: #34435c !important;
+  background: #111a2a !important;
+}
+[data-theme='dark'] .sf-dashboard .teams-upload-copy :is(strong, p),
+[data-theme='dark'] .sf-dashboard .teams-upload-actions > span { color: #aebbd0 !important; }
+[data-theme='dark'] .sf-dashboard .teams-upload-copy strong { color: #f1f5f9 !important; }
+[data-theme='dark'] .sf-dashboard .teams-upload-actions > .teams-secondary-button {
+  border-color: #34435c;
+  background: #1a263a;
+  color: #dbe5f3;
+}
+[data-theme='dark'] .sf-dashboard .teams-filter-search {
+  border-color: #34435c;
+  background: #151f30;
+  color: #9fb0ca;
+}
+[data-theme='dark'] .sf-dashboard .teams-filter-search:focus-within {
+  border-color: #6f8df0;
+  background: #18243a;
+  box-shadow: 0 0 0 3px rgba(96, 130, 225, .2);
+}
+[data-theme='dark'] .sf-dashboard .teams-filter-search input {
+  border: 0;
+  background: transparent !important;
+  color: #f1f5f9;
+  box-shadow: none;
+}
+[data-theme='dark'] .sf-dashboard .teams-filter-search input::placeholder { color: #8fa0ba; }
+.sf-dashboard .teams-filter-search input { background: transparent !important; }
+.sf-dashboard .teams-filter-search input::placeholder { color: #78859a; opacity: 1; }
+[data-theme='dark'] .sf-dashboard :is(.judges-modal, .judges-details-modal) {
+  border-color: #29364b;
+  background: #111a2a;
+  color: #e7edf8;
+}
+[data-theme='dark'] .sf-dashboard :is(.judges-modal-header h2, .judges-details-modal h2, .judges-team-option strong) { color: #f1f5f9; }
+[data-theme='dark'] .sf-dashboard :is(.judges-eyebrow, .judges-modal-subtitle, .judges-team-option small, .judges-empty-message) { color: #a4b2c8; }
+[data-theme='dark'] .sf-dashboard .judges-modal-header { border-bottom-color: #29364b; }
+[data-theme='dark'] .sf-dashboard .judges-team-option {
+  border-color: #34435c;
+  background: #151f30;
+}
+[data-theme='dark'] .sf-dashboard .judges-team-option:hover {
+  border-color: #536ca8;
+  background: #18243a;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .22);
+}
+[data-theme='dark'] .sf-dashboard .judges-team-option:has(input:checked) {
+  border-color: #6687f4;
+  background: #1b2b49;
+}
+[data-theme='dark'] .sf-dashboard .judges-team-option input { accent-color: #7392ff; }
+[data-theme='dark'] .sf-dashboard .judges-close-button {
+  border-color: #34435c;
+  background: #1a263a;
+  color: #dbe5f3;
+}
+[data-theme='dark'] .sf-dashboard .judges-close-button:hover {
+  border-color: #6687e8;
+  background: #263b67;
+  color: #fff;
+}
+[data-theme='dark'] .sf-dashboard .judges-form-actions { border-top-color: #29364b; }
+[data-theme='dark'] .sf-dashboard :is(.event-analytics-heading h2, .event-analytics-card > strong, .event-analytics-report-email > div strong, .event-analytics-chart h3, .results-event-summary strong, .results-event-title h2, .results-section-heading h2, .team-result-heading h3, .judge-result-heading h4, .announcement-panel-heading h2, .announcement-panel-heading h3, .announcement-side-note strong, .announcement-history-title, .results-state h2) {
+  color: #f1f5f9 !important;
+}
+[data-theme='dark'] .sf-dashboard :is(.event-analytics-heading p, .event-analytics-card > span, .event-analytics-card > small, .event-analytics-chart p, .results-page-header p, .results-section-heading p, .results-event-summary span, .team-result-stats, .judge-score-summary, .announcement-eyebrow, .announcement-label, .announcement-panel-heading span, .announcement-side-note p, .announcement-side-note small, .announcement-help, .announcement-selection-count, .announcement-character-count, .announcement-history-item p, .announcement-history-item > small) {
+  color: #a4b2c8 !important;
+}
+[data-theme='dark'] .sf-dashboard :is(.announcement-field input:not([type=radio]):not([type=checkbox]), .announcement-field textarea, .announcement-preview-button, .announcement-segmented button, .announcement-template-picker button, .announcement-recipient-list) {
+  border-color: #34435c !important;
+  background: #151f30 !important;
+  color: #e7edf8 !important;
+}
+[data-theme='dark'] .sf-dashboard :is(.announcement-segmented button.active, .announcement-template-picker button.active) {
+  border-color: #6687f4 !important;
+  background: #192747 !important;
+  color: #c8d5ff !important;
+}
+[data-theme='dark'] .sf-dashboard .announcement-template-picker button :is(strong, h3) { color: #f1f5f9 !important; }
+[data-theme='dark'] .sf-dashboard .announcement-preview { border-color: #29364b; background: #151f30; }
+[data-theme='dark'] .sf-dashboard .announcement-preview-body { color: #c6d1e1; }
+[data-theme='dark'] .sf-dashboard .announcement-cancel-button { border: 1px solid #34435c; background: #1a263a; color: #dbe5f3; }
+[data-theme='dark'] .sf-dashboard .analytics-progress-track { background: #26344a; }
+[data-theme='dark'] .sf-dashboard :is(.results-content, .announcements-content) {
+  width: min(100%, 1300px);
+  margin-inline: auto;
+  padding: 28px clamp(18px, 3vw, 38px) 40px;
+}
+[data-theme='dark'] .sf-dashboard .event-workspace-nav {
+  padding-inline: max(24px, calc((100% - 1240px) / 2));
+  align-items: stretch;
+}
+[data-theme='dark'] .sf-dashboard .event-workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  line-height: 1.2;
 }
 

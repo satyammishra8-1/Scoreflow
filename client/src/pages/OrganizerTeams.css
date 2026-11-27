@@ -309,6 +309,12 @@
   border-radius: 6px;
   color: #8792a4;
   background: #fff;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.teams-filter-search:focus-within {
+  border-color: #7892eb;
+  box-shadow: 0 0 0 3px rgba(65, 105, 223, .13);
 }
 
 .teams-filter-search > span {
