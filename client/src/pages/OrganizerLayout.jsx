@@ -18,9 +18,13 @@ function OrganizerLayout({
   userName = 'Organizer', userRole = 'Administrator', userInitial = 'O',
 }) {
   const params = useParams();
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
   const location = useLocation();
   const eventId = eventIdProp || params.eventId;
+  const displayName = session?.name?.trim() || userName;
+  const displayRole = session?.role === 'organizer' ? 'Administrator'
+    : session?.role === 'judge' ? 'Judge' : userRole;
+  const displayInitial = session?.name?.trim()?.charAt(0).toUpperCase() || userInitial;
   const isEventWorkspace = Boolean(eventId && eventId !== 'default');
   const isDashboard = location.pathname === '/organizer/dashboard' || location.pathname === '/dashboard';
   const searchInputProps = typeof searchValue === 'string' && typeof onSearchChange === 'function'
@@ -42,8 +46,8 @@ function OrganizerLayout({
             <input aria-label={searchAriaLabel} placeholder={searchPlaceholder} {...searchInputProps} />
           </label> : <Link to="/organizer/dashboard" className="topbar-dashboard-link">← Dashboard</Link>}
           <div className="topbar-actions"><div className="topbar-user">
-            <div className="profile-avatar">{userInitial}</div>
-            <div className="topbar-user-name"><strong>{userName}</strong><span>{userRole}</span></div>
+            <div className="profile-avatar">{displayInitial}</div>
+            <div className="topbar-user-name"><strong>{displayName}</strong><span>{displayRole}</span></div>
           </div><button className="topbar-logout" type="button" onClick={signOut}>Sign out</button></div>
         </header>
         {isEventWorkspace && <nav className="event-workspace-nav" aria-label="Event navigation">
